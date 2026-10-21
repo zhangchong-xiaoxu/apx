@@ -103,6 +103,53 @@ const SCENES: Record<Language, Scene[]> = {
       text: "# memoria · mesa de whatsapp - Contestá sólo a contactos guardados. - Todo lo de plata va al dueño por Telegram.",
     },
   ],
+  zh: [
+    {
+      key: "perla",
+      text: agentFile(
+        [
+          ["name", "Tomás"],
+          ["role", "开发者"],
+          ["runtime", "claude-code"],
+        ],
+        "你是开发者 Tomás。先复现，再修复，并始终说明哪项测试可以证明结果。",
+      ),
+    },
+    {
+      key: "papa",
+      text: "# 记忆 · 夜班 - 3:00 备份，9:00 汇报。- 如果例行任务连续失败两次，通知 Nova。",
+    },
+    {
+      key: "orbita",
+      text: agentFile(
+        [
+          ["name", "Lucía"],
+          ["role", "产品经理"],
+          ["autonomy", "total"],
+        ],
+        "你是 Acme Store 的产品经理 Lucía。把大型需求拆成任务，分配任务并跟进进度。",
+      ),
+    },
+    {
+      key: "menta",
+      text: "# 记忆 · nova - 用户早上先看 Telegram，午饭后看 WhatsApp。- 除非遇到阻塞，否则不要打扰。",
+    },
+    {
+      key: "caracol",
+      text: agentFile(
+        [
+          ["name", "Vera"],
+          ["role", "市场营销"],
+          ["skills", "[newsletter, social-posts]"],
+        ],
+        "你是 Vera。文案要简短，每篇只表达一个观点，所有内容必须先确定发布日期。",
+      ),
+    },
+    {
+      key: "parche",
+      text: "# 记忆 · whatsapp 工作台 - 只回复已保存的联系人。- 涉及资金的内容通过 Telegram 交给用户。",
+    },
+  ],
 };
 
 const RAND = "01#%&*+=<>{}[]/\\|~:;abcdefghijklmnopqrstuvwxyz";

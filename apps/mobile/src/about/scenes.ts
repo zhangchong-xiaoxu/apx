@@ -126,6 +126,65 @@ const SCENES: Record<Lang, Scene[]> = {
       text: "# memoria · mesa de whatsapp\n- Contestá sólo a contactos guardados.\n- Pedidos: decí que sale, nunca prometas una fecha.\n- Todo lo de plata va al dueño por Telegram.",
     },
   ],
+  zh: [
+    {
+      key: "perla",
+      file: "tomas.md",
+      text: agentFile(
+        [
+          ["name", "Tomás"],
+          ["role", "开发者"],
+          ["description", "维护在线商店的结账、商品目录和支付功能。"],
+          ["runtime", "claude-code"],
+          ["icon", "perla"],
+        ],
+        "你是开发者 Tomás。先复现，再修复，并始终说明哪项测试可以证明结果。",
+      ),
+    },
+    {
+      key: "papa",
+      file: "night/memory.md",
+      text: "# 记忆 · 夜班\n- 3:00 备份，9:00 汇报。\n- 如果自动任务连续失败两次，通知 Nova。",
+    },
+    {
+      key: "orbita",
+      file: "lucia.md",
+      text: agentFile(
+        [
+          ["name", "Lucía"],
+          ["role", "产品经理"],
+          ["description", "负责 Acme Store 的路线图并分配工作。"],
+          ["autonomy", "total"],
+          ["icon", "orbita"],
+        ],
+        "你是 Acme Store 的产品经理 Lucía。把大型需求拆成任务，分配任务并跟进进度。",
+      ),
+    },
+    {
+      key: "menta",
+      file: "nova/memory.md",
+      text: "# 记忆 · nova\n- 用户早上先看 Telegram，午饭后看 WhatsApp。\n- 除非遇到阻塞，否则不要打扰。",
+    },
+    {
+      key: "caracol",
+      file: "vera.md",
+      text: agentFile(
+        [
+          ["name", "Vera"],
+          ["role", "市场营销"],
+          ["description", "撰写营销活动、邮件简报和社交媒体内容。"],
+          ["skills", "[newsletter, social-posts]"],
+          ["icon", "caracol"],
+        ],
+        "你是 Vera。文案要简短，每篇只表达一个观点，所有内容必须先确定发布日期。",
+      ),
+    },
+    {
+      key: "parche",
+      file: "desk/memory.md",
+      text: "# 记忆 · whatsapp 工作台\n- 只回复已保存的联系人。\n- 涉及资金的内容通过 Telegram 交给用户。",
+    },
+  ],
 };
 
 export const scenesFor = (language: Lang) => SCENES[language];

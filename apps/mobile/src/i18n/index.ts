@@ -1,13 +1,18 @@
 import { en, type Key } from "./en.ts";
 import { es } from "./es.ts";
+import { zh } from "./zh.ts";
 
 export type { Key };
-export type Lang = "en" | "es";
+export type Lang = "en" | "es" | "zh";
 
-const dictionaries: Record<Lang, Record<Key, string>> = { en, es };
+const dictionaries: Record<Lang, Record<Key, string>> = { en, es, zh };
 
 /** The phone's language when APX speaks it, English otherwise. */
-export const lang: Lang = Intl.DateTimeFormat().resolvedOptions().locale.toLowerCase().startsWith("es") ? "es" : "en";
+export const lang: Lang = (() => {
+  const locale = Intl.DateTimeFormat().resolvedOptions().locale.toLowerCase();
+  if (locale.startsWith("zh")) return "zh";
+  return locale.startsWith("es") ? "es" : "en";
+})();
 
 /** A translator for one language (tests pick theirs; the app uses the phone's). */
 export function translator(language: Lang) {

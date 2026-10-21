@@ -515,7 +515,8 @@ export function createChannels(deps: {
    * never in a contact's chat.
    */
   function limitReached(threadId: string, notice: Extract<Part, { type: "notice" }>): void {
-    const text = noticeText(notice, store.settings.get("owner_language") === "en" ? "en" : "es");
+    const language = store.settings.get("owner_language");
+    const text = noticeText(notice, language === "en" ? "en" : language === "zh" ? "zh" : "es");
     const thread = store.threads.get(threadId);
     const to =
       thread && audienceOf(store, thread).kind === "owner" ? store.threads.context(threadId).reply_to : undefined;

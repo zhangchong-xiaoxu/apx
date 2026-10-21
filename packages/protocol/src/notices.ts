@@ -148,7 +148,77 @@ export const noticeEs: Record<NoticeKey, string> = {
   "notice.pairing.request": "Alguien nuevo quiere hablar por un canal: aprobalo en Configuración › Canales.",
 };
 
-const NOTICES = { en: noticeEn, es: noticeEs } as const;
+export const noticeZh: Record<NoticeKey, string> = {
+  "notice.run.stepLimit": "本轮已用完步骤：这是已完成和待办事项的报告，并非最终答复。",
+  "notice.run.noModel": "没有可用模型：所有模型都无法回答（额度用尽、未登录或服务中断）。",
+  "notice.run.noModel.limit": "已因模型提供商的使用限额停止，该限额将在 {until} 恢复。",
+  "notice.run.noModel.limitUnknown": "已因模型提供商的使用限额停止（未提供恢复时间）。",
+  "notice.routine.shell": "命令已运行。",
+  "notice.routine.watch.quiet": "没有新的监看内容：未调用模型。",
+  "notice.routine.relay.quiet": "没有可转告的团队动态：未调用模型。",
+  "notice.routine.pre.ok": "前置命令：成功",
+  "notice.routine.pre.failed": "前置命令：失败（退出码 {exit}）",
+  "notice.routine.pre.timeout": "前置命令：超时",
+  "notice.routine.post.ok": "后置命令：成功",
+  "notice.routine.post.failed": "后置命令：失败（退出码 {exit}）",
+  "notice.routine.post.timeout": "后置命令：超时",
+  "notice.routine.skipped": "未调用模型；前置命令的结果没有要求调用。",
+  "notice.breaker.paused.runs":
+    "已暂停：自你上次在此发言后，智能体已自主启动 {spent} 轮对话。{who} 已完成；发送消息即可继续。",
+  "notice.breaker.paused.tokens":
+    "已暂停：自你上次在此发言后，智能体已自主使用 {spent} 个 token。{who} 已完成；发送消息即可继续。",
+  "notice.breaker.paused.link": "更改限额",
+  "notice.breaker.held.runs":
+    "已暂停：自你上次在此发言后，智能体已自主启动 {spent} 轮对话。允许继续后，{who} 将开始“{task}”。",
+  "notice.breaker.held.tokens":
+    "已暂停：自你上次在此发言后，智能体已自主使用 {spent} 个 token。允许继续后，{who} 将开始“{task}”。",
+  "notice.breaker.held.agentRuns":
+    "已为 {who} 暂停：自你上次在此发言后，{who} 已自主启动 {spent} 轮对话，达到其自身限额。允许继续后，它将开始“{task}”。",
+  "notice.breaker.held.agentTokens":
+    "已为 {who} 暂停：自你上次在此发言后，{who} 已自主使用 {spent} 个 token，达到其自身限额。允许继续后，它将开始“{task}”。",
+  "notice.breaker.held.link": "更改限额",
+  "notice.breaker.reset": "重置额度",
+  "notice.breaker.release": "允许完成本轮",
+  "notice.breaker.wentOn": "智能体已继续",
+  "notice.delegation.limit.continuedSteps":
+    "{who} 在“{task}”中用完了步骤；APX 已让它在对话 {session} 中继续一次。目前进展：{sofar}",
+  "notice.delegation.limit.continuedTime":
+    "{who} 在“{task}”中用完了时间；APX 已让它在对话 {session} 中继续一次。目前进展：{sofar}",
+  "notice.delegation.limit.returnedSteps":
+    "{who} 在“{task}”中用完了步骤。{caller} 已收到其报告，并将决定如何继续。目前进展：{sofar}",
+  "notice.delegation.limit.returnedTime":
+    "{who} 在“{task}”中用完了时间。{caller} 已收到其报告，并将决定如何继续。目前进展：{sofar}",
+  "notice.delegation.limit.open": "打开对话",
+  "notice.delegation.limit.loading": "正在检查对话…",
+  "notice.delegation.limit.working": "仍在处理",
+  "notice.delegation.limit.queued": "已排队",
+  "notice.delegation.limit.waiting": "正在等待你的回复",
+  "notice.delegation.limit.completed": "已完成",
+  "notice.delegation.limit.continue": "继续",
+  "notice.delegation.limit.continuing": "正在继续…",
+  "notice.delegation.limit.offline": "离线：无法获取当前对话状态",
+  "notice.delegation.limit.unavailable": "无法检查对话状态",
+  "notice.delegation.limit.continuePrompt":
+    "从上次进度报告继续完成此对话中的剩余工作。保持现有范围和权限，并将结果报告给原调用方。",
+  "notice.delegation.limit.stop": "停止",
+  "notice.delegation.limit.stopped": "已停止",
+  "notice.delegation.limit.ended": "已结束",
+  "notice.delegation.continued": "APX 已在达到限额后继续此对话。",
+  "notice.run.interrupted": "因 APX 重启而中断。",
+  "notice.run.resumed": "因 APX 重启而中断；正在恢复。",
+  "notice.run.canceled": "已取消。",
+  "notice.run.failed": "未能完成。",
+  "notice.run.empty": "已完成，但没有消息。",
+  "notice.harness.fallback": "所选引擎不可用；已由内置模型回答。",
+  "notice.info": "提示",
+  "notice.warn": "警告",
+  "notice.engine.fallback": "{model} 未回答（{why}）；已改用 {to}。",
+  "notice.engine.fallback.title": "已切换模型",
+  "notice.thread.compacted": "已总结较早轮次以缩短此对话的上下文，没有开始新的工作。",
+  "notice.pairing.request": "有新联系人想通过渠道对话：请前往“设置 → 渠道”批准。",
+};
+
+const NOTICES = { en: noticeEn, es: noticeEs, zh: noticeZh } as const;
 
 const fill = (text: string, vars: Record<string, string | number> = {}) =>
   text.replace(/\{(\w+)\}/g, (m, k: string) => (k in vars ? String(vars[k]) : m));
