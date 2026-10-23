@@ -468,6 +468,8 @@ export interface SurfacesTable {
   updated_at: string;
   share_token: string | null;
   connect: string | null;
+  state: string | null;
+  origin: string | null;
 }
 
 export interface TaskEventsTable {
@@ -504,6 +506,10 @@ export interface TasksTable {
   remind_at: string | null;
   outcome: string | null;
   renegotiated: Generated<number>;
+  start_at: string | null;
+  reviewer: string | null;
+  plan: string | null;
+  proposed: Generated<number>;
 }
 
 export interface ThreadsTable {

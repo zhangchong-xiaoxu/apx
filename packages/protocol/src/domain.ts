@@ -432,6 +432,8 @@ const KnownPart = z.discriminatedUnion("type", [
     end_reason: RunEndReason.optional(),
     /** Who asked, when it is not the message's author (a consult on a task): an agent's id, or "owner". */
     asked_by: z.string().optional(),
+    /** A completed run that did not go well: it gave no answer, or some of its actions failed. */
+    issue: z.enum(["no_answer", "actions_failed"]).optional(),
   }),
   z.object({
     type: z.literal("browser"),
@@ -591,6 +593,7 @@ export const AuxPurpose = z.enum([
   "suggestion",
   "memory_capture",
   "memory_dream",
+  "news",
 ]);
 export type AuxPurpose = z.infer<typeof AuxPurpose>;
 
@@ -637,6 +640,7 @@ export const JobFrom = z.object({
     "job",
     "terminal",
     "go_on",
+    "stalled_task",
     "task_result",
     "delegation_result",
   ]),
@@ -1231,7 +1235,10 @@ export const McpServerStatus = z.object({
   enabled: z.boolean(),
   /** A project's server runs only after the owner approved this exact definition. */
   trusted: z.boolean(),
-  status: z.enum(["off", "needs-approval", "disabled", "starting", "ready", "error"]),
+  /** needs-sign-in: it asked the owner to sign in in their browser and is not started again until they do. */
+  status: z.enum(["off", "needs-approval", "disabled", "starting", "ready", "error", "needs-sign-in"]),
+  /** The page it asked the owner to open, while it still waits for them there. */
+  sign_in_url: z.string().optional(),
   tools: z.number().int(),
   /** Tool names once it has started. */
   tool_names: z.array(z.string()).default([]),
@@ -1261,12 +1268,29 @@ export const McpServerStatus = z.object({
 export type McpServerStatus = z.infer<typeof McpServerStatus>;
 
 /** One primitive for widgets, sidebar panels and fullscreen apps. */
+/** A widget's state: JSON values by key. */
+export const SurfaceState = z.record(z.string().min(1).max(100), z.unknown());
+export type SurfaceState = z.infer<typeof SurfaceState>;
 /** An origin a widget may read live data from: https or wss, a host and maybe a port, nothing else. */
 export const SurfaceOrigin = z
   .string()
   .max(200)
   .regex(/^(https|wss):\/\/[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+(:\d{1,5})?$/);
 
+/** Where an installed artifact came from: who made it, and where, as its file said. Absent for one made here. */
+export const ArtifactOrigin = z.object({
+  /** The person whose APX it was exported from. */
+  author: z.string().max(80).optional(),
+  /** The agent that made it there. */
+  agent: z.string().max(80).optional(),
+  /** The project it belonged to there. */
+  project: z.string().max(120).optional(),
+  /** Its version when exported. */
+  version: z.number().int().min(1).optional(),
+  exported_at: z.string().max(40).optional(),
+  installed_at: z.string().max(40),
+});
+export type ArtifactOrigin = z.infer<typeof ArtifactOrigin>;
 export const Surface = z.object({
   id: Id,
   /** Stable name an agent updates by ("ventas-mes"). Unique per project (or globally when no project). */
@@ -1284,7 +1308,69 @@ export const Surface = z.object({
   share_path: z.string().optional(),
   /** Origins it may connect to for live data (shown to the owner); absent: no network at all. */
   connect: z.array(SurfaceOrigin).max(5).optional(),
+  /** What it remembers (APX.state): kept across openings and new versions, read and written by it and its agent. */
+  state: SurfaceState.optional(),
+  /** Installed from a file: who made it and where. */
+  origin: ArtifactOrigin.optional(),
 });
 export type Surface = z.infer<typeof Surface>;
-export const SurfaceSummary = Surface.omit({ html: true });
+export const SurfaceSummary = Surface.omit({ html: true, state: true });
 export type SurfaceSummary = z.infer<typeof SurfaceSummary>;
+
+/** Most an artifact's store (APX.store) may hold, as JSON bytes of every value together. */
+export const ARTIFACT_STORE_MAX = 5_000_000;
+/** Largest an artifact's database file (APX.db) may grow. */
+export const ARTIFACT_DB_MAX = 50_000_000;
+/** An artifact's own secret key (its full name is `artifact.<name>.<key>`). */
+export const ArtifactSecretKey = z
+  .string()
+  .min(1)
+  .max(60)
+  .regex(/^[a-z0-9][a-z0-9_-]*$/);
+/** What an artifact is, as a bundle names it: enough to install it again without its owner's data. */
+export const ArtifactManifest = z.object({
+  name: z
+    .string()
+    .min(1)
+    .max(60)
+    .regex(/^[a-z0-9][a-z0-9-]*$/),
+  title: z.string().min(1).max(120),
+  kind: z.enum(["widget", "app"]),
+  version: z.number().int().min(1),
+  /** The kit version its HTML loads (/_apx/kit@<version>.js). */
+  kit: z.string().max(40).optional(),
+  connect: z.array(SurfaceOrigin).max(5).optional(),
+  /** Secret keys it expects, never their values. */
+  secrets: z.array(ArtifactSecretKey).max(20).optional(),
+  live: z.boolean().optional(),
+  /** Schema version of its database, for future migrations. */
+  data_version: z.number().int().min(0).optional(),
+  source: z.object({ framework: z.enum(["preact", "html"]).optional(), built_at: z.string().optional() }).optional(),
+  /** Who made it: the person whose APX exported it, its agent and its project there (kept through later exports). */
+  author: z.string().max(80).optional(),
+  agent: z.string().max(80).optional(),
+  project: z.string().max(120).optional(),
+  exported_at: z.string().max(40).optional(),
+});
+export type ArtifactManifest = z.infer<typeof ArtifactManifest>;
+/** One artifact as a file: its page and, only when asked, its memory (state, store, base64 database). */
+export const ArtifactBundle = z.object({
+  format: z.literal("apx-artifact@1"),
+  manifest: ArtifactManifest,
+  html: z.string().min(1).max(400_000),
+  state: SurfaceState.optional(),
+  store: z.record(z.string(), z.unknown()).optional(),
+  db: z.string().optional(),
+});
+export type ArtifactBundle = z.infer<typeof ArtifactBundle>;
+/** A value bound to an artifact's SQL: what SQLite takes as a parameter. */
+export const ArtifactSqlParam = z.union([z.string(), z.number(), z.null(), z.boolean()]);
+/** What an artifact remembers, sizes only (its contents stay with it). */
+export const ArtifactMemory = z.object({
+  state_chars: z.number().int(),
+  store: z.object({ keys: z.array(z.string()), bytes: z.number().int() }),
+  db: z.object({ bytes: z.number().int(), tables: z.array(z.object({ name: z.string(), rows: z.number().int() })) }),
+  /** The origin each of its secrets was first sent to; it is sent nowhere else until the owner resets the pins. */
+  secrets: z.array(z.object({ key: z.string(), origin: z.string() })),
+});
+export type ArtifactMemory = z.infer<typeof ArtifactMemory>;

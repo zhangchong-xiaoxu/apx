@@ -136,6 +136,8 @@ export const esResources: Partial<Record<MessageKey, string>> = {
   "res.approveTitle": "Viene del .apc/mcps.json del proyecto",
   "res.approveBody":
     "Corre un comando del repositorio. Revisalo antes de aprobar; si el archivo cambia, hay que aprobarlo de nuevo.",
+  "res.signIn": "Iniciar sesión",
+  "res.signInWaiting": "Terminá de iniciar sesión en tu navegador",
   "res.command": "Comando",
   "res.url": "URL",
   "res.noVars": "No usa variables.",
@@ -273,14 +275,44 @@ export const esResources: Partial<Record<MessageKey, string>> = {
   "int.formNote":
     "Los tokens y claves se guardan de forma segura; los agentes los usan a través de su servidor y nunca los ven.",
   "int.oauthNote":
-    "Usá un OAuth client tuyo de Google Cloud Console: tipo App de escritorio, o Aplicación web con la dirección de abajo como URI de redirección autorizado. Un mismo client sirve para Calendar y Gmail.",
+    "Usá un OAuth client tuyo de Google Cloud Console: tipo App de escritorio, o Aplicación web con la dirección de abajo como URI de redirección autorizado. Un mismo client sirve para Calendar, Gmail y Drive.",
+  "int.clientApx": "Acceso de APX",
+  "int.clientOwn": "Mi propio OAuth client",
+  "int.apxNote":
+    "Iniciá sesión con tu cuenta de Google: no hace falta configurar nada en Google Cloud. APX pide solo lo que necesita esta integración y el acceso queda en esta computadora. Lo podés quitar cuando quieras en myaccount.google.com/permissions.",
+  "int.clientApxLimited": "Acceso de APX (limitado)",
+  "int.ownNote":
+    "Tu propio OAuth client llega a todo Gmail y Drive. Crealo una vez en Google Cloud (unos 5 minutos) y subí su JSON acá; sirve para Calendar, Gmail y Drive.",
+  "int.guide.project": "Creá un proyecto en Google Cloud.",
+  "int.guide.apis": "Activá las APIs de Gmail, Google Drive y Google Calendar.",
+  "int.guide.publish":
+    "En Google Auth Platform completá el nombre de la app y tu mail, elegí Externo y publicá la app (En producción): en Prueba, Google corta el acceso a los 7 días.",
+  "int.guide.client": "Creá un cliente de tipo App de escritorio y descargá su JSON.",
+  "int.guide.open": "Abrir",
+  "int.jsonUpload": "Subir el JSON del cliente",
+  "int.jsonBad": "Ese archivo no es el JSON de un OAuth client de Google Cloud",
+  "int.ownSaved": "Tu propio OAuth client ya está guardado: solo iniciá sesión.",
+  "int.ownSavedFor": "Ya conectaste {names} con tu propio OAuth client: solo iniciá sesión.",
+  "int.alsoLabel": "Conectar también, con el mismo inicio de sesión",
+  "int.apxLimit.gmail":
+    "Con el acceso de APX, los agentes pueden enviar mails desde tu Gmail, siempre con tu OK, pero no leerlos. Para leer el correo, conectalo en Canales › Email o usá tu propio OAuth client.",
+  "int.apxLimit.drive":
+    "Con el acceso de APX, los agentes llegan solo a los Docs que escriben. Para buscar y leer el resto de tu Drive, usá tu propio OAuth client.",
+  "int.pasteLabel": "¿Iniciás sesión desde otro dispositivo?",
+  "int.pasteHint":
+    "Google te devuelve al APX de esta computadora, que este dispositivo no puede abrir. Copiá la dirección de la página que no cargó y pegala acá.",
+  "int.pasteFinish": "Terminar",
+  "int.pasteBad": "Esa dirección no trae el código de inicio de sesión de Google",
   "int.redirect": "URI de redirección",
+  "int.redirectHint":
+    "Solo para un cliente de tipo Aplicación web: sumala como URI de redirección autorizada. Una App de escritorio no necesita nada.",
   "int.signIn": "Iniciar sesión con Google",
   "int.signInAgain": "Iniciar sesión de nuevo",
   "int.waiting": "Terminá de iniciar sesión en tu navegador. Esto se cierra solo cuando Google te devuelva.",
   "int.signedInAs": "Sesión iniciada como {account}",
   "oauth.working": "Terminando de iniciar sesión…",
   "oauth.doneTitle": "{name} está conectado",
+  "oauth.doneTitleMany": "{names} están conectados",
   "oauth.doneBody": "Podés cerrar esta pestaña y volver a APX.",
   "oauth.failTitle": "No se pudo terminar de iniciar sesión",
   "oauth.nothing": "Acá no hay ningún inicio de sesión para terminar.",
@@ -293,6 +325,7 @@ export const esResources: Partial<Record<MessageKey, string>> = {
   "int.desc.obsidian": "Leer y escribir las notas de tu vault.",
   "int.desc.googlecalendar": "Tu calendario: eventos, tiempo libre, invitaciones.",
   "int.desc.gmail": "Buscar y leer tus mails, y escribir borradores.",
+  "int.desc.googledrive": "Buscar y leer tus archivos y Docs, y escribir Docs nuevos.",
   "int.desc.linear": "Issues, proyectos y ciclos.",
   "int.desc.asana": "Tareas y proyectos de tu workspace.",
 };

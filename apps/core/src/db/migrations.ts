@@ -834,4 +834,17 @@ export const MIGRATIONS: readonly string[] = [
   );
   UPDATE memory_episodes SET embedding = NULL, embedding_model = NULL;
   `,
+  // What a widget remembers between openings and versions (a JSON object written by the widget or its agent).
+  `ALTER TABLE surfaces ADD COLUMN state TEXT;`,
+  // Where an installed artifact came from (who made it, its agent and project there), as its file said.
+  `ALTER TABLE surfaces ADD COLUMN origin TEXT;`,
+  // When a task's work starts (an assigned task waits until then), and who checks it once it is in review.
+  `
+  ALTER TABLE tasks ADD COLUMN start_at TEXT;
+  ALTER TABLE tasks ADD COLUMN reviewer TEXT;
+  `,
+  // The plan its agent keeps on the task (steps and where it stands), read again on every turn.
+  `ALTER TABLE tasks ADD COLUMN plan TEXT;`,
+  // A task an agent proposed: it waits for the owner to accept it before any work starts.
+  `ALTER TABLE tasks ADD COLUMN proposed INTEGER NOT NULL DEFAULT 0;`,
 ];

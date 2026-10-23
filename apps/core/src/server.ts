@@ -40,6 +40,7 @@ import type { InputWaits } from "./engine/inputs.ts";
 import { createMemoryIndex } from "./engine/memory-index.ts";
 import { createMemoryMaintenance } from "./engine/memory-maintenance.ts";
 import { createNoticePush } from "./engine/notice-push.ts";
+import { createPermissions } from "./engine/permissions.ts";
 import type { ProfileRoot } from "./engine/profiles.ts";
 import { createSkillPicker } from "./engine/skill-pick.ts";
 import { createDrafter } from "./engine/suggest.ts";
@@ -57,13 +58,16 @@ import { readIdentity } from "./identity.ts";
 import { createIdleTrim } from "./idle-memory.ts";
 import { type IMessageOps, systemIMessage } from "./imessage.ts";
 import { createAsana } from "./integrations/asana.ts";
+import { gmailApi } from "./integrations/gmail.ts";
 import { createGoogle } from "./integrations/google.ts";
+import { apxGoogleClient, clientFromPair } from "./integrations/google-client.ts";
 import { GOOGLE, googleAt } from "./integrations/google-oauth.ts";
 import { createLog, type Log } from "./log.ts";
 import { mcpConfig } from "./mcp/config.ts";
 import { agentFiles } from "./mcp/file-args.ts";
 import { createMcp } from "./mcp/manager.ts";
 import { createCatalog } from "./models/catalog.ts";
+import { createNews } from "./news/news.ts";
 import { nodeChildEnv } from "./node-runtime.ts";
 import { createNodeBroker } from "./nodes/broker.ts";
 import { createHeadlessBrowser } from "./nodes/headless-browser.ts";
@@ -99,6 +103,7 @@ import { createTelemetry } from "./telemetry.ts";
 import { type TelemetrySink, telemetrySink } from "./telemetry-sink.ts";
 import { createTerminals } from "./terminal/terminals.ts";
 import { asanaTools } from "./tools/asana.ts";
+import { scratchRoot } from "./tools/folders.ts";
 import { googleTools } from "./tools/google.ts";
 import { imessageTools } from "./tools/imessage.ts";
 import type { Tool } from "./tools/types.ts";
@@ -164,6 +169,8 @@ export async function createCore(config: CoreConfig, opts: CoreOptions = {}) {
   seed(store, config.agentName);
   const releases =
     opts.releases ?? (config.whatsNew ? localReleases(path.resolve(import.meta.dirname, "../../..")) : undefined);
+  // The release this install was on before this start: news it already had are not told as new.
+  const previousRelease = store.settings.get("release_seen");
   try {
     if (releases) announceRelease(store, releases);
   } catch (err) {
@@ -251,6 +258,8 @@ export async function createCore(config: CoreConfig, opts: CoreOptions = {}) {
     origin: () => `http://127.0.0.1:${listening}`,
     // An integration is off where the owner turned it off, and in a project that takes none of their globals.
     offIn: (project, id) => !integrationsOff.takesGlobals(project) || integrationsOff.offIn(project).includes(id),
+    // A stand-in Google never takes APX's real client.
+    builtin: clientFromPair(config.googleClient) ?? (config.googleApi ? undefined : apxGoogleClient()),
   });
   const asana = createAsana({
     secrets,
@@ -268,17 +277,25 @@ export async function createCore(config: CoreConfig, opts: CoreOptions = {}) {
   // The router exists only after the engine, hence the late binding.
   let routed: Dispatch | undefined;
   const internal = internalCaller(() => routed, log);
+  // Every permission question about an agent, from tools, outside agents and the methods tools call.
+  const permissions = createPermissions({ store, home: config.home });
   const call: ToolCall = (method, params, as) =>
     internal(
       method,
       params,
       {
         actor: as.owner ? "human" : "agent",
-        agent: { id: as.run.agent_id, run_id: as.run.id, thread_id: as.run.thread_id },
+        agent: { id: as.run.agent_id, run_id: as.run.id, thread_id: as.run.thread_id, call_id: as.callId },
       },
       `tool:${as.run.id}:${as.callId}:${randomUUID()}`,
     );
-  const mcp = createMcp({ store, secrets, log, files: (thread) => agentFiles(store, config.home, thread) });
+  const mcp = createMcp({
+    store,
+    secrets,
+    log,
+    workDir: path.join(scratchRoot(config.home), "mcp"),
+    files: (thread) => agentFiles(store, config.home, thread),
+  });
   const { hooks, plugins, extensions } = extensionStack({ store, secrets, bus, log, home: config.home });
   const upkeep = createUpkeep({ store, llm, log });
   const services = createServices({
@@ -351,6 +368,13 @@ export async function createCore(config: CoreConfig, opts: CoreOptions = {}) {
       return true;
     },
   });
+  const news = createNews({
+    store,
+    llm,
+    models: upkeep.voiceModels,
+    notifyOwner: (body, threadId) => channels.notifyOwner(body, "notice", threadId),
+    log,
+  });
   // APX's own profiles, then the ones the owner installed (theirs win an id).
   const profileRoots: ProfileRoot[] = [
     { source: "apx", dir: path.resolve(import.meta.dirname, "../../../examples/profiles") },
@@ -362,6 +386,7 @@ export async function createCore(config: CoreConfig, opts: CoreOptions = {}) {
     tools,
     log,
     call,
+    permissions,
     home: config.home,
     skillApps: config.runtimeSkills.homes,
     apxPort: () => listening,
@@ -379,6 +404,12 @@ export async function createCore(config: CoreConfig, opts: CoreOptions = {}) {
     mcpServers: mcp.serversFor,
     hasCap: (cap) => Boolean(broker.withCap(cap)) || (cap === BROWSER_CAP && Boolean(headless?.available())),
     desktopLinked: () => Boolean(broker.withCap(BROWSER_CAP)),
+    // Mail routines read the inbox only with the owner's own Google client: APX's can only send.
+    mail: {
+      readable: (project) => google.usable("gmail", project) && google.full("gmail"),
+      historyId: () => gmailApi(google).historyId(),
+      arrived: (from) => gmailApi(google).arrived(from),
+    },
     afterRun: (run) => {
       upkeep.afterRun(run);
       memoryMaintenance.afterRun(run);
@@ -435,6 +466,7 @@ export async function createCore(config: CoreConfig, opts: CoreOptions = {}) {
   const dispatch = createRouter(
     coreHandlers({
       internal,
+      permissions,
       addresses: () => reachableAt(config.host, listening, config.publicUrl),
       terminals,
       access: createAccess({
@@ -487,6 +519,7 @@ export async function createCore(config: CoreConfig, opts: CoreOptions = {}) {
       runtimeHomes: config.runtimeSkills.homes,
       updates,
       telemetry,
+      news,
       panel: () => panelEntry(servedPanel(config)),
       profileRoots,
       // APX's own templates, then the owner's v1 vault (read-only).
@@ -515,6 +548,11 @@ export async function createCore(config: CoreConfig, opts: CoreOptions = {}) {
   selfUrl = url;
   engine.start();
   await channels.start();
+  // After the channels: the message goes out on one (it waits in the outbox until that one is up).
+  if (config.news)
+    void news
+      .atBoot(previousRelease)
+      .catch((err) => log.warn({ err: errorMessage(err, 200) }, "release news not told; the next start tries again"));
   scheduler.start();
   updates.start();
   telemetry.start();
@@ -553,6 +591,7 @@ export async function createCore(config: CoreConfig, opts: CoreOptions = {}) {
       localModels.cancel();
       headless?.close();
       scheduler.stop();
+      await news.stop();
       attention.stop();
       noticePush.stop();
       plugins.close();

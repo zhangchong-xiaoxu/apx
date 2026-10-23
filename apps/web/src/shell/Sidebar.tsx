@@ -1,4 +1,4 @@
-import { ContextMenu, Icons, NavItem, ProjectTile, ResizeHandle } from "@apx/ui";
+import { ContextMenu, Icons, NavItem, ResizeHandle } from "@apx/ui";
 import { lazy, Suspense, useEffect, useMemo } from "react";
 import { markAllRead } from "../data/actions.ts";
 import { loadChannels } from "../data/channels.ts";
@@ -13,10 +13,10 @@ import { ExternalSessionsNav } from "./ExternalSessionsNav.tsx";
 import { LAYOUT } from "./layout.ts";
 import { go, useNav } from "./nav.ts";
 import { ProjectsNav } from "./ProjectsNav.tsx";
-import { SidebarSection } from "./SidebarSection.tsx";
 
 // Not needed for the first paint.
 const CornerCards = lazy(() => import("./CornerCards.tsx").then((m) => ({ default: m.CornerCards })));
+const AppsDock = lazy(() => import("./AppsDock.tsx").then((m) => ({ default: m.AppsDock })));
 const DesktopInstallNotice = lazy(() =>
   import("./DesktopInstallNotice.tsx").then((m) => ({ default: m.DesktopInstallNotice })),
 );
@@ -25,9 +25,7 @@ const DesktopInstallNotice = lazy(() =>
 export function Sidebar({ rail, width }: { rail: boolean; width: number }) {
   const t = useT();
   const view = useNav((s) => s.view);
-  const appId = useNav((s) => s.appId);
   const threads = useData((s) => s.threads);
-  const surfaces = useData((s) => s.surfaces);
   useEffect(() => {
     void loadChannels();
   }, []);
@@ -40,7 +38,6 @@ export function Sidebar({ rail, width }: { rail: boolean; width: number }) {
     for (const t of Object.values(threads)) if (inInbox(t, routines)) n += t.unread;
     return n;
   }, [threads, routines]);
-  const apps = useMemo(() => Object.values(surfaces).filter((s) => s.app), [surfaces]);
 
   return (
     <aside className={rail ? "sidebar is-rail" : "sidebar"} aria-label={t("nav.label")}>
@@ -97,21 +94,9 @@ export function Sidebar({ rail, width }: { rail: boolean; width: number }) {
 
         <ExternalSessionsNav rail={rail} />
 
-        {apps.length > 0 && (
-          <>
-            <SidebarSection rail={rail} title={t("nav.apps")} />
-            {apps.map((a) => (
-              <NavItem
-                key={a.id}
-                collapsed={rail}
-                icon={<ProjectTile tone="violet" icon={<Icons.LayoutGrid />} />}
-                label={a.title}
-                active={view === "app" && appId === a.id}
-                onClick={() => go.app(a.id)}
-              />
-            ))}
-          </>
-        )}
+        <Suspense fallback={null}>
+          <AppsDock rail={rail} />
+        </Suspense>
       </div>
       {!rail && (
         <Suspense fallback={null}>

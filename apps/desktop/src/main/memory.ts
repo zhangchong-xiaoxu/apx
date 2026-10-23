@@ -4,7 +4,7 @@ import { langOf } from "./lang.ts";
 
 /** Electron's process metric, the part used here (sizes in kilobytes). */
 export type ProcessMetric = { pid: number; type: string; memory: { workingSetSize: number } };
-export type ProcessKind = "main" | "gpu" | "panel" | "quick" | "tab" | "page" | "helper";
+export type ProcessKind = "main" | "gpu" | "panel" | "quick" | "tab" | "page" | "app" | "helper";
 /** What a process is; a browser tab also says its site. Named in the owner's language by whoever shows it. */
 export type ProcessOwner = { kind: ProcessKind; site?: string };
 export type MemoryItem = { pid: number; kind: ProcessKind; site?: string; mb: number };
@@ -40,6 +40,7 @@ const TEXT = {
       quick: "Quick chat",
       tab: "Browser tab",
       page: "Page",
+      app: "App",
       helper: "Helper",
     } satisfies Record<ProcessKind, string>,
     warn: (total: string, top: string) => `APX is using ${total}; the most: ${top}.`,
@@ -52,6 +53,7 @@ const TEXT = {
       quick: "Chat rápido",
       tab: "Pestaña del navegador",
       page: "Página",
+      app: "App",
       helper: "Ayudante",
     } satisfies Record<ProcessKind, string>,
     warn: (total: string, top: string) => `APX está usando ${total}; el que más: ${top}.`,
@@ -64,6 +66,7 @@ const TEXT = {
       quick: "快捷对话",
       tab: "浏览器标签页",
       page: "页面",
+      app: "应用",
       helper: "辅助进程",
     } satisfies Record<ProcessKind, string>,
     warn: (total: string, top: string) => `APX 正在使用 ${total}；占用最多的是：${top}。`,
@@ -99,4 +102,25 @@ export function memoryWatch(o: {
       return r;
     },
   };
+}
+
+/** The name the panel gives an artifact's iframe (SurfaceFrame.tsx): `apx-artifact:<title>`. */
+const ARTIFACT_FRAME = "apx-artifact:";
+
+/**
+ * The artifacts running in their own processes, named by title (several in one process are listed together). One that
+ * shares the process of the page holding it is left out: its memory is that page's, and cannot be split from it.
+ */
+export function artifactOwners(
+  frames: readonly { name: string; osProcessId: number }[],
+  hostPid: number,
+): Map<number, ProcessOwner> {
+  const out = new Map<number, ProcessOwner>();
+  for (const f of frames) {
+    if (!f.name.startsWith(ARTIFACT_FRAME) || f.osProcessId === hostPid) continue;
+    const title = f.name.slice(ARTIFACT_FRAME.length);
+    const cur = out.get(f.osProcessId)?.site;
+    out.set(f.osProcessId, { kind: "app", site: cur ? `${cur}, ${title}` : title });
+  }
+  return out;
 }

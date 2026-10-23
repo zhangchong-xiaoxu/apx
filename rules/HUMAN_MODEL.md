@@ -61,7 +61,7 @@ gets the types. There is no other way into a handler.
   The stored app flag controls layout in every host: widgets keep a 16–24px inset even when maximized;
   declared apps use zero inset and no kit width cap. Height fitting and view do not change the saved type; kit classes opt into
   APX typography, cards and responsive controls.
-  The bundled `apx-widgets` skill includes the starter. Agent `edit_widget` changes app/pin flags through
+  The bundled `apx-artifacts` skill (artifacts of kind widget or app) includes the starters. Agent `edit_widget` changes app/pin flags through
   `surfaces.update` without reading or replacing HTML; metadata-only changes preserve the content version and share link. No stylesheet requests or extra sandbox permissions.
 - `apps/core`: `transport → rpc → engine (turns) → harness / providers / tools → domain (one repository per
   aggregate over SQLite)`; `nodes/` routes capability calls to the desktop; `channels/` adapts the messaging apps
@@ -120,6 +120,7 @@ a thread's queue one run at a time → `engine/turn.ts` builds the context (`eng
 prompt, projected history, per-turn input with the origin envelope), logs the input, and hands the turn to the
 agent's harness (`harness/`: native over `providers/`, Claude Code, Codex, ACP agents, Aider and headless Antigravity) → every tool call goes through one
 executor (`engine/executor.ts`: check the arguments against the tool's zod schema → `tools/policy.ts` `authorize`
+→ the folders it may use, from `engine/permissions.ts`, the one service every permission question goes through
 → wait for the owner when it says so → `steps` row → run with a deadline → full output kept, a capped copy to the
 model) → the answer's parts stream as `message.part` events → the run ends completed / failed / canceled with a
 notice when there is no text. Tools that touch core state call protocol methods through the router as the agent

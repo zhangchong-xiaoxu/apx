@@ -58,13 +58,19 @@ export type ThreadContext = {
   /** A worker's session: the caller's own agent, run under instructions the caller wrote for one task. */
   worker?: Worker;
   /** A consult an @mention in a task opened: the task, and the card in its conversation that shows the answer. */
-  consult?: { task: string; card: string };
+  /** `asker`: the agent that asked on the task and the chat it asked from, where it hears the answer. */
+  consult?: { task: string; card: string; review?: boolean; asker?: { agent: string; thread: string } };
   /** On a task's conversation: the close (its place in the task's history) already reported to whoever created it. */
   close_reported?: number;
   /** A task chat an agent's turn started: the chat it came from, whose unattended limits its turns count against. */
   asked_from?: string;
+  /** A task chat that stalled: when APX last asked its agent to go on, and the stop since then the owner was told of. */
+  stall?: { revived_at: string; told?: string };
   /** Tasks agents gave from this chat while it was paused: each starts once the owner lets agents go on. */
   held?: HeldTask[];
+  /** On a task's conversation: the owner's comments no agent has had yet (message ids), and those handed to a turn. */
+  owner_unread?: string[];
+  owner_handed?: Array<{ run: string; messages: string[] }>;
   /** Queued delegations from this chat the breaker holds (run ids) whose notice the owner already saw. */
   queue_held?: string[];
   /** A result or report reached this chat's agent (its id) while paused: kept for its next turn, which going on starts. */
@@ -227,6 +233,12 @@ export function threadsRepo({ one, all, run }: Sql, bus: Bus, endSession: (threa
       return all(qb.selectFrom("threads").select("id").where(sql`json_array_length(context, '$.held')`, ">", 0)).map(
         (r) => r.id,
       );
+    },
+    /** The task conversations holding owner comments no agent has had yet (`owner_unread`). */
+    unreadByAgents(): string[] {
+      return all(
+        qb.selectFrom("threads").select("id").where(sql`json_array_length(context, '$.owner_unread')`, ">", 0),
+      ).map((r) => r.id);
     },
     /** The task chats an agent's turn in `threadId` started (`asked_from`). */
     askedFrom(threadId: string): string[] {

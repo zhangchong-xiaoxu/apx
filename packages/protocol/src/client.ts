@@ -9,14 +9,18 @@ import { secureRequestKey } from "./request-key.ts";
 
 export {
   AGENT_NAMES,
+  ARTIFACT_FILE_EXT,
   DOCUMENT_MAX_BYTES,
   ErrorCode,
   PERSON_RELATIONS,
   PROTOCOL_VERSION,
   pairingLink,
   randomAgentName,
+  SURFACE_STATE_MAX,
   UPLOAD_LIMITS,
 } from "./constants.ts";
+
+export { secureRequestKey } from "./request-key.ts";
 
 export class ApxError extends Error {
   readonly code: ApxErrorShape["code"];
@@ -36,7 +40,8 @@ function clientDeadline(method: string, params: unknown, fallback: number): numb
   if (method === "browser.handoff") return ((params as { timeout_s?: number })?.timeout_s ?? 300) * 1000 + 20_000;
   if (method === "browser.import_cookies") return 130_000;
   if (method === "mcp.call") return 180_000;
-  if (method === "mcp.describe" || method === "mcp.tools" || method === "mcp.test") return 45_000;
+  if (method === "mcp.describe" || method === "mcp.tools" || method === "mcp.test" || method === "mcp.signIn")
+    return 45_000;
   if (method === "system.import_v1") return 60_000;
   // Importing skills may clone a repository (the server gives up at 60 s).
   if (method === "skills.preview" || method === "skills.import") return 90_000;
@@ -57,6 +62,9 @@ function clientDeadline(method: string, params: unknown, fallback: number): numb
   if (method === "media.upload") return 120_000;
   // A widget's video can be 15 MB, base64 over a slow link to a remote core.
   if (method === "surfaces.media") return 120_000;
+  // An artifact's fetch waits up to 30 s on the outside API; a bundle may carry a 50 MB database.
+  if (method === "surfaces.fetch") return 45_000;
+  if (method === "surfaces.export" || method === "surfaces.import") return 180_000;
   // Indexing every note by meaning may take a while on a local model.
   if (method === "memory.reindex") return 10 * 60_000;
   // Listing reads every session's head; importing copies whole histories and their images.

@@ -27,7 +27,7 @@ import { createDelivery } from "./delivery.ts";
 import { guardReply } from "./guard.ts";
 import { createInbound } from "./inbound.ts";
 import { createInputCards } from "./input-cards.ts";
-import { inputPresentation } from "./notices.ts";
+import { buttonId, inputPresentation } from "./notices.ts";
 import { createOutgoing } from "./outgoing.ts";
 import { createPoster } from "./post.ts";
 import { createRecovery } from "./recover.ts";
@@ -310,14 +310,24 @@ export function createChannels(deps: {
   }
 
   // ── replies, confirmations, typing ────────────────────────────────────
-  const replyTo = (runId: string) => {
+  /** Where a run's channel traffic goes: an answer only from a chat that speaks there; a question or an OK always. */
+  const replyTo = (runId: string, action = false) => {
     const run = store.runs.get(runId);
-    if (!run) return undefined;
+    if (!run || (!action && !speaksOnChannel(run.thread_id))) return undefined;
     if (run.input && "reply_to" in run.input) return run.input.reply_to ?? undefined;
     const origin = run.input?.origin;
     if (origin?.kind === "channel") return { channel: origin.channel, conversation: origin.conversation };
     return store.threads.context(run.thread_id).reply_to;
   };
+
+  /**
+   * Whose answers go out on a channel: a contact's chat, and among the owner's chats only Home, the super-agent's. Other
+   * chats reach the owner's phone only with what needs them (a question, an OK), never their whole conversation.
+   */
+  function speaksOnChannel(threadId: string): boolean {
+    const thread = store.threads.get(threadId);
+    return Boolean(thread && (audienceOf(store, thread).kind !== "owner" || thread.kind === "home"));
+  }
 
   /**
    * A run ended: its answer returns to its own destination, even if another message changed the thread's channel.
@@ -473,7 +483,7 @@ export function createChannels(deps: {
     const thread = store.threads.get(threadId);
     if (!thread || audienceOf(store, thread).kind !== "owner") return;
     const runId = store.inputs.get(part.input_id)?.run_id;
-    const to = runId ? replyTo(runId) : undefined;
+    const to = runId ? replyTo(runId, true) : undefined;
     // Asked from the app: it waits there first, then follows the owner.
     if (!to) {
       followUp(part, threadId);
@@ -505,7 +515,10 @@ export function createChannels(deps: {
       // Agents stopped by the breaker: the owner hears it wherever they are.
       const paused = e.message.parts.find((p) => p.type === "notice" && p.code === "breaker.paused");
       if (paused?.type === "notice") notifyOwner({ text: paused.text }, "notice", e.message.thread_id);
-      const limit = e.message.parts.find((p) => p.type === "notice" && p.code === "delegation.limit");
+      // A delegate APX keeps going on with is no news for the owner's phone: only a stop or a report is (DECISIONS.md#d-116).
+      const limit = e.message.parts.find(
+        (p) => p.type === "notice" && p.code === "delegation.limit" && !String(p.vars?.variant).startsWith("continued"),
+      );
       if (limit?.type === "notice") limitReached(e.message.thread_id, limit);
     }
   }
@@ -517,20 +530,25 @@ export function createChannels(deps: {
   function limitReached(threadId: string, notice: Extract<Part, { type: "notice" }>): void {
     const language = store.settings.get("owner_language");
     const text = noticeText(notice, language === "en" ? "en" : language === "zh" ? "zh" : "es");
+    // Stopped because it looked stuck: Continue right under the words, so the owner need not write it.
+    const session = notice.vars?.subthread;
+    const buttons =
+      String(notice.vars?.variant).startsWith("stopped") && typeof session === "string"
+        ? [{ id: buttonId.goOn(session), label: channelTexts(store).goOn }]
+        : undefined;
     const thread = store.threads.get(threadId);
-    const to =
-      thread && audienceOf(store, thread).kind === "owner" ? store.threads.context(threadId).reply_to : undefined;
+    const to = thread && thread.kind === "home" ? store.threads.context(threadId).reply_to : undefined;
     if (to && live.has(to.channel)) {
       delivery.enqueue({
         channel: to.channel,
         conversation: to.conversation,
         thread_id: threadId,
         kind: "notice",
-        body: { text, ...(inQuietHours(noticePrefs(store)) ? { silent: true } : {}) },
+        body: { text, ...(buttons ? { buttons } : {}), ...(inQuietHours(noticePrefs(store)) ? { silent: true } : {}) },
       });
       return;
     }
-    notifyOwner({ text }, "notice", threadId);
+    notifyOwner({ text, ...(buttons ? { buttons } : {}) }, "notice", threadId);
   }
 
   // ── lifecycle ─────────────────────────────────────────────────────────
@@ -694,10 +712,9 @@ export function createChannels(deps: {
         if (!config) {
           secrets.set(tokenName(id), null);
           store.settings.set(groupsKey(id), "[]");
-          await live
-            .get(id)
-            ?.adapter.forget?.()
-            .catch(() => {});
+          // Disabled channels have no live adapter, but their persisted session still needs removing.
+          const adapter = l?.adapter ?? (before ? deps.factories[before.type]?.(before, undefined) : undefined);
+          await adapter?.forget?.().catch(() => {});
         }
         await stopOne(id);
         const next = configs().find((c) => c.id === id);

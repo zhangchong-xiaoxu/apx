@@ -24,8 +24,5 @@ test("a translation keeps the placeholders of its English text", () => {
       })
       .map(([key]) => `${language}:${key}`),
   );
-  assert.deepEqual(
-    wrong,
-    [],
-  );
+  assert.deepEqual(wrong, []);
 });

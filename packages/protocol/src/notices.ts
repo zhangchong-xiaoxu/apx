@@ -35,9 +35,13 @@ export const noticeEn = {
   "notice.breaker.release": "Let them finish this round",
   "notice.breaker.wentOn": "Agents went on",
   "notice.delegation.limit.continuedSteps":
-    "{who} ran out of steps on “{task}”; APX had it go on once in session {session}. So far: {sofar}",
+    "{who} ran out of steps on “{task}” and is making progress; APX had it go on in session {session}. So far: {sofar}",
   "notice.delegation.limit.continuedTime":
-    "{who} ran out of time on “{task}”; APX had it go on once in session {session}. So far: {sofar}",
+    "{who} ran out of time on “{task}” and is making progress; APX had it go on in session {session}. So far: {sofar}",
+  "notice.delegation.limit.stoppedSteps":
+    "{who} ran out of steps on “{task}” and its last part made no progress, so APX did not go on by itself. Continue if it should. So far: {sofar}",
+  "notice.delegation.limit.stoppedTime":
+    "{who} ran out of time on “{task}” and its last part made no progress, so APX did not go on by itself. Continue if it should. So far: {sofar}",
   "notice.delegation.limit.returnedSteps":
     "{who} ran out of steps on “{task}”. {caller} has its report and decides how to go on. So far: {sofar}",
   "notice.delegation.limit.returnedTime":
@@ -70,6 +74,7 @@ export const noticeEn = {
   "notice.engine.fallback.title": "Switched model",
   "notice.thread.compacted":
     "Earlier turns were summarized to keep this chat's context small. Nothing new was started.",
+  "notice.task.stalled": "Nothing was running on this task: APX asked the agent to go on or say what it waits for.",
   "notice.pairing.request": "Someone new wants to talk on a channel: approve them in Settings → Channels.",
 };
 
@@ -110,9 +115,13 @@ export const noticeEs: Record<NoticeKey, string> = {
   "notice.breaker.release": "Liberar en esta ronda",
   "notice.breaker.wentOn": "Los agentes siguieron",
   "notice.delegation.limit.continuedSteps":
-    "{who} se quedó sin pasos con «{task}»; APX lo hizo seguir una vez en la sesión {session}. Hasta ahora: {sofar}",
+    "{who} se quedó sin pasos con «{task}» y viene avanzando; APX lo hizo seguir en la sesión {session}. Hasta ahora: {sofar}",
   "notice.delegation.limit.continuedTime":
-    "{who} se quedó sin tiempo con «{task}»; APX lo hizo seguir una vez en la sesión {session}. Hasta ahora: {sofar}",
+    "{who} se quedó sin tiempo con «{task}» y viene avanzando; APX lo hizo seguir en la sesión {session}. Hasta ahora: {sofar}",
+  "notice.delegation.limit.stoppedSteps":
+    "{who} se quedó sin pasos con «{task}» y su último tramo no avanzó, así que APX no siguió solo. Tocá Continuar si tiene que seguir. Hasta ahora: {sofar}",
+  "notice.delegation.limit.stoppedTime":
+    "{who} se quedó sin tiempo con «{task}» y su último tramo no avanzó, así que APX no siguió solo. Tocá Continuar si tiene que seguir. Hasta ahora: {sofar}",
   "notice.delegation.limit.returnedSteps":
     "{who} se quedó sin pasos con «{task}». {caller} tiene su informe y decide cómo seguir. Hasta ahora: {sofar}",
   "notice.delegation.limit.returnedTime":
@@ -145,6 +154,7 @@ export const noticeEs: Record<NoticeKey, string> = {
   "notice.engine.fallback.title": "Cambió de modelo",
   "notice.thread.compacted":
     "Se resumieron los turnos anteriores para que el contexto de este chat sea más chico. No se empezó nada nuevo.",
+  "notice.task.stalled": "No había nada corriendo en esta tarea: APX le pidió al agente que siga o diga qué espera.",
   "notice.pairing.request": "Alguien nuevo quiere hablar por un canal: aprobalo en Configuración › Canales.",
 };
 
@@ -184,6 +194,10 @@ export const noticeZh: Record<NoticeKey, string> = {
     "{who} 在“{task}”中用完了步骤；APX 已让它在对话 {session} 中继续一次。目前进展：{sofar}",
   "notice.delegation.limit.continuedTime":
     "{who} 在“{task}”中用完了时间；APX 已让它在对话 {session} 中继续一次。目前进展：{sofar}",
+  "notice.delegation.limit.stoppedSteps":
+    "{who} 在“{task}”中用完了步骤，且最后一段没有进展，所以 APX 没有自动继续。需要的话请点“继续”。目前进展：{sofar}",
+  "notice.delegation.limit.stoppedTime":
+    "{who} 在“{task}”中用完了时间，且最后一段没有进展，所以 APX 没有自动继续。需要的话请点“继续”。目前进展：{sofar}",
   "notice.delegation.limit.returnedSteps":
     "{who} 在“{task}”中用完了步骤。{caller} 已收到其报告，并将决定如何继续。目前进展：{sofar}",
   "notice.delegation.limit.returnedTime":
@@ -215,6 +229,7 @@ export const noticeZh: Record<NoticeKey, string> = {
   "notice.engine.fallback": "{model} 未回答（{why}）；已改用 {to}。",
   "notice.engine.fallback.title": "已切换模型",
   "notice.thread.compacted": "已总结较早轮次以缩短此对话的上下文，没有开始新的工作。",
+  "notice.task.stalled": "此任务没有在运行：APX 已让智能体继续，或说明它在等什么。",
   "notice.pairing.request": "有新联系人想通过渠道对话：请前往“设置 → 渠道”批准。",
 };
 

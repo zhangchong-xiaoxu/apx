@@ -42,6 +42,10 @@ const es = {
   roomFailed: (room: string, why: string) => `No pude responder en ${room}: ${why}`,
   notHandled: (name: string, why: string) => `No pude procesar un mensaje de ${name}: ${why}`,
   buttonFailed: (why: string) => `No pude hacerlo: ${why}`,
+  goOn: "Continuar",
+  wentOn: "Listo, sigue trabajando.",
+  goOnPrompt:
+    "Continuá el trabajo pendiente en esta sesión desde el último informe. Conservá el alcance y los permisos existentes; informá el resultado a quien te delegó.",
   stopped: "Listo, paré.",
   due: (title: string, person?: string, owedBy?: "owner" | "person") =>
     person
@@ -118,6 +122,10 @@ const en: typeof es = {
   roomFailed: (room, why) => `I couldn't answer in ${room}: ${why}`,
   notHandled: (name, why) => `I couldn't handle a message from ${name}: ${why}`,
   buttonFailed: (why) => `I couldn't do it: ${why}`,
+  goOn: "Continue",
+  wentOn: "Done, it is working again.",
+  goOnPrompt:
+    "Continue the remaining work in this session from the last progress report. Keep the existing scope and permissions; report the result to the original caller.",
   stopped: "Done, I stopped.",
   due: (title, person, owedBy) =>
     person
@@ -192,6 +200,9 @@ const zh: ChannelTexts = {
   roomFailed: (room, why) => `我无法在 ${room} 中回复：${why}`,
   notHandled: (name, why) => `我无法处理 ${name} 的一条消息：${why}`,
   buttonFailed: (why) => `我无法完成：${why}`,
+  goOn: "继续",
+  wentOn: "好的，它又开始工作了。",
+  goOnPrompt: "从上次进度报告继续完成此对话中的剩余工作。保持现有范围和权限，并将结果报告给原调用方。",
   stopped: "好的，我停下了。",
   due: (title, person, owedBy) =>
     person

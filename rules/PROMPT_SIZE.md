@@ -10,9 +10,12 @@ Measured on a fresh install: the secretary, a new chat, default settings, no ski
 
 | Part | Budget | Now (2026-10-17) |
 |---|---|---|
-| System prompt | 6,500 chars (about 1,450 tokens) | 6,456 chars (2026-10-20) |
-| Tool definitions (45, without the browser) | 28,000 chars (about 6,700 tokens) | 27,999 chars, about 6,700 tokens (2026-10-20) |
+| System prompt | 10,000 chars (about 2,300 tokens) | 5,962 chars (2026-10-22: the web's routing in, memory and document details moved to their tools) |
+| Tool definitions (45, without the browser) | 30,000 chars (about 7,100 tokens) | 26,095 chars, about 6,150 tokens (2026-10-22) |
 | Browser tools (8, lent by the desktop app) | — | 811 tokens |
+
+Together the two stay at about 9,500 tokens, still well under Hermes and OpenClaw (about 13,000): the room above
+today's size is for what a new owner needs to find their way, not for padding.
 
 `apps/core/src/engine/prompt-budget.test.ts` fails past the budget; it fixes the temp folder and the build it names,
 so every machine measures the same. Raising it is allowed with a reason in the commit and the numbers here updated;
@@ -54,13 +57,13 @@ The index is listed once per thread and then only for notes saved since, so a la
 ## Compared with other agent apps
 
 Size of the first model call of a fresh install, in o200k_base tokens. Each app's own prompt builder was run with
-its default configuration (not copied by hand). Measured 2026-10-07: APX v2 at this commit, APX v1 1.124.0, OpenClaw
+its default configuration (not copied by hand). Measured 2026-10-07 (APX v2 again on 2026-10-20): APX v1 1.124.0, OpenClaw
 2026.9.5 (Claude model, "full" profile, as its onboarding sets), Hermes Agent (checkout reporting 0.21.4, its default
 GLM model).
 
 | App | System prompt | Tools sent | First call |
 |---|---|---|---|
-| **APX v2** | 1,260 | 50 tools, 6,859 | **≈ 8,100** |
+| **APX v2** | 1,467 | 45 tools, 6,728 (8 more, 811, when the desktop app lends its browser) | **≈ 8,200** |
 | Hermes | 3,956 | 24 tools, 9,070 (the rest behind tool search) | ≈ 13,000 (12,000 with Claude) |
 | APX v1, Telegram / CLI / desktop | 4,626 | 39 tools, 8,609 | ≈ 13,200 |
 | OpenClaw | 9,800 | 14 tools, 3,411 (50 more behind tool search) | ≈ 13,200 (15,100 on the first turn) |

@@ -62,7 +62,6 @@ export const SPANISH_TITLES: Record<string, (a: Args) => string> = {
   list_sessions: () => "Buscó sesiones",
   stop_session: (a) => `Detuvo la sesión ${str(a.session)}`,
   browser_open: (a) => `Abrió ${host(a.url)}`,
-  browser_navigate: (a) => `Fue a ${host(a.url)}`,
   browser_snapshot: () => "Leyó la página",
   browser_text: () => "Leyó el texto",
   browser_click: (a) => `Hizo clic en ${str(a.ref)}`,
@@ -109,7 +108,8 @@ export const SPANISH_TITLES: Record<string, (a: Args) => string> = {
   ask_owner: (a) => `Te preguntó: ${str(a.question, 60)}`,
   notify_owner: (a) => `Te avisó: ${str(a.text, 60)}`,
   read_output: () => "Leyó más de una salida",
-  load_skill: (a) => `Cargó la habilidad ${str(a.name)}`,
+  load_skill: (a) =>
+    a.file ? `Leyó ${file(a.file, "")} de la habilidad ${str(a.name)}` : `Cargó la habilidad ${str(a.name)}`,
   file_read: (a) => `Leyó ${str(a.path ?? "un archivo")}`,
   file_write: (a) => `Escribió ${str(a.path ?? "un archivo")}`,
   file_edit: (a) => `Editó ${str(a.path ?? "un archivo")}`,

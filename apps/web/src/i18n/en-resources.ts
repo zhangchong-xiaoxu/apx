@@ -132,6 +132,8 @@ export const enResources = {
   "res.approveTitle": "It comes from the project's .apc/mcps.json",
   "res.approveBody":
     "It runs a command from the repository. Check it before approving; a changed file needs approving again.",
+  "res.signIn": "Sign in",
+  "res.signInWaiting": "Finish signing in in your browser",
   "res.command": "Command",
   "res.url": "URL",
   "res.noVars": "Uses no variables.",
@@ -267,14 +269,44 @@ export const enResources = {
   "int.whereToGet": "Where to get it",
   "int.formNote": "Tokens and keys are stored securely; agents use them through its server and never see them.",
   "int.oauthNote":
-    "Use an OAuth client of your own from Google Cloud Console: type Desktop app, or Web application with the address below as an authorized redirect URI. One client serves Calendar and Gmail.",
+    "Use an OAuth client of your own from Google Cloud Console: type Desktop app, or Web application with the address below as an authorized redirect URI. One client serves Calendar, Gmail and Drive.",
+  "int.clientApx": "APX sign-in",
+  "int.clientOwn": "My own OAuth client",
+  "int.apxNote":
+    "Sign in with your Google account: no setup in Google Cloud. APX asks only for what this integration needs, and the access stays on this computer. You can remove it any time at myaccount.google.com/permissions.",
+  "int.clientApxLimited": "APX sign-in (limited)",
+  "int.ownNote":
+    "Your own OAuth client reaches all of Gmail and Drive. Create it once in Google Cloud (about 5 minutes) and upload its JSON here; it serves Calendar, Gmail and Drive.",
+  "int.guide.project": "Create a project in Google Cloud.",
+  "int.guide.apis": "Enable the Gmail, Google Drive and Google Calendar APIs.",
+  "int.guide.publish":
+    "In Google Auth Platform, fill in the app name and your email, choose External and publish the app (In production): in Testing, Google ends access after 7 days.",
+  "int.guide.client": "Create a client of type Desktop app and download its JSON.",
+  "int.guide.open": "Open",
+  "int.jsonUpload": "Upload the client's JSON",
+  "int.jsonBad": "That file is not an OAuth client JSON from Google Cloud",
+  "int.ownSaved": "Your own OAuth client is saved: just sign in.",
+  "int.ownSavedFor": "You already connected {names} with your own OAuth client: just sign in.",
+  "int.alsoLabel": "Connect these too, with the same sign-in",
+  "int.apxLimit.gmail":
+    "With APX's sign-in, agents can send mail from your Gmail, always with your OK, but not read it. To read mail, connect it in Channels › Email or use your own OAuth client.",
+  "int.apxLimit.drive":
+    "With APX's sign-in, agents reach only the Docs they write. To find and read the rest of your Drive, use your own OAuth client.",
+  "int.pasteLabel": "Signing in from another device?",
+  "int.pasteHint":
+    "Google sends you back to this computer's APX, which this device can't open. Copy the address of the page that failed to load and paste it here.",
+  "int.pasteFinish": "Finish",
+  "int.pasteBad": "That address doesn't carry Google's sign-in code",
   "int.redirect": "Redirect URI",
+  "int.redirectHint":
+    "Only for a Web application client: add it as an authorized redirect URI. A Desktop app needs nothing.",
   "int.signIn": "Sign in with Google",
   "int.signInAgain": "Sign in again",
   "int.waiting": "Finish signing in in your browser. This closes by itself once Google sends you back.",
   "int.signedInAs": "Signed in as {account}",
   "oauth.working": "Finishing the sign-in…",
   "oauth.doneTitle": "{name} is connected",
+  "oauth.doneTitleMany": "{names} are connected",
   "oauth.doneBody": "You can close this tab and go back to APX.",
   "oauth.failTitle": "The sign-in did not finish",
   "oauth.nothing": "There is no sign-in to finish here.",
@@ -287,6 +319,7 @@ export const enResources = {
   "int.desc.obsidian": "Read and write the notes of your vault.",
   "int.desc.googlecalendar": "Your calendar: events, free time, invitations.",
   "int.desc.gmail": "Search and read your mail, and write drafts.",
+  "int.desc.googledrive": "Find and read your files and Docs, and write new Docs.",
   "int.desc.linear": "Issues, projects and cycles.",
   "int.desc.asana": "Tasks and projects of your workspace.",
 } as const;

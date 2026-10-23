@@ -11,6 +11,7 @@ import type { Store } from "../domain/store.ts";
 import { previewOf } from "../domain/threads.ts";
 import { errorMessage } from "../errors.ts";
 import type { Log } from "../log.ts";
+import { newsAction } from "../news/entries.ts";
 import type { InternalCall } from "../rpc/internal.ts";
 import type { Services } from "../services/registry.ts";
 import { saveUpload } from "../services/uploads.ts";
@@ -513,8 +514,11 @@ export function createInbound(deps: {
     const question =
       (asked ? open(asked) : undefined) ?? store.inputs.pending(threadId).find((i) => i.kind === "question");
     if (!question) return false;
-    store.threads.mergeContext(question.thread_id, { reply_to: to });
-    store.runs.setReplyTo(question.run_id, to);
+    // Answered on the phone, only Home goes on talking there; another chat keeps its conversation in the app.
+    if (store.threads.get(question.thread_id)?.kind === "home") {
+      store.threads.mergeContext(question.thread_id, { reply_to: to });
+      store.runs.setReplyTo(question.run_id, to);
+    }
     deps.answeredHere(question.id, to, "text");
     await call("runs.respond", { input: question.id, text: words }, { actor: "human" }, `channel:${rowId}:respond`);
     return true;
@@ -559,9 +563,27 @@ export function createInbound(deps: {
         }
         return;
       }
+      if (button.kind === "continue") {
+        // The core checks again that the session's last run is the stopped one, so a second press does nothing.
+        const { runs } = await call("threads.get", { thread: button.session }, { actor: "human" });
+        const latest = runs.toSorted((x, y) => y.started_at.localeCompare(x.started_at))[0];
+        if (!latest) return;
+        await call(
+          "threads.send",
+          { thread: button.session, text: t.goOnPrompt, mode: "queue", continue_run: latest.id },
+          { actor: "human" },
+          `channel:${a.ref ?? latest.id}:go-on`,
+        );
+        reply(t.wentOn);
+        return;
+      }
       if (button.kind === "pairing") {
         await call("pairing.respond", { code: button.code, decision: button.decision }, { actor: "human" });
         reply(button.decision === "contact" ? t.approved : t.denied);
+        return;
+      }
+      if (button.kind === "news") {
+        await newsButton(channel, a, button);
         return;
       }
       await inputButton(channel, a, button, reply);
@@ -570,6 +592,23 @@ export function createInbound(deps: {
       log.warn({ channel, err: msg }, "channel button not handled");
       reply(t.buttonFailed(msg));
     }
+  }
+
+  /** A release news action pressed: what it asks goes to the agent in the owner's chat there, as their words. */
+  async function newsButton(channel: string, a: InboundAction, button: Extract<Button, { kind: "news" }>) {
+    const ask = newsAction(button.entry, button.index);
+    const cfg = deps.configs().find((c) => c.id === channel);
+    if (!ask || !cfg) return;
+    const thread = ownerThread(cfg, a.conversation);
+    const name = store.persons.get(OWNER_ID)?.name ?? a.sender.name;
+    await call(
+      "threads.send",
+      { thread: thread.id, text: ask.prompt, mode: cfg.concurrency },
+      {
+        actor: "human",
+        channel: { id: cfg.id, conversation: a.conversation, person_id: OWNER_ID, name, role: "owner" },
+      },
+    );
   }
 
   /** A press on a confirmation or question's button: answer it, or tick an option of a multi-choice one. */
@@ -609,8 +648,10 @@ export function createInbound(deps: {
     }
     if (button.kind === "confirm" && a.ref) void deps.setButtons(channel, a.conversation, a.ref, []);
     const at = { channel, conversation: a.conversation };
-    store.threads.mergeContext(input.thread_id, { reply_to: at });
-    store.runs.setReplyTo(input.run_id, at);
+    if (store.threads.get(input.thread_id)?.kind === "home") {
+      store.threads.mergeContext(input.thread_id, { reply_to: at });
+      store.runs.setReplyTo(input.run_id, at);
+    }
     deps.answeredHere(input.id, at, "button");
     if (button.kind === "input") {
       await call("runs.respond", { input: input.id, decision: button.answer }, { actor: "human" });

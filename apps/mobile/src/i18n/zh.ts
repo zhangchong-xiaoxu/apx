@@ -13,8 +13,7 @@ export const zh: Record<Key, string> = {
   pairHeadingEnd: "设备。",
   pairingCode: "配对码",
   serverAddress: "电脑地址",
-  pairHelp:
-    "在电脑上打开 APX › 设置 › 连接 › 设备。创建配对码或扫描二维码。两台设备需要接入同一网络或 Tailscale。",
+  pairHelp: "在电脑上打开 APX › 设置 › 连接 › 设备。创建配对码或扫描二维码。两台设备需要接入同一网络或 Tailscale。",
   badCode: "配对码错误或已过期，请获取新配对码。",
   lockedCode: "错误次数过多，请等待几分钟后获取新配对码。",
   stopScanning: "取消扫描",
@@ -47,8 +46,7 @@ export const zh: Record<Key, string> = {
   disconnect: "取消配对此手机",
   disconnectAsk: "此手机将无法再连接电脑上的 APX。如需再次使用，请用新配对码重新配对。",
   unpairedLocal: "仅在此手机上取消了配对",
-  unpairedLocalBody:
-    "无法连接电脑，因此电脑仍接受此手机的密钥。请在电脑端 APX 的设置 › 连接 › 设备中移除此手机。",
+  unpairedLocalBody: "无法连接电脑，因此电脑仍接受此手机的密钥。请在电脑端 APX 的设置 › 连接 › 设备中移除此手机。",
   pairTitle: "与电脑配对",
   pairLead: "在电脑端 APX 中打开配置 › 连接 › 设备 › 配对设备，然后扫描二维码。",
   scan: "扫描二维码",

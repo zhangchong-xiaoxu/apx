@@ -119,7 +119,7 @@ export function agentTools(store: Store): Tool[] {
     defineTool({
       name: "delegate",
       description:
-        "Hand a task to another agent or to a worker you define (it uses your model and tools); give one, not both. session continues an earlier sub-thread. The answer comes back within wait_s, or later in a new turn: never poll for it.",
+        "Hand a task to another agent or to a worker you define (it uses your model and tools); give one, not both. Asking an agent again continues its session. The answer comes back within wait_s, or later in a new turn: never poll for it.",
       args: z
         .object({
           agent: z.string().optional().describe("agent id or unique name"),
@@ -163,8 +163,9 @@ export function agentTools(store: Store): Tool[] {
         }
         const project = a.project ? projectOf(store, a.project, ctx.agent) : undefined;
         if (typeof project === "string") return project;
-        // A path inside the project finds it and is the folder the session works in.
-        const inner = project?.path && a.project ? path.relative(project.path, path.resolve(a.project.trim())) : "";
+        // A path inside the project finds it and is the folder the session works in; an id or a name is no path.
+        const named = a.project?.trim() ?? "";
+        const inner = project?.path && path.isAbsolute(named) ? path.relative(project.path, path.resolve(named)) : "";
         const folder = inner && !inner.startsWith("..") && !path.isAbsolute(inner) ? inner : undefined;
         return ctx.delegate(
           { agent, session: a.session, worker: a.worker, project: project?.id, folder, write: a.write },
