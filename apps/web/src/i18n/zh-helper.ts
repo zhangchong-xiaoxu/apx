@@ -1,0 +1,32 @@
+import type { MessageKey } from "./en.ts";
+
+// UI strings, Simplified Chinese: the project helper that proposes context for a project or agent.
+export const zhHelper: Partial<Record<MessageKey, string>> = {
+  "helper.reviewChange": "查看建议的修改",
+  "helper.confirm": "应用建议的指令？",
+  "helper.confirmBody": "请查看修改前后的完整内容。这只会改动尚未保存的草稿，不会影响现有智能体及其权限。",
+  "helper.before": "修改前（已移除）",
+  "helper.after": "修改后（已添加）",
+  "helper.stale": "自审阅此建议后草稿已更改。请重新审阅；尚未应用任何内容。",
+  "helper.gap.role": "缺少角色",
+  "helper.gap.instructions": "缺少指令",
+  "helper.review": "检查项目上下文",
+  "helper.body": "可选的准备工作。现有指令和权限保持不变。你可以随时关闭并开始工作。",
+  "helper.offer": "缺少部分项目或智能体上下文。要准备一个具体的下一步吗？",
+  "helper.enable": "提供项目准备方面的帮助",
+  "helper.turnOn": "开启主动帮助",
+  "helper.turnOff": "关闭主动帮助",
+  "helper.ready": "现有上下文已足够开始，无需再提问。",
+  "helper.goal": "这个项目要达成什么？",
+  "helper.firstResult": "第一个有用的成果会是什么？",
+  "helper.option.plan": "一份简短计划，含第一个可执行步骤",
+  "helper.option.prototype": "一个可运行的小型原型",
+  "helper.option.audit": "一次有针对性的审查，给出具体发现",
+  "helper.roleMissing": "请在智能体表单中添加角色，让指令更具体。",
+  "helper.proposal": "建议的指令（未应用）",
+  "helper.accept": "采用这些建议的指令",
+  "helper.prepare": "准备简报",
+  "helper.start": "发送简报并开始",
+  "helper.agentOffer": "此草稿缺少上下文、角色或指令。要在不阻止创建的前提下审阅吗？",
+  "helper.agentReview": "在项目上下文中审阅草稿",
+};

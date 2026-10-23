@@ -1,11 +1,35 @@
 import { noticeZh } from "@apx/protocol";
 import { en, type MessageKey } from "./en.ts";
+import { zhApp1 } from "./zh-app-1.ts";
+import { zhApp2 } from "./zh-app-2.ts";
+import { zhApp3 } from "./zh-app-3.ts";
+import { zhApp4 } from "./zh-app-4.ts";
+import { zhChannels } from "./zh-channels.ts";
+import { zhChat } from "./zh-chat.ts";
+import { zhEngines } from "./zh-engines.ts";
+import { zhFiles } from "./zh-files.ts";
+import { zhHelper } from "./zh-helper.ts";
+import { zhOffice } from "./zh-office.ts";
+import { zhResources } from "./zh-resources.ts";
 import { zhSetup } from "./zh-setup.ts";
+import { zhTeam } from "./zh-team.ts";
 
 // Keep the locale complete while Chinese copy is translated module by module.
 export const zh: Partial<Record<MessageKey, string>> = {
   ...en,
   ...zhSetup,
+  ...zhApp1,
+  ...zhApp2,
+  ...zhApp3,
+  ...zhApp4,
+  ...zhChannels,
+  ...zhChat,
+  ...zhEngines,
+  ...zhFiles,
+  ...zhHelper,
+  ...zhOffice,
+  ...zhResources,
+  ...zhTeam,
   ...noticeZh,
   "telemetry.check": "分享匿名使用统计",
   "telemetry.checkHint":
