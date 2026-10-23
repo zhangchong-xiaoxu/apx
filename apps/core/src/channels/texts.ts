@@ -1,4 +1,5 @@
 // What APX itself writes on a channel (not the agent's words), in the owner's language.
+import { textLanguage } from "../domain/owner.ts";
 import type { Store } from "../domain/store.ts";
 
 const es = {
@@ -155,4 +156,75 @@ const en: typeof es = {
 
 export type ChannelTexts = typeof es;
 
-export const channelTexts = (store: Store): ChannelTexts => (store.settings.get("owner_language") === "en" ? en : es);
+const zh: ChannelTexts = {
+  pairing: (name, agent, code, label) =>
+    `你好 ${name}。我是 ${agent}，一个助手。我还不认识这个对话：需要用代码 ${code} 批准。如果你是我的主人，请在 APX › ${label} 中点击“是我本人”并输入它。`,
+  pairingOwner: (name, label, code) => `${name} 想通过 ${label} 与你交谈。代码 ${code}。请在这里或 APX › 渠道 中批准。`,
+  pairingApp: (name, label, code) => `${name} 想通过 ${label} 与你交谈（代码 ${code}）。请在 ${label} 列表中批准。`,
+  askOwner: (name, label, text) => `${name} 通过 ${label} 给你发了消息${text ? `：“${text}”` : "。"}要我回复吗？`,
+  wroteFirst: (name, label, text) =>
+    `${name} 通过 ${label} 给你发了消息${text ? `：“${text}”` : "。"}我不会回复：对方被记为未审核的联系人。`,
+  answering: (name, label) => `${name} 通过 ${label} 给你发了消息：我会把对方当作新联系人来回复。`,
+  answer: "回复对方",
+  willAnswer: (name) => `好的：从现在起我会回复 ${name}。`,
+  keptQuiet: (name) => `好的：${name} 保持静音，我不再向你汇报对方的消息。`,
+  approved: "已批准。",
+  denied: "已拒绝。",
+  answered: (a) => `已回答：${a}`,
+  approve: "允许",
+  deny: "不允许",
+  send: "发送",
+  skip: "跳过",
+  skipped: "（已跳过）",
+  pickSome: "请至少勾选一个选项，或点击跳过。",
+  cut: (more) => `（已截断：还有 ${more} 个字符，批准前请在 APX 中查看）`,
+  asContact: "批准为联系人",
+  ignore: "忽略",
+  failed: (why) => `我无法完成：${why}`,
+  contactFailed: "我现在无法回复；已通知我的主人。",
+  contactFailedOwner: (name, why) => `我无法回复 ${name}：${why}`,
+  reactFailed: (emoji, where) =>
+    `我无法在 ${where} 用 ${emoji} 做出反应：没有对方的消息可以反应，或该渠道不支持反应。没有发送任何内容。`,
+  reactRefused: (emoji, where, why) =>
+    `我无法在 ${where} 用 ${emoji} 做出反应：平台拒绝了该反应（${why}）。没有发送任何内容。`,
+  tooMany: (name) => `${name} 连续发了太多消息：我已将对其的自动回复暂停一小时。`,
+  roomCap: (room) => `我在 ${room} 的每小时回复数已达上限：我会继续阅读，等恢复后再回复。`,
+  roomFailed: (room, why) => `我无法在 ${room} 中回复：${why}`,
+  notHandled: (name, why) => `我无法处理 ${name} 的一条消息：${why}`,
+  buttonFailed: (why) => `我无法完成：${why}`,
+  stopped: "好的，我停下了。",
+  due: (title, person, owedBy) =>
+    person
+      ? owedBy === "person"
+        ? `到期：${title}。${person} 欠你的。`
+        : `到期：${title}。你欠 ${person} 的。`
+      : `到期：${title}。`,
+  routineFailed: (name, why) => `自动任务“${name}”未能完成：${why}`,
+  providerLimitTitle: "模型提供方限制",
+  providerLimit: (until) =>
+    until
+      ? `模型提供方的用量已达上限：智能体将暂停到 ${until}。`
+      : "模型提供方的用量已达上限：智能体已暂停，且对方未说明恢复时间。",
+  noticeLostTitle: "有一条通知没有送达你",
+  noticeLost: (channels, why, text) => `没有任何渠道能送达它（${channels}${why ? `：${why}` : ""}）。内容是：“${text}”`,
+  reminders: (lines) => `提醒：\n${lines.map((l) => `• ${l}`).join("\n")}`,
+  digest: (texts) => `免打扰期间的内容：\n\n${texts.join("\n\n—\n\n")}`,
+  suggested: (name, label, said, draft) =>
+    `${name} 通过 ${label} 给你发了消息：\n${said}\n\n我会这样回复：\n“${draft}”`,
+  noSuggestion: (name, label, said, why) => `${name} 通过 ${label} 给你发了消息：\n${said}\n\n没有建议的回复：${why}`,
+  nothingToAnswer: "似乎不需要回复。",
+  quote: (text) => `“${text}”`,
+  sendThis: "发送这条",
+  writeMyself: "我来回复",
+  suggestionSent: (name) => `好的：已发送给 ${name}。`,
+  suggestionNotSent: (name, why) => `没有送达 ${name}：${why}`,
+  suggestionDropped: (name) => `好的：我不会回复 ${name}。`,
+  suggestionGone: "这条建议已不在待处理状态（已经决定，或收到了更新的消息）。",
+  inputGone: "这个已不在待处理状态：已在其他地方回答，或已过期。",
+  writeNow: (name, minutes) =>
+    `请写下你给 ${name} 的回复：你在这里发给我的下一条内容会原样发送给对方（${minutes} 分钟内）。发送“取消”则不发送任何内容。`,
+  writeCanceled: "好的，什么都不发送。",
+  tooManyDrafts: (name) => `${name} 连续发了太多消息：这个小时不再为你建议回复。对方的消息仍留在其对话中。`,
+};
+
+export const channelTexts = (store: Store): ChannelTexts => ({ en, es, zh })[textLanguage(store)];

@@ -10,7 +10,7 @@ import type { IMessageOps } from "../imessage.ts";
 import { builtinTools } from "../server-wiring.ts";
 import { documentTool } from "../tools/documents.ts";
 import { imessageTools } from "../tools/imessage.ts";
-import { SPANISH_TITLES, toolTitle } from "./tool-titles.ts";
+import { CHINESE_TITLES, SPANISH_TITLES, toolTitle } from "./tool-titles.ts";
 
 const setup = () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "apx-titles-"));
@@ -25,6 +25,12 @@ test("every built-in tool has a Spanish card title", () => {
   assert.deepEqual(missing, []);
 });
 
+test("every built-in tool has a Chinese card title", () => {
+  const { tools } = setup();
+  const missing = tools.map((t) => t.name).filter((name) => !CHINESE_TITLES[name]);
+  assert.deepEqual(missing, []);
+});
+
 test("titles follow the owner's language, Spanish by default", () => {
   const { store, tools } = setup();
   const post = tools.find((t) => t.name === "channel_post");
@@ -32,4 +38,6 @@ test("titles follow the owner's language, Spanish by default", () => {
   assert.equal(toolTitle(store, post, { room: "#apx-help" }), "Publicó en #apx-help");
   store.settings.set("owner_language", "en");
   assert.equal(toolTitle(store, post, { room: "#apx-help" }), "Posted in #apx-help");
+  store.settings.set("owner_language", "zh");
+  assert.equal(toolTitle(store, post, { room: "#apx-help" }), "发布到 #apx-help");
 });

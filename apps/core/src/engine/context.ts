@@ -23,6 +23,7 @@ export const FULL_OUTPUT_RUNS = 2;
 const LANGUAGES: Record<string, string> = {
   es: "Spanish (Rioplatense, with voseo)",
   en: "English",
+  zh: "Simplified Chinese",
 };
 
 const SAFETY = [

@@ -27,6 +27,12 @@ export function saveOwnerIdentity(store: Store, patch: Partial<OwnerIdentity>): 
   return ownerIdentity(store);
 }
 
+/** Which of APX's own texts the owner reads: English, Chinese, or Spanish for any other language (the default). */
+export function textLanguage(store: Store): "en" | "es" | "zh" {
+  const lang = store.settings.get("owner_language") ?? "";
+  return lang === "en" ? "en" : lang.startsWith("zh") ? "zh" : "es";
+}
+
 /** The owner's time zone when it is a real one; undefined: this machine's. */
 export function ownerTimeZone(store: Store): string | undefined {
   const tz = store.settings.read("owner_profile").timezone;

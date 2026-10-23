@@ -3,6 +3,7 @@
 // always asks, names the app it was approved for, and the desktop refuses it if another app came to the front.
 import { COMPUTER_CAP } from "@apx/protocol";
 import { z } from "zod";
+import { textLanguage } from "../domain/owner.ts";
 import type { Store } from "../domain/store.ts";
 import { untrusted } from "./result.ts";
 import { defineTool, type Tool, type ToolContext } from "./types.ts";
@@ -21,6 +22,11 @@ const ASK = {
     go: "Go on",
     stop: "Stop",
   },
+  zh: {
+    q: (n: number) => `本轮我已在你的电脑上执行了 ${n} 个操作。要继续吗？`,
+    go: "继续",
+    stop: "停止",
+  },
 };
 
 export function computerTools(store: Store): Tool[] {
@@ -35,7 +41,7 @@ export function computerTools(store: Store): Tool[] {
     counts.set(ctx.run.id, n);
     if (counts.size > 200) counts.delete(counts.keys().next().value as string);
     if (n === 1 || (n - 1) % COMPUTER_ACTIONS_PER_TURN !== 0) return undefined;
-    const t = ASK[store.settings.get("owner_language") === "en" ? "en" : "es"];
+    const t = ASK[textLanguage(store)];
     const r = await ctx.askOwner(t.q(n - 1), [t.go, t.stop]);
     if (r.state === "answered" && r.answer === t.go) return undefined;
     if (r.state === "pending")

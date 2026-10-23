@@ -9,7 +9,18 @@ const GREETED_KEY = "setup_greeted";
 
 type Template = { text: (name: string) => string; options: Array<{ label: string; value: string }> };
 
-const TEMPLATES: Record<"en" | "es", Template> = {
+const TEMPLATES: Record<"en" | "es" | "zh", Template> = {
+  zh: {
+    text: (name) =>
+      `你好！我是 ${name}，你的超级智能体，已经准备好和你一起工作了。\n\n` +
+      "开始之前，先跟我说说你自己：你叫什么名字，做什么工作？你希望我是什么样的风格？" +
+      "可以从下面的个性中选一个，也可以自己写。",
+    options: [
+      { label: "亲切、幽默", value: "亲切温暖，有幽默感；轻松、像自己人。" },
+      { label: "直接、简洁", value: "直接简洁：直入主题，不说废话。" },
+      { label: "正式、周到", value: "正式周到：遣词谨慎，有条理，专业。" },
+    ],
+  },
   en: {
     text: (name) =>
       `Hi! I'm ${name}, your super-agent, and I'm ready to work with you.\n\n` +
@@ -46,7 +57,7 @@ export function greetOwner(store: Store, language: string): { thread: string; se
     store.settings.set(GREETED_KEY, "1");
     return { thread: HOME_THREAD_ID, sent: false };
   }
-  const tpl = language === "es" ? TEMPLATES.es : TEMPLATES.en;
+  const tpl = language === "es" ? TEMPLATES.es : language.startsWith("zh") ? TEMPLATES.zh : TEMPLATES.en;
   const text = tpl.text(boss.name);
   const parts: Part[] = [
     { type: "text", text },

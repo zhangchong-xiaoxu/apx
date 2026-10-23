@@ -18,7 +18,15 @@ type Words = {
   outro: string;
 };
 
-const WORDS: Record<"en" | "es", Words> = {
+const WORDS: Record<"en" | "es" | "zh", Words> = {
+  zh: {
+    title: (v) => `APX ${v} 新内容`,
+    intro: (v) => `APX 已更新到 ${v}。以下是变化：`,
+    sections: { feat: "新增", fix: "修复", perf: "更快" },
+    more: (n) => `……另有 ${n} 项`,
+    internal: "仅有内部变更。",
+    outro: "关于这些变化，你可以随时问我。",
+  },
   en: {
     title: (v) => `What's new in APX ${v}`,
     intro: (v) => `APX was updated to ${v}. This is what changed:`,
@@ -37,6 +45,8 @@ const WORDS: Record<"en" | "es", Words> = {
   },
 };
 
+const wordsFor = (language: string) => (language === "es" ? WORDS.es : language.startsWith("zh") ? WORDS.zh : WORDS.en);
+
 function releaseText(r: Release, w: Words): string {
   const blocks = (["feat", "fix", "perf"] as const).flatMap((kind) => {
     const lines = r.changes.filter((c) => c.kind === kind).map((c) => `- ${c.text}`);
@@ -49,7 +59,7 @@ function releaseText(r: Release, w: Words): string {
 
 /** The message: one release as it is, several (an install that skipped some) each under its version, newest first. */
 export function whatsNewText(version: string, releases: Release[], language: string): string {
-  const w = language === "es" ? WORDS.es : WORDS.en;
+  const w = wordsFor(language);
   const body =
     releases.length === 1 && releases[0]
       ? releaseText(releases[0], w)
@@ -92,7 +102,7 @@ export function announceRelease(store: Store, source: ReleaseSource): { thread?:
   return store.tx(() => {
     const thread = store.threads.create({
       kind: "agent",
-      title: (language === "es" ? WORDS.es : WORDS.en).title(version),
+      title: wordsFor(language).title(version),
       agent_ids: [boss.id],
     });
     store.threads.mergeContext(thread.id, {
