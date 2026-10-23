@@ -3,6 +3,7 @@
 import path from "node:path";
 import { app, BrowserWindow, globalShortcut, Menu, nativeImage, nativeTheme, screen, Tray } from "electron";
 import { setLaunchAtLogin } from "./autostart.ts";
+import { langOf } from "./lang.ts";
 import { quickPlacement } from "./quick-placement.ts";
 
 const WIDTH = 400;
@@ -16,6 +17,7 @@ export type DesktopPrefs = { shortcut: string; launchAtLogin: boolean };
 const MENU = {
   en: { open: "Open APX", quick: "Quick chat", quit: "Quit APX" },
   es: { open: "Abrir APX", quick: "Chat rápido", quit: "Salir de APX" },
+  zh: { open: "打开 APX", quick: "快捷对话", quit: "退出 APX" },
 };
 
 export function createQuick(opts: {
@@ -55,7 +57,7 @@ export function createQuick(opts: {
     const text = unreadCount > 99 ? "99+" : unreadCount > 0 ? String(unreadCount) : "";
     tray?.setImage(trayImage());
     if (process.platform === "darwin") tray?.setTitle(text, { fontType: "monospacedDigit" });
-    const suffix = app.getLocale().startsWith("es") ? "avisos pendientes" : "unread notifications";
+    const suffix = { en: "unread notifications", es: "avisos pendientes", zh: "条未读通知" }[langOf(app.getLocale())];
     tray?.setToolTip(unreadCount > 0 ? `APX · ${unreadCount} ${suffix}` : "APX");
     app.dock?.setBadge(text);
   }
@@ -187,7 +189,7 @@ export function createQuick(opts: {
         win?.hide();
         opts.openMain();
       });
-      const text = app.getLocale().startsWith("es") ? MENU.es : MENU.en;
+      const text = MENU[langOf(app.getLocale())];
       const menu = Menu.buildFromTemplate([
         {
           label: text.open,

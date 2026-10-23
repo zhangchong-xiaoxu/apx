@@ -54,12 +54,13 @@ const hooks = registerHooks({
 });
 const { createUpdateMenu } = await import("./update-menu.ts");
 const { confirmQuit } = await import("./quit-confirm.ts");
+type Lang = import("./lang.ts").Lang;
 hooks.deregister();
 Reflect.deleteProperty(globalThis, boundary);
 
 const window = {} as BaseWindow;
 const initial: DesktopUpdate = { current: "2.0.0", notes: [], install: "auto" };
-function harness(options: { es?: boolean; platform?: string; enabled?: boolean; mode?: "auto" | "drag" } = {}) {
+function harness(options: { lang?: Lang; platform?: string; enabled?: boolean; mode?: "auto" | "drag" } = {}) {
   messages.length = 0;
   notices.length = 0;
   response = 1;
@@ -84,7 +85,7 @@ function harness(options: { es?: boolean; platform?: string; enabled?: boolean; 
       restarts++;
     },
   } as ReturnType<typeof createDesktopUpdater>;
-  const menu = createUpdateMenu({ updater, window, es: options.es ?? false, platform: options.platform ?? "linux" });
+  const menu = createUpdateMenu({ updater, window, lang: options.lang ?? "en", platform: options.platform ?? "linux" });
   return {
     menu,
     counts: () => ({ checks, installs, restarts }),
@@ -131,7 +132,7 @@ test("manual checks distinguish current versions and feed failures without start
 });
 
 test("a new release installs from check, defers restart, and remains available in the menu", async () => {
-  const h = harness({ es: true, platform: "win32" });
+  const h = harness({ lang: "es", platform: "win32" });
   h.status({ ...initial, latest: "2.1.0" });
   await click(h.menu.item(initial));
   assert.equal(messages[0]?.message, "APX 2.1.0 está listo");
@@ -192,7 +193,7 @@ test("background failures and unsupported notifications stay silent; drag mode n
   h.menu.found({ ...initial, latest: "2.2.0" });
   await new Promise<void>((resolve) => setImmediate(resolve));
   assert.equal(notices.length, 0);
-  const drag = harness({ mode: "drag", es: true });
+  const drag = harness({ mode: "drag", lang: "es" });
   drag.menu.found({ ...initial, latest: "2.1.0" });
   assert.equal(drag.counts().installs, 0);
   assert.equal(notices[0]?.options.body, "Salió APX 2.1.0. Abrí APX para actualizar.");
@@ -201,12 +202,12 @@ test("background failures and unsupported notifications stay silent; drag mode n
 
 test("quit confirmation defaults to quit but Escape cancels and warns about local core shutdown only", () => {
   harness();
-  assert.equal(confirmQuit(window, { es: false, runsCore: false }), false);
+  assert.equal(confirmQuit(window, { lang: "en", runsCore: false }), false);
   assert.equal(messages[0]?.message, "Quit APX?");
   assert.equal(messages[0]?.detail, "The browser tabs your agents use close.");
   assert.equal(messages[0]?.cancelId, 1);
   response = 0;
-  assert.equal(confirmQuit(window, { es: true, runsCore: true }), true);
+  assert.equal(confirmQuit(window, { lang: "es", runsCore: true }), true);
   assert.match(String(messages[1]?.detail), /rutinas y los canales esperan/);
   assert.deepEqual(messages[1]?.buttons, ["Salir", "Cancelar"]);
 });

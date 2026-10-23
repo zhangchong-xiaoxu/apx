@@ -1,5 +1,6 @@
 // What APX's own processes take in memory, by what the owner can act on (the panel, a browser tab and its site, the
 // GPU…), and a word when the whole goes past a limit. Pure: main.ts feeds it Electron's app.getAppMetrics().
+import { langOf } from "./lang.ts";
 
 /** Electron's process metric, the part used here (sizes in kilobytes). */
 export type ProcessMetric = { pid: number; type: string; memory: { workingSetSize: number } };
@@ -55,9 +56,21 @@ const TEXT = {
     } satisfies Record<ProcessKind, string>,
     warn: (total: string, top: string) => `APX está usando ${total}; el que más: ${top}.`,
   },
+  zh: {
+    kinds: {
+      main: "APX（主进程）",
+      gpu: "GPU",
+      panel: "面板",
+      quick: "快捷对话",
+      tab: "浏览器标签页",
+      page: "页面",
+      helper: "辅助进程",
+    } satisfies Record<ProcessKind, string>,
+    warn: (total: string, top: string) => `APX 正在使用 ${total}；占用最多的是：${top}。`,
+  },
 };
 export type MemoryText = (typeof TEXT)["en"];
-export const memoryText = (locale: string): MemoryText => (locale.startsWith("es") ? TEXT.es : TEXT.en);
+export const memoryText = (locale: string): MemoryText => TEXT[langOf(locale)];
 export const itemName = (i: Pick<MemoryItem, "kind" | "site">, text: MemoryText) =>
   `${text.kinds[i.kind]}${i.site ? ` · ${i.site}` : ""}`;
 

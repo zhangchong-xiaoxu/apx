@@ -1,6 +1,7 @@
 // Electron shows no menu on a right click: text fields and selected text get the usual edit menu here. A part of
 // the panel with its own menu (a thread, a link) prevents the default, so this one never opens over it.
 import type { ContextMenuParams, MenuItemConstructorOptions } from "electron";
+import { langOf } from "./lang.ts";
 
 /** The main process has no panel i18n: its few words, in the system's language. */
 const TEXT = {
@@ -20,6 +21,14 @@ const TEXT = {
     copyLink: "Copiar enlace",
     add: "Agregar al diccionario",
   },
+  zh: {
+    cut: "剪切",
+    copy: "复制",
+    paste: "粘贴",
+    selectAll: "全选",
+    copyLink: "复制链接",
+    add: "添加到词典",
+  },
 };
 
 /** What the edit menu does on the page it opened over. */
@@ -36,7 +45,7 @@ type Params = Pick<
 
 /** The menu for a right click, empty when there is nothing to edit, copy or fix. */
 export function editMenu(params: Params, locale: string, actions: EditActions): MenuItemConstructorOptions[] {
-  const text = locale.startsWith("es") ? TEXT.es : TEXT.en;
+  const text = TEXT[langOf(locale)];
   const items: MenuItemConstructorOptions[] = [];
   const word = params.misspelledWord;
   if (params.isEditable && word) {

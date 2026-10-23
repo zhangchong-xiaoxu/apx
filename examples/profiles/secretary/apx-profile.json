@@ -2,11 +2,13 @@
   "id": "secretary",
   "name": {
     "en": "Secretary",
-    "es": "Secretaria"
+    "es": "Secretaria",
+    "zh": "秘书"
   },
   "description": {
     "en": "A chief of staff: opens and closes your day, keeps your commitments ahead and watches your work every few hours, saying only what is worth an interruption.",
-    "es": "Una jefa de gabinete: abre y cierra tu día, adelanta tus compromisos y mira tu trabajo cada pocas horas, diciendo solo lo que vale una interrupción."
+    "es": "Una jefa de gabinete: abre y cierra tu día, adelanta tus compromisos y mira tu trabajo cada pocas horas, diciendo solo lo que vale una interrupción.",
+    "zh": "一位幕僚长：开启和结束你的一天，提前跟进你的承诺，每隔几小时查看一次你的工作，只说值得打扰你的事。"
   },
   "version": "1.0.0",
   "prompt": "## Your role: chief of staff\nNot a chatbot: the owner's chief of staff. Above all, nothing falls through the cracks. Your unit of work is the project, not the single message.\nResponsibilities, in order: keep every project's state alive; capture tasks, decisions and promises without friction; give context back fast when the owner returns to something; warn before something breaks; guard commitments, above all what was promised to a person; coordinate the other agents and speak with one voice.\n- Capture by default, ask rarely: record tasks and commitments yourself, infer the project, and say in one line what you filed and where. When unsure, ask one short question.\n- Tasks are not commitments. A commitment is a promise to a person with a date: record it as one (task_create with the person and due_at), keep it ahead of tasks and raise it before it is late.\n- Never invent state: say \"no activity on X since Y\" instead of a tidy guess.\n- Delegate domain work to the right agent and consolidate what comes back; never pass a specialist's output through raw.\n- Recording, organising, preparing and researching: go ahead. Sending or changing anything outward: confirm first, with it prepared so confirming is one word.\n- What other agents hand you for the owner is yours to triage: decide whether it is worth their attention now or belongs in the day's open or close. Anything owed to or needing a decision from the owner becomes a commitment with a date, so it comes back on its own.\n- Interrupt rarely: one line, the most important thing, or nothing. The owner's interruption budget decides what reaches them.\n{{formality}}",
@@ -16,11 +18,13 @@
       "type": "schedule",
       "label": {
         "en": "Open the day",
-        "es": "Abrir el día"
+        "es": "Abrir el día",
+        "zh": "开启一天"
       },
       "help": {
         "en": "Tasks and commitments due, today's calendar and the one thing to start with. It always arrives.",
-        "es": "Tareas y compromisos que vencen, la agenda de hoy y lo primero que conviene hacer. Siempre llega."
+        "es": "Tareas y compromisos que vencen, la agenda de hoy y lo primero que conviene hacer. Siempre llega.",
+        "zh": "到期的任务和承诺、今天的日程，以及最先该做的一件事。它始终会送达。"
       },
       "default": "30 8 * * 1-5"
     },
@@ -29,11 +33,13 @@
       "type": "schedule",
       "label": {
         "en": "Close the day",
-        "es": "Cerrar el día"
+        "es": "Cerrar el día",
+        "zh": "结束一天"
       },
       "help": {
         "en": "What moved, what is stuck, what carries over, and whether today's commitments were kept.",
-        "es": "Qué avanzó, qué está trabado, qué pasa a mañana y si se cumplieron los compromisos de hoy."
+        "es": "Qué avanzó, qué está trabado, qué pasa a mañana y si se cumplieron los compromisos de hoy.",
+        "zh": "今天有什么进展、什么卡住了、什么顺延到明天，以及今天的承诺是否已履行。"
       },
       "default": "30 18 * * 1-5"
     },
@@ -45,11 +51,13 @@
       "max": 24,
       "label": {
         "en": "Watch every",
-        "es": "Mirar cada"
+        "es": "Mirar cada",
+        "zh": "每隔多久查看"
       },
       "help": {
         "en": "Reads your work for something worth an interruption; it stays quiet when there is nothing.",
-        "es": "Revisa tu trabajo buscando algo que valga una interrupción; si no hay nada, no dice nada."
+        "es": "Revisa tu trabajo buscando algo que valga una interrupción; si no hay nada, no dice nada.",
+        "zh": "阅读你的工作，寻找值得打扰你的事；没有的话就保持安静。"
       },
       "default": 2
     },
@@ -61,11 +69,13 @@
       "max": 24,
       "label": {
         "en": "Team news every",
-        "es": "Novedades del equipo cada"
+        "es": "Novedades del equipo cada",
+        "zh": "每隔多久汇报团队动态"
       },
       "help": {
         "en": "What your other agents' routines had for you, told in one message; they never write to you on their own.",
-        "es": "Lo que las rutinas de tus otros agentes tenían para vos, contado en un solo mensaje; ellos nunca te escriben por su cuenta."
+        "es": "Lo que las rutinas de tus otros agentes tenían para vos, contado en un solo mensaje; ellos nunca te escriben por su cuenta.",
+        "zh": "你其他智能体的自动任务想告诉你的内容，合并成一条消息发给你；它们绝不会自行给你发消息。"
       },
       "default": 4
     },
@@ -74,11 +84,13 @@
       "type": "command",
       "label": {
         "en": "Calendar command",
-        "es": "Comando de agenda"
+        "es": "Comando de agenda",
+        "zh": "日程命令"
       },
       "help": {
         "en": "Prints today's agenda (for example gcalcli agenda). Its output reaches the morning brief as data.",
-        "es": "Imprime la agenda de hoy (por ejemplo gcalcli agenda). Su salida llega a la apertura del día como dato."
+        "es": "Imprime la agenda de hoy (por ejemplo gcalcli agenda). Su salida llega a la apertura del día como dato.",
+        "zh": "输出今天的日程（例如 gcalcli agenda）。它的输出会作为数据传给晨间简报。"
       },
       "default": ""
     },
@@ -90,11 +102,13 @@
       "max": 720,
       "label": {
         "en": "A task waiting on you",
-        "es": "Una tarea que te espera"
+        "es": "Una tarea que te espera",
+        "zh": "等你处理的任务"
       },
       "help": {
         "en": "After this long it is worth a word.",
-        "es": "Pasado este tiempo, vale mencionarla."
+        "es": "Pasado este tiempo, vale mencionarla.",
+        "zh": "超过这个时长后，值得提醒一下。"
       },
       "default": 48
     },
@@ -106,11 +120,13 @@
       "max": 720,
       "label": {
         "en": "Raise a commitment",
-        "es": "Avisar un compromiso"
+        "es": "Avisar un compromiso",
+        "zh": "提醒一项承诺"
       },
       "help": {
         "en": "This long before its date, while there is still time to keep it.",
-        "es": "Con esta anticipación a su fecha, mientras todavía se puede cumplir."
+        "es": "Con esta anticipación a su fecha, mientras todavía se puede cumplir.",
+        "zh": "在截止日期前这么久提醒，越早越有时间履行。"
       },
       "default": 48
     },
@@ -122,11 +138,13 @@
       "max": 90,
       "label": {
         "en": "A quiet project",
-        "es": "Un proyecto quieto"
+        "es": "Un proyecto quieto",
+        "zh": "沉寂的项目"
       },
       "help": {
         "en": "Open work and no movement for this many days.",
-        "es": "Con trabajo abierto y sin movimiento esta cantidad de días."
+        "es": "Con trabajo abierto y sin movimiento esta cantidad de días.",
+        "zh": "有未完成的工作，且这么多天没有进展。"
       },
       "default": 7
     },
@@ -135,7 +153,8 @@
       "type": "choice",
       "label": {
         "en": "How it addresses you",
-        "es": "Cómo te habla"
+        "es": "Cómo te habla",
+        "zh": "称呼你的方式"
       },
       "default": "neutral",
       "options": [
@@ -143,7 +162,8 @@
           "value": "informal",
           "label": {
             "en": "Informal",
-            "es": "Informal (vos / tú)"
+            "es": "Informal (vos / tú)",
+            "zh": "随意（你）"
           },
           "prompt": "Address the owner informally (tú / vos)."
         },
@@ -151,14 +171,16 @@
           "value": "neutral",
           "label": {
             "en": "Neutral",
-            "es": "Neutral"
+            "es": "Neutral",
+            "zh": "中性"
           }
         },
         {
           "value": "formal",
           "label": {
             "en": "Formal",
-            "es": "Formal (usted)"
+            "es": "Formal (usted)",
+            "zh": "正式（您）"
           },
           "prompt": "Address the owner formally (usted)."
         }
@@ -170,7 +192,8 @@
       "key": "day-open",
       "name": {
         "en": "Open the day",
-        "es": "Abrir el día"
+        "es": "Abrir el día",
+        "zh": "开启一天"
       },
       "v1": ["secretary-day-open", "day-open"],
       "action": "agent",
@@ -186,7 +209,8 @@
       "key": "day-close",
       "name": {
         "en": "Close the day",
-        "es": "Cerrar el día"
+        "es": "Cerrar el día",
+        "zh": "结束一天"
       },
       "v1": ["secretary-day-close", "day-close"],
       "action": "agent",
@@ -201,7 +225,8 @@
       "key": "watch",
       "name": {
         "en": "Watch",
-        "es": "Vigilar"
+        "es": "Vigilar",
+        "zh": "监视"
       },
       "v1": ["secretary-watch", "watch"],
       "action": "watch",
@@ -216,7 +241,8 @@
       "key": "team-news",
       "name": {
         "en": "Team news",
-        "es": "Novedades del equipo"
+        "es": "Novedades del equipo",
+        "zh": "团队动态"
       },
       "v1": ["secretary-a2a-sweep", "a2a-sweep"],
       "action": "relay",

@@ -29,6 +29,7 @@ import { applySavedLocalTarget, loadConnection, localCoreUrl } from "./connectio
 import { createConnector } from "./connector.ts";
 import { createCursor } from "./cursor.ts";
 import { editMenu } from "./edit-menu.ts";
+import { type Lang, langOf } from "./lang.ts";
 import { itemName, memoryReport, memoryText, memoryWatch, size } from "./memory.ts";
 import { startNodeLink } from "./node-link.ts";
 import { createQuick, type DesktopPrefs } from "./quick.ts";
@@ -165,6 +166,7 @@ app.whenReady().then(() => {
   let base = CORE_URL;
   // The panel's language (it says so on load and on every change), for the About window.
   let language: string | undefined;
+  const panelLang = (): Lang => (language === "es" || language === "zh" ? language : "en");
 
   const popout = createPopout({
     url: () => base,
@@ -289,27 +291,31 @@ app.whenReady().then(() => {
       if (stopped && Notification.isSupported())
         new Notification({
           title: "APX",
-          body: language === "es" ? "Uso de la computadora detenido." : "Computer use stopped.",
+          body: { en: "Computer use stopped.", es: "Uso de la computadora detenido.", zh: "已停止操控电脑。" }[
+            panelLang()
+          ],
         }).show();
     },
     // macOS refused it: System Settings opens where to allow it, and a notification says what to turn on.
     onPermission: (kind) => {
       openPrivacy(kind);
       if (!Notification.isSupported()) return;
-      const es = language === "es";
-      const what =
-        kind === "screen"
-          ? es
-            ? "Grabación de pantalla"
-            : "Screen Recording"
-          : es
-            ? "Accesibilidad"
-            : "Accessibility";
+      const lang = panelLang();
+      const what = {
+        screen: { en: "Screen Recording", es: "Grabación de pantalla", zh: "屏幕录制" },
+        accessibility: { en: "Accessibility", es: "Accesibilidad", zh: "辅助功能" },
+      }[kind === "screen" ? "screen" : "accessibility"][lang];
       const n = new Notification({
-        title: es ? `APX necesita el permiso de ${what}` : `APX needs the ${what} permission`,
-        body: es
-          ? "Activá APX en Configuración del Sistema. Si ya está activado, quitalo con − y agregalo de nuevo."
-          : "Turn APX on in System Settings. If it is already on, remove it with − and add it again.",
+        title: {
+          en: `APX needs the ${what} permission`,
+          es: `APX necesita el permiso de ${what}`,
+          zh: `APX 需要“${what}”权限`,
+        }[lang],
+        body: {
+          en: "Turn APX on in System Settings. If it is already on, remove it with − and add it again.",
+          es: "Activá APX en Configuración del Sistema. Si ya está activado, quitalo con − y agregalo de nuevo.",
+          zh: "请在系统设置中打开 APX。如果已经打开，请用 − 移除后重新添加。",
+        }[lang],
       });
       n.on("click", () => openPrivacy(kind));
       n.show();
@@ -352,7 +358,7 @@ app.whenReady().then(() => {
   app.on("will-quit", () => connector.stop());
   // Tests quit the app themselves (APX_QUIT_CONFIRM=off); a shutdown or a logout never waits on a question.
   if (process.env.APX_QUIT_CONFIRM !== "off")
-    askBeforeQuit = () => confirmQuit(win, { es: app.getLocale().startsWith("es"), runsCore: connector.runsCore() });
+    askBeforeQuit = () => confirmQuit(win, { lang: langOf(app.getLocale()), runsCore: connector.runsCore() });
   powerMonitor.on("shutdown", () => {
     quitting = true;
   });
@@ -374,7 +380,7 @@ app.whenReady().then(() => {
   const updateMenu = createUpdateMenu({
     updater,
     window: win,
-    es: app.getLocale().startsWith("es"),
+    lang: langOf(app.getLocale()),
     platform: process.platform,
   });
   const setMenu = (s: DesktopUpdate) =>
@@ -395,7 +401,7 @@ app.whenReady().then(() => {
     if (typeof threadId === "string") panel.webContents.send("nav:thread", threadId);
   });
   ipcMain.on("desktop:language", (e, lang: unknown) => {
-    if (e.sender === panel.webContents && (lang === "en" || lang === "es")) language = lang;
+    if (e.sender === panel.webContents && (lang === "en" || lang === "es" || lang === "zh")) language = lang;
   });
   ipcMain.on("desktop:prefs", (e, prefs: DesktopPrefs & { computerUse?: boolean }) => {
     if (e.sender !== panel.webContents || typeof prefs?.shortcut !== "string") return;
@@ -528,15 +534,15 @@ function appMenu(
   openAbout: () => void,
   update: MenuItemConstructorOptions | undefined,
 ): Menu {
-  const es = app.getLocale().startsWith("es");
+  const lang = langOf(app.getLocale());
   const about = {
     id: "about",
-    label: es ? "Acerca de APX" : "About APX",
+    label: { en: "About APX", es: "Acerca de APX", zh: "关于 APX" }[lang],
     click: openAbout,
   };
   const change = {
     id: "change-connection",
-    label: es ? "Cambiar conexión…" : "Change connection…",
+    label: { en: "Change connection…", es: "Cambiar conexión…", zh: "更改连接…" }[lang],
     click: changeConnection,
   };
   return Menu.buildFromTemplate([
@@ -574,10 +580,10 @@ function appMenu(
     { role: "editMenu" },
     { role: "viewMenu" },
     {
-      label: es ? "Ventana" : "Window",
+      label: { en: "Window", es: "Ventana", zh: "窗口" }[lang],
       role: "windowMenu",
       submenu: [
-        { id: "quick", label: es ? "Chat rápido" : "Quick chat", click: openQuick },
+        { id: "quick", label: { en: "Quick chat", es: "Chat rápido", zh: "快捷对话" }[lang], click: openQuick },
         { type: "separator" },
         { role: "minimize" },
         { role: "zoom" },
