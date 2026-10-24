@@ -57,11 +57,18 @@ export async function restartAfterClose(
   exit(RESTART_CODE);
 }
 
-const run =
+export const run =
   (cwd: string): Runner =>
   (cmd, args, timeoutMs) =>
     new Promise((resolve) => {
-      const child = spawn(cmd, args, { cwd, stdio: ["ignore", "pipe", "pipe"], timeout: timeoutMs });
+      // pnpm is a .cmd shim on Windows, which spawn only starts through a shell; its args here are constants.
+      const viaShell = process.platform === "win32" && cmd === "pnpm";
+      const child = spawn(viaShell ? [cmd, ...args].join(" ") : cmd, viaShell ? [] : args, {
+        cwd,
+        stdio: ["ignore", "pipe", "pipe"],
+        timeout: timeoutMs,
+        shell: viaShell,
+      });
       let out = "";
       const keep = (d: Buffer) => {
         out = (out + d.toString()).slice(-8000);

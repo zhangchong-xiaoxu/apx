@@ -9,7 +9,7 @@ import { test } from "node:test";
 import { promisify } from "node:util";
 import { createLog } from "./log.ts";
 import { panelEntry } from "./server-wiring.ts";
-import { createUpdates, RESTART_CODE, type Runner, restartAfterClose } from "./updates.ts";
+import { createUpdates, RESTART_CODE, type Runner, restartAfterClose, run } from "./updates.ts";
 import { runningVersion } from "./updates-release.ts";
 
 const log = createLog("test", true);
@@ -32,6 +32,12 @@ const runner = (fail?: string): Runner & { calls: string[] } => {
   };
   return Object.assign(answer, { calls });
 };
+
+test("the update runner starts pnpm on every platform (a .cmd shim on Windows)", async () => {
+  const r = await run(os.tmpdir())("pnpm", ["--version"], 60_000);
+  assert.equal(r.code, 0, r.out);
+  assert.match(r.out, /\d+\.\d+\.\d+/);
+});
 
 test("outside a checkout there is nothing to update, and an update says why", async () => {
   const u = createUpdates({ root: os.tmpdir(), log, enabled: true, supervised: false, run: runner() });
