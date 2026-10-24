@@ -1,5 +1,5 @@
 // Updates for an APX that runs from its source checkout or from an installed bundle. Every few hours it asks git
-// whether release/v2 moved (a checkout) or the release feed whether a newer APX is out (a bundle, see updates-release.ts),
+// whether origin/master moved (a checkout) or the release feed whether a newer APX is out (a bundle, see updates-release.ts),
 // and on the owner's word it brings it in. A supervisor (`pnpm app`, the service) starts the core again with the new
 // code; without one the owner is told to restart.
 import { spawn } from "node:child_process";
@@ -16,7 +16,7 @@ export type UpdateStatus = {
    * release feed for a core the desktop app carries (the app installs them), or nowhere (a test).
    */
   source: "git" | "release" | "app" | "none";
-  /** Commits on release/v2 this checkout does not have, or releases newer than this one. */
+  /** Commits on origin/master this checkout does not have, or releases newer than this one. */
   behind: number;
   latest?: string | undefined;
   /** What they change, newest first (their commit subjects). */
@@ -32,8 +32,8 @@ export type Runner = (cmd: string, args: string[], timeoutMs: number) => Promise
 const EVERY_MS = 6 * 3600_000;
 const FIRST_MS = 60_000;
 const CHANGES = 8;
-// v2's branch in the public repo, whose main is still v1.
-const BRANCH = "release/v2";
+// The fork's main branch on origin; upstream is merged in by hand.
+const BRANCH = "master";
 /** The exit code that asks a supervisor to start the core again. */
 export const RESTART_CODE = 75;
 /** How long a core may take to close for an update before it exits anyway. */

@@ -4,7 +4,6 @@ import os from "node:os";
 import path from "node:path";
 import { CORE_ENV_FILE, coreEnvDefaults, parseCoreEnv, RELEASE_FEED } from "@apx/protocol";
 import { type SecretsBackend, systemBackend } from "./secrets-stores.ts";
-import { TELEMETRY_SINK } from "./telemetry-sink.ts";
 
 /**
  * Where v2 keeps its state: inside the APX folder, apart from v1's files (which stay as they are until the owner
@@ -226,7 +225,8 @@ export function loadConfig(processEnv: NodeJS.ProcessEnv = process.env, readCore
     supervised: env.APX_SUPERVISED === "1",
     app: env.APX_APP || undefined,
     releases: env.APX_RELEASES === "off" ? undefined : env.APX_RELEASES || RELEASE_FEED,
-    telemetry: telemetryOff(env) ? undefined : env.APX_TELEMETRY || TELEMETRY_SINK,
+    // Private fork: no default sink; only an explicit APX_TELEMETRY sends anything.
+    telemetry: telemetryOff(env) ? undefined : env.APX_TELEMETRY || undefined,
   };
   assertSafeBind(config);
   return config;

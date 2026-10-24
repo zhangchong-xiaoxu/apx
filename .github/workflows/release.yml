@@ -14,10 +14,6 @@ on:
       android_abis:
         description: "Android ABIs in the APK, comma-separated (default arm64-v8a; e.g. armeabi-v7a,arm64-v8a,x86_64)"
         required: false
-      announce_only:
-        description: "Only announce the existing release on Discord, without building"
-        type: boolean
-        default: false
 
 permissions:
   contents: write
@@ -29,7 +25,6 @@ concurrency:
 jobs:
   # Keep incomplete releases invisible to clients until every platform has uploaded its files.
   open:
-    if: ${{ !inputs.announce_only }}
     runs-on: ubuntu-latest
     env:
       TAG: ${{ inputs.tag || github.ref_name }}
@@ -193,45 +188,3 @@ jobs:
           fi
           gh run watch "$run" -R "$GITHUB_REPOSITORY" --exit-status --interval 30
       - run: gh release edit "$TAG" -R "$GITHUB_REPOSITORY" --draft=false --latest="${{ vars.APX_V2_LATEST == 'true' }}"
-
-  # Once every file is published, announce the release with v1's webhook.
-  announce:
-    needs: [publish]
-    if: ${{ always() && (inputs.announce_only || needs.publish.result == 'success') }}
-    runs-on: ubuntu-latest
-    env:
-      TAG: ${{ inputs.tag || github.ref_name }}
-      WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
-      ROLE_ID: ${{ vars.DISCORD_RELEASE_ROLE_ID }}
-      BETA: ${{ vars.APX_V2_LATEST != 'true' && '1' || '' }}
-    steps:
-      # The branch's script (an older tag may not have it), with every tag to read the release's commits from.
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.ref }}
-          fetch-depth: 0
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "24.11"
-      - run: node --no-warnings scripts/discord-release.ts
-
-  # Then each issue a commit of this release names (an `Issue: #N` trailer) is told the version and closed.
-  issues:
-    needs: [announce]
-    if: ${{ always() && needs.announce.result == 'success' }}
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      issues: write
-    env:
-      TAG: ${{ inputs.tag || github.ref_name }}
-      GH_TOKEN: ${{ github.token }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.ref }}
-          fetch-depth: 0
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "24.11"
-      - run: node --no-warnings scripts/issue-replies.ts

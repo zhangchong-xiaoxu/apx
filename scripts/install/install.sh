@@ -10,7 +10,7 @@
 # touched. If APX v1 is installed, its daemon is stopped and its `apx` command removed: this one takes its place.
 set -euo pipefail
 
-FEED="${APX_RELEASES:-agentprojectcontext/apx}"
+FEED="${APX_RELEASES:-zhangchong-xiaoxu/apx}"
 APP="${APX_APP:-$HOME/.apx/v2/app}"
 BIN="$HOME/.local/bin"
 FILE=""
@@ -114,6 +114,7 @@ if [ -n "$FILE" ]; then
   if [ -f "$FILE.sha256" ]; then cp "$FILE.sha256" "$WORK/$NAME.sha256"; fi
 else
   need curl
+  [ -n "$FEED" ] || die "no release feed: pass --feed <owner/repo> or set APX_RELEASES (or use --file)"
   case "$FEED" in
     http://* | https://*) API="${FEED%/}" ;;
     *) API="https://api.github.com/repos/$FEED" ;;
@@ -220,7 +221,7 @@ case ":$PATH:" in
 esac
 
 printf '%s\n' "$MODE" >"$APP/install-mode"
-if [ "$FEED" != agentprojectcontext/apx ]; then export APX_RELEASES="$FEED"; fi
+if [ -n "$FEED" ]; then export APX_RELEASES="$FEED"; fi
 if [ "$MODE" = desktop ]; then
   say "Installing and opening APX desktop. Choose server or client in the app."
   APX_APP="$APP" APX_INSTALL_VERSION="$VERSION" "$BIN/apx" desktop || die "desktop setup failed; retry: apx desktop"
@@ -230,8 +231,8 @@ fi
 # 6. The daemon as a service: started now, at login, and again if it stops (systemd user unit or launchd agent).
 if [ "$SERVICE" = 1 ]; then
   say "Starting the APX daemon as a service"
-  # A feed other than the public one (a test feed, a mirror) is where this install keeps updating from.
-  if [ "$FEED" != agentprojectcontext/apx ]; then export APX_RELEASES="$FEED"; fi
+  # The feed it was installed from is where this install keeps updating from.
+  if [ -n "$FEED" ]; then export APX_RELEASES="$FEED"; fi
   APX_APP="$APP" "$BIN/apx" service install || warn "the service did not install; run: apx service install"
 fi
 

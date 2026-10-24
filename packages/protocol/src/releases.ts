@@ -4,8 +4,9 @@
 /**
  * owner/repo whose Releases hold the installers and the daemon bundles. APX_RELEASES overrides it (an owner/repo, or
  * the base URL of a GitHub-shaped API such as a local test feed); "off" disables.
+ * Fork: the owner's own fork publishes the releases this APX updates from; never the upstream repo.
  */
-export const RELEASE_FEED = "agentprojectcontext/apx";
+export const RELEASE_FEED: string | undefined = "zhangchong-xiaoxu/apx";
 export const RELEASE_CHECK_EVERY_MS = 6 * 3600_000;
 
 export type ReleaseAsset = { name: string; url: string };

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
-import type { TelemetryEvent } from "@apx/protocol";
+import { RELEASE_FEED, type TelemetryEvent } from "@apx/protocol";
 import { loadConfig } from "./config.ts";
 import { say, scriptedLlm, startCore } from "./engine/testkit.ts";
 import { createLog } from "./log.ts";
@@ -146,11 +146,23 @@ test("the Firestore write creates the record once and then only stamps steps", (
   assert.deepEqual(day.update.fields.tokens_in, { integerValue: "10" });
 });
 
-test("DO_NOT_TRACK, CI and APX_TELEMETRY=off turn telemetry off", () => {
-  assert.equal(loadConfig({}, false).telemetry, TELEMETRY_SINK);
+test("telemetry is off unless APX_TELEMETRY names a sink, and DO_NOT_TRACK or CI still win", () => {
+  assert.equal(loadConfig({}, false).telemetry, undefined);
   assert.equal(loadConfig({ DO_NOT_TRACK: "1" }, false).telemetry, undefined);
   assert.equal(loadConfig({ CI: "true" }, false).telemetry, undefined);
   assert.equal(loadConfig({ APX_TELEMETRY: "off" }, false).telemetry, undefined);
-  assert.equal(loadConfig({ DO_NOT_TRACK: "0" }, false).telemetry, TELEMETRY_SINK);
+  assert.equal(loadConfig({ DO_NOT_TRACK: "0" }, false).telemetry, undefined);
+  assert.equal(loadConfig({ APX_TELEMETRY: TELEMETRY_SINK }, false).telemetry, TELEMETRY_SINK);
+  assert.equal(loadConfig({ APX_TELEMETRY: "https://example.com/t", CI: "1" }, false).telemetry, undefined);
   assert.equal(loadConfig({ APX_TELEMETRY: "https://example.com/t" }, false).telemetry, "https://example.com/t");
+});
+
+test("a fresh config sends no telemetry and updates only from the fork, never upstream", () => {
+  const c = loadConfig({}, false);
+  assert.equal(c.telemetry, undefined);
+  assert.equal(c.updates, "on");
+  assert.equal(c.releases, RELEASE_FEED);
+  assert.doesNotMatch(String(c.releases), /agentprojectcontext/);
+  assert.equal(loadConfig({ APX_RELEASES: "off" }, false).releases, undefined);
+  assert.equal(loadConfig({ APX_RELEASES: "acme/apx" }, false).releases, "acme/apx");
 });

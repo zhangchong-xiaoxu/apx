@@ -69,6 +69,7 @@ test("a new install starts quiet; the next release is told once, unread, with no
     assert.match(input, /\[release notes\] You posted here what APX's update to 2\.3\.33 changed/);
     assert.match(input, /built from branch release\/v2/);
     assert.match(input, /compare\/v2\.3\.32\.\.\.v2\.3\.33/);
+    assert.doesNotMatch(input, /agentprojectcontext/, "release links point at the fork, not upstream");
     const system = call?.messages.filter((m) => m.role === "system") ?? [];
     assert.ok(system.length);
     assert.doesNotMatch(JSON.stringify(system), /release notes|2\.3\.33/, "the system prompt stays byte-stable");

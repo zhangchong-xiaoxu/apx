@@ -14,6 +14,8 @@ export const desktopCandidates = (platform: string, env: NodeJS.ProcessEnv, home
 
 export async function desktop(): Promise<void> {
   const env = { ...process.env };
+  const feed = env.APX_RELEASES || RELEASE_FEED;
+  if (!feed) throw new Error("No release feed: set APX_RELEASES to the owner/repo that publishes the desktop app");
   const target = await localDesktopTarget(env);
   let phase = "";
   let percent = -1;
@@ -22,7 +24,7 @@ export async function desktop(): Promise<void> {
     arch: process.arch,
     userHome: os.homedir(),
     env,
-    feed: env.APX_RELEASES || RELEASE_FEED,
+    feed,
     version: env.APX_INSTALL_VERSION,
     target: () => (target ? prepareLocalTarget(target, localConnection(env).token) : undefined),
     changed: (s) => {

@@ -18,7 +18,7 @@ const checkout = () => {
   fs.mkdirSync(path.join(root, ".git"));
   return root;
 };
-/** Answers git and pnpm like a checkout three commits behind release/v2. */
+/** Answers git and pnpm like a checkout three commits behind origin/master. */
 const runner = (fail?: string): Runner & { calls: string[] } => {
   const calls: string[] = [];
   const answer = async (cmd: string, args: string[]) => {
@@ -43,7 +43,7 @@ test("outside a checkout there is nothing to update, and an update says why", as
   });
 });
 
-test("a check tells how far behind release/v2 the checkout is and what changed", async () => {
+test("a check tells how far behind origin/master the checkout is and what changed", async () => {
   const root = checkout();
   const u = createUpdates({ root, log, enabled: true, supervised: false, run: runner() });
   const s = await u.check();
@@ -64,7 +64,7 @@ test("an update pulls fast-forward only, installs and builds; supervised, the co
   assert.equal(r.ok, true);
   assert.equal(r.restart, true);
   assert.deepEqual(run.calls.slice(0, 3), [
-    "git pull --ff-only origin release/v2",
+    "git pull --ff-only origin master",
     "pnpm install --frozen-lockfile",
     "pnpm build:web",
   ]);

@@ -218,13 +218,16 @@ export function modeBlock(mode: Autonomy): string {
 export function releaseBlock(r: ReleaseContext | undefined): string | undefined {
   if (!r) return undefined;
   const range = r.previous ? `v${r.previous}..v${r.version}` : `v${r.version}`;
-  const web = r.previous
-    ? `https://github.com/${RELEASE_REPO}/compare/v${r.previous}...v${r.version}`
-    : `https://github.com/${RELEASE_REPO}/releases/tag/v${r.version}`;
+  const web = !RELEASE_REPO
+    ? undefined
+    : r.previous
+      ? `https://github.com/${RELEASE_REPO}/compare/v${r.previous}...v${r.version}`
+      : `https://github.com/${RELEASE_REPO}/releases/tag/v${r.version}`;
+  const git = r.repo_dir ? `\`git log --no-merges ${range}\` in ${r.repo_dir}` : undefined;
+  const where = [git, web].filter(Boolean).join(", or ");
   return (
     `You posted here what APX's update to ${r.version} changed${r.branch ? ` (built from branch ${r.branch})` : ""}. ` +
-    `To answer about a change, read its commits (${range})` +
-    (r.repo_dir ? `: \`git log --no-merges ${range}\` in ${r.repo_dir}, or ${web}.` : `: ${web}.`)
+    `To answer about a change, read its commits (${range})${where ? `: ${where}` : ""}.`
   );
 }
 

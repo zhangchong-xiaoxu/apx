@@ -70,7 +70,9 @@ export function createDesktopInstaller(opts: DesktopInstallOptions) {
             ...init,
             signal: AbortSignal.any([signal, ...(init?.signal ? [init.signal] : [])]),
           });
-        const release = newerReleases(await fetchReleases(opts.feed || RELEASE_FEED, fetchImpl), "0.0.0")
+        const feed = opts.feed || RELEASE_FEED;
+        if (!feed) throw new Error("No release feed: set APX_RELEASES");
+        const release = newerReleases(await fetchReleases(feed, fetchImpl), "0.0.0")
           .filter((r) => !opts.version || r.version === opts.version)
           .find((r) => desktopAssetFor(r.assets, r.version, platform, platform.os === "mac" ? "zip" : "installer"));
         const asset =
