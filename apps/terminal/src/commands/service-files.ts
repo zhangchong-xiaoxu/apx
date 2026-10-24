@@ -194,8 +194,9 @@ export function windowsStopScript(home: string, command: string): string {
     `$all = @(Get-CimInstance Win32_Process)`,
     `; $parents = @($all | Where-Object { ($_.CommandLine -ceq '${quote(command)}') -or ($_.CommandLine -imatch '${supervisor}') } | ForEach-Object { $_.ProcessId })`,
     `; $ids = @($all | Where-Object { ($parents -contains $_.ProcessId) -or (($parents -contains $_.ParentProcessId) -and $_.CommandLine -imatch '${core}') } | ForEach-Object { $_.ProcessId })`,
-    // Success is the processes being gone: cmd.exe exits with its supervisor, and Wait-Process fails on exited ids.
-    `; if ($ids.Count) { Stop-Process -Id $ids -Force -ErrorAction SilentlyContinue; Wait-Process -Id $ids -Timeout 10 -ErrorAction SilentlyContinue`,
+    // Success is the processes being gone, polled: Wait-Process on a list holding an exited id proved unreliable on CI.
+    `; if ($ids.Count) { Stop-Process -Id $ids -Force -ErrorAction SilentlyContinue`,
+    `; $until = (Get-Date).AddSeconds(10); while ((Get-Process -Id $ids -ErrorAction SilentlyContinue) -and (Get-Date) -lt $until) { Start-Sleep -Milliseconds 100 }`,
     `; if (Get-Process -Id $ids -ErrorAction SilentlyContinue) { Write-Error 'APX processes are still running'; exit 1 } }`,
     `; exit 0`,
   ].join(" ");

@@ -125,9 +125,9 @@ for (const packaged of [false, true]) {
   }
 }
 
-test("Windows stop ends a running supervisor and succeeds once it is gone", {
-  skip: process.platform !== "win32",
-}, async () => {
+test("Windows stop ends a running supervisor and succeeds once it is gone", async () => {
+  // Only Windows has the cmd.exe wrapper and WMI this checks.
+  if (process.platform !== "win32") return;
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "apx-stop-"));
   const terminal = path.join(dir, "main.ts");
   fs.writeFileSync(terminal, "setInterval(() => {}, 1000);\n");
