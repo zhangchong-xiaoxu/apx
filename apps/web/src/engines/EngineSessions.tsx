@@ -15,8 +15,8 @@ import { go, useNav } from "../shell/nav.ts";
 
 const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 type Native = Result<"sessions.native">["sessions"][number];
-/** Engines whose own sessions on this machine APX can read and go on with. */
-const NATIVE = new Set(["claude", "codex"]);
+/** Engines whose own sessions on this machine APX can read and go on with: Claude Code, Codex, ACP agents. */
+const lists = (id: string) => id === "claude" || id === "codex" || id.startsWith("acp:");
 
 /**
  * An outside engine's sessions (Claude Code, Codex, an ACP agent), the engine itself: those started in APX, newest
@@ -51,7 +51,7 @@ export function EngineSessions() {
   useEffect(() => {
     let live = true;
     setNative(undefined);
-    if (engineId !== "claude" && engineId !== "codex") return;
+    if (!lists(engineId)) return;
     client.call("sessions.native", { engine: engineId, limit: 100 }).then(
       (r) => live && setNative(r.sessions),
       () => live && setNative([]),
@@ -74,7 +74,7 @@ export function EngineSessions() {
   const mine = (native ?? []).filter((s) => !q || `${s.title} ${s.cwd}`.toLowerCase().includes(q));
 
   const resume = async (s: Native) => {
-    if (engineId !== "claude" && engineId !== "codex") return;
+    if (!lists(engineId)) return;
     setResuming(s.id);
     try {
       const th = await client.call("sessions.resume", { engine: engineId, id: s.id });
@@ -157,7 +157,7 @@ export function EngineSessions() {
             )}
           </>
         )}
-        {NATIVE.has(engineId) && (mine.length > 0 || native === undefined) && (
+        {lists(engineId) && (mine.length > 0 || native === undefined) && (
           <div className="engine__native">
             <div className="engine__nativehead">
               <Icons.Monitor size={13} />
@@ -181,7 +181,7 @@ export function EngineSessions() {
                     <span className="engine__sessiontime">{shortWhen(s.updated_at)}</span>
                   </span>
                   <span className="engine__sessioncwd">
-                    {resuming === s.id ? t("engine.resuming") : s.cwd.split("/").slice(-2).join("/")}
+                    {resuming === s.id ? t("engine.resuming") : s.cwd.split(/[\\/]/).slice(-2).join("/")}
                   </span>
                 </button>
               ))

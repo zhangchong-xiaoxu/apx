@@ -87,6 +87,9 @@ const V1Group = z.enum([
   "routines",
 ]);
 
+/** An engine whose own sessions APX lists and goes on with: Claude Code, Codex, or an ACP agent ("acp:copilot"). */
+const SessionEngine = z.union([z.enum(["claude", "codex"]), z.string().regex(/^acp:[\w.-]{1,60}$/)]);
+
 /**
  * What an agent's message on a channel left: its chat, the end of that chat before it (so the agent knows what was
  * already said), and how the send went after a few seconds (refused: `failed` with the platform's reason; a channel
@@ -1460,13 +1463,12 @@ export const appMethods = {
     access: "human",
   },
   /**
-   * The owner's own Claude Code or Codex sessions on this machine (read from ~/.claude, ~/.codex), newest first;
-   * those APX already goes on with are left out (they are its chats).
+   * The owner's own Claude Code or Codex sessions on this machine (read from ~/.claude, ~/.codex), or an ACP agent's
+   * that lists its sessions (GitHub Copilot CLI, asked over ACP), newest first; those APX already goes on with are left
+   * out (they are its chats).
    */
   "sessions.native": {
-    params: z
-      .object({ engine: z.enum(["claude", "codex"]), limit: z.number().int().min(1).max(300).optional() })
-      .strict(),
+    params: z.object({ engine: SessionEngine, limit: z.number().int().min(1).max(300).optional() }).strict(),
     result: z.object({
       sessions: z.array(z.object({ id: z.string(), title: z.string(), cwd: z.string(), updated_at: z.string() })),
     }),
@@ -1478,7 +1480,7 @@ export const appMethods = {
    * said there; the engine picks up its own session. Again: the chat it already has.
    */
   "sessions.resume": {
-    params: z.object({ engine: z.enum(["claude", "codex"]), id: z.string().min(1).max(120) }).strict(),
+    params: z.object({ engine: SessionEngine, id: z.string().min(1).max(120) }).strict(),
     result: Thread,
     effect: true,
     access: "human",

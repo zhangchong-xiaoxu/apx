@@ -169,6 +169,8 @@ export type Health = {
 };
 export type FileEntry = { name: string; path: string; kind: "dir" | "file"; bytes?: number };
 export type Engine = { id: string; label: string; installed: boolean; logged_in: boolean; detail?: string };
+/** Engines whose own sessions are listed; ACP agents ("acp:copilot") too. */
+export const SESSION_ENGINES = ["claude", "codex"];
 export type NativeSession = { id: string; title: string; cwd: string; updated_at: string };
 export type Workspace = {
   threads: Thread[];
@@ -264,7 +266,9 @@ export function useWorkspace(creds: Creds) {
     // Each engine's sessions, or undefined where the list did not load (it keeps the one it had).
     let native: Array<[string, NativeSession[] | undefined]> | undefined;
     if (engines?.engines) {
-      const installed = engines.engines.filter((engine) => engine.installed && ["claude", "codex"].includes(engine.id));
+      const installed = engines.engines.filter(
+        (engine) => engine.installed && (SESSION_ENGINES.includes(engine.id) || engine.id.startsWith("acp:")),
+      );
       const lists = await Promise.all(
         installed.map((engine) =>
           get<{ sessions: NativeSession[] }>("sessions.native", { engine: engine.id, limit: 100 }),

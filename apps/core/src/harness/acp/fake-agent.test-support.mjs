@@ -15,11 +15,34 @@ const ask = (method, params) =>
     out({ id, method, params });
   });
 const update = (sessionId, update) => out({ method: "session/update", params: { sessionId, update } });
+// With --sessions <folder> it keeps one session of the owner's there, listed and replayed like Copilot CLI's.
+const owned = process.argv.includes("--sessions") ? process.argv[process.argv.indexOf("--sessions") + 1] : undefined;
 rl.on("line", async (line) => {
   const m = JSON.parse(line);
   if (m.id !== undefined && !m.method) return waiting.get(m.id)?.(m.result);
   if (m.method === "initialize")
-    return out({ id: m.id, result: { protocolVersion: 1, agentCapabilities: { loadSession: true } } });
+    return out({
+      id: m.id,
+      result: {
+        protocolVersion: 1,
+        agentCapabilities: { loadSession: true, ...(owned ? { sessionCapabilities: { list: {}, close: {} } } : {}) },
+      },
+    });
+  if (owned && m.method === "session/list")
+    return out({
+      id: m.id,
+      result: {
+        sessions: [{ sessionId: "owner-1", cwd: owned, title: "Fix login", updatedAt: "2026-10-23T10:00:00.000Z" }],
+      },
+    });
+  if (owned && m.method === "session/close") return out({ id: m.id, result: {} });
+  if (owned && m.method === "session/load" && m.params.sessionId === "owner-1") {
+    const sid = m.params.sessionId;
+    update(sid, { sessionUpdate: "user_message_chunk", content: { type: "text", text: "Fix the login form" } });
+    update(sid, { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "Fixed: " } });
+    update(sid, { sessionUpdate: "tool_call", toolCallId: "t9", title: "Edit form.tsx", kind: "edit" });
+    update(sid, { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "the button." } });
+  }
   if (m.method === "authenticate") {
     fs.appendFileSync(process.env.FAKE_AUTH_LOG ?? "", "browser opened\n");
     return out({ id: m.id, result: {} });

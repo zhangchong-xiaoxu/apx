@@ -3,14 +3,14 @@ import { Alert, Pressable, Text, View } from "react-native";
 import { listWhen } from "../format";
 import { engineName, stateMark } from "../hooks/chatSelectors";
 import type { Engine, NativeSession, Thread, Workspace } from "../hooks/useWorkspace";
+import { SESSION_ENGINES } from "../hooks/useWorkspace";
 import { t } from "../i18n";
 import { EngineIcon } from "../ui/EngineIcon";
 import { Icon } from "../ui/Icon";
 import { BottomSheet, Button, Dot, EmptyState, ListRow, PageTitle, Screen, Spinner, useType } from "../ui/kit";
 import { makeStyles, useTheme } from "../ui/theme";
 
-type EngineId = "claude" | "codex";
-const ENGINES: EngineId[] = ["claude", "codex"];
+type EngineId = string;
 /** The last folder of a path: enough to tell sessions apart without showing the whole machine path. */
 const folderOf = (path: string) => path.split(/[\\/]/).filter(Boolean).at(-1) ?? path;
 
@@ -29,9 +29,10 @@ export function SessionsPage({
   const theme = useTheme();
   const s = useStyles();
   const [picking, setPicking] = useState<EngineId>();
-  const engines = data.engines.filter((engine): engine is Engine & { id: EngineId } =>
-    ENGINES.includes(engine.id as EngineId),
+  const engines = data.engines.filter(
+    (engine) => engine.installed && (SESSION_ENGINES.includes(engine.id) || engine.id.startsWith("acp:")),
   );
+  const labelOf = (id: string) => data.engines.find((engine) => engine.id === id)?.label ?? engineName(id);
   const local = data.projects.filter((project) => project.path && project.registered !== false);
   const fail = (error: unknown) =>
     Alert.alert(t("couldNotStart"), error instanceof Error ? error.message : String(error));
@@ -60,7 +61,7 @@ export function SessionsPage({
       </Pressable>
       <Text style={[type.meta, { textAlign: "center" }]}>{t("otherEngines")}</Text>
       {picking ? (
-        <BottomSheet title={t("newSessionIn", { engine: engineName(picking) })} onClose={() => setPicking(undefined)}>
+        <BottomSheet title={t("newSessionIn", { engine: labelOf(picking) })} onClose={() => setPicking(undefined)}>
           {local.length ? (
             local.map((project) => (
               <ListRow
@@ -91,7 +92,7 @@ function EngineCard({
   create,
   resume,
 }: {
-  engine: Engine & { id: EngineId };
+  engine: Engine;
   data: Workspace;
   open: (thread: Thread) => void;
   create: () => void;
@@ -112,7 +113,7 @@ function EngineCard({
       <View style={s.head}>
         <EngineIcon engine={engine.id} size={36} shape="tile" />
         <View style={{ flex: 1, minWidth: 0 }}>
-          <Text style={s.name}>{engineName(engine.id)}</Text>
+          <Text style={s.name}>{engine.id.startsWith("acp:") ? engine.label : engineName(engine.id)}</Text>
           <View style={s.status}>
             <Dot color={engine.logged_in ? theme.brand : engine.installed ? theme.warning : theme.fgSubtle} />
             <Text numberOfLines={1} style={type.meta}>

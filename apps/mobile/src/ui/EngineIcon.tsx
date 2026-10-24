@@ -1,5 +1,5 @@
 import { useId } from "react";
-import Svg, { Circle, Defs, LinearGradient, Path, Rect, Stop } from "react-native-svg";
+import Svg, { Circle, Defs, LinearGradient, Path, Rect, Stop, Text } from "react-native-svg";
 import { ENGINE_MARKS } from "./engineMarks";
 
 /** Native renderer of the same official engine marks used on the web; `tile` sets it on a rounded square. */
@@ -8,7 +8,7 @@ export function EngineIcon({
   size = 34,
   shape = "circle",
 }: {
-  engine: "claude" | "codex";
+  engine: string;
   size?: number;
   shape?: "circle" | "tile";
 }) {
@@ -26,6 +26,18 @@ export function EngineIcon({
       <Svg width={size} height={size} viewBox="0 0 24 24" accessible={false}>
         {back(mark.color)}
         <Path d={mark.d} fill="#fff" transform="translate(4.2 4.2) scale(0.65)" />
+      </Svg>
+    );
+  }
+  if (engine !== "codex") {
+    // An ACP agent ("acp:copilot") has no mark here: its initial.
+    const letter = (engine.split(":").at(-1) ?? "?").charAt(0).toUpperCase();
+    return (
+      <Svg width={size} height={size} viewBox="0 0 24 24" accessible={false}>
+        {back("#24292f")}
+        <Text x={12} y={16.2} fontSize={12} fontWeight="700" fill="#fff" textAnchor="middle">
+          {letter}
+        </Text>
       </Svg>
     );
   }

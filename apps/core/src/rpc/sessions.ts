@@ -2,6 +2,7 @@
 // engine session (the engine itself, in the session's folder, resuming its own transcript), or brought in as a
 // project whose chats agents take over (import, digest, adopt).
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import type { ApcSync } from "../apc/sync.ts";
 import { projectOrchestrator } from "../domain/agent-directory.ts";
@@ -9,11 +10,21 @@ import type { AuxAbout } from "../domain/aux-calls.ts";
 import type { Store } from "../domain/store.ts";
 import { summary } from "../domain/surfaces.ts";
 import { badRequest, errorMessage, notFound } from "../errors.ts";
+import { acpAgents, acpEngine } from "../harness/acp/agents.ts";
+import { which } from "../harness/detect.ts";
+import { type AcpListed, acpSessions, acpTranscript } from "../import/acp-sessions.ts";
 import { applyExtras } from "../import/apply-extras.ts";
 import { digestChat } from "../import/native-digest.ts";
 import { nativeExtras } from "../import/native-extras.ts";
 import { importedThread, importSessions, nativeProjects } from "../import/native-import.ts";
-import { type NativeHomes, nativeSession, nativeSessions, nativeTranscript } from "../import/native-sessions.ts";
+import {
+  type NativeEngine,
+  type NativeHomes,
+  type NativeTurn,
+  nativeSession,
+  nativeSessions,
+  nativeTranscript,
+} from "../import/native-sessions.ts";
 import { pageAsWidget } from "../import/page-widget.ts";
 import { createProject } from "./app.ts";
 import type { InternalCall } from "./internal.ts";
@@ -32,14 +43,20 @@ export type SessionDeps = {
 /** What is copied into the APX chat so the owner sees where they left off (the engine has it all already). */
 const SHOWN_TURNS = 40;
 const TURN_CHARS = 8000;
+/** An ACP agent's list costs a process: phones asking on every refresh share one for this long. */
+const ACP_LIST_MS = 30_000;
+
+/** Windows folders differ only in case ("g:\" and "G:\"): compared the way the file system does. */
+const folderKey = (p: string) => (process.platform === "win32" ? path.resolve(p).toLowerCase() : path.resolve(p));
 
 /** The registered project whose folder holds `dir` (the deepest one), if any. */
 function projectOf(store: Store, dir: string): string | undefined {
   let best: { id: string; len: number } | undefined;
+  const key = folderKey(dir);
   for (const p of store.projects.list()) {
     if (!p.path) continue;
-    const root = path.resolve(p.path);
-    if ((dir === root || dir.startsWith(`${root}${path.sep}`)) && root.length > (best?.len ?? -1))
+    const root = folderKey(p.path);
+    if ((key === root || key.startsWith(`${root}${path.sep}`)) && root.length > (best?.len ?? -1))
       best = { id: p.id, len: root.length };
   }
   return best?.id;
@@ -60,6 +77,57 @@ const pageName = (file: string) =>
 
 export function sessionHandlers(store: Store, homes: NativeHomes, deps: SessionDeps) {
   const superAgent = () => store.agents.list().find((a) => a.kind === "secretary") ?? store.agents.list()[0];
+  const acpAgentOf = async (engine: string) => {
+    const agent = acpAgents(store).find((a) => acpEngine(a) === engine);
+    if (!agent) throw notFound(`ACP agent ${engine}`);
+    const binary = await which(agent.command);
+    if (!binary) throw badRequest(`${agent.label} is not installed on this machine`);
+    return { agent, binary };
+  };
+  const acpLists = new Map<string, { at: number; list: Promise<AcpListed[]> }>();
+  /** The owner's sessions of an ACP agent: not APX's own (run in its home), newest first. */
+  const acpOwned = async (engine: string, fresh = false): Promise<AcpListed[]> => {
+    const hit = acpLists.get(engine);
+    if (!fresh && hit && Date.now() - hit.at < ACP_LIST_MS) return hit.list;
+    const { agent, binary } = await acpAgentOf(engine);
+    const apxHome = folderKey(deps.home);
+    const list = acpSessions(agent, binary, os.homedir()).then((all) =>
+      all.filter((s) => {
+        const dir = folderKey(s.cwd);
+        return dir !== apxHome && !dir.startsWith(`${apxHome}${path.sep}`);
+      }),
+    );
+    acpLists.set(engine, { at: Date.now(), list });
+    list.catch(() => acpLists.delete(engine));
+    return list;
+  };
+  /** A code chat with the engine itself in the session's folder, showing what was said; the engine resumes it. */
+  const resumedThread = (engine: string, id: string, s: { title: string; cwd: string }, turns: NativeTurn[]) => {
+    const agent = superAgent();
+    if (!agent) throw notFound("an agent to own the session");
+    return store.tx(() => {
+      const t = store.threads.create({
+        kind: "code",
+        title: s.title,
+        agent_ids: [agent.id],
+        project_id: projectOf(store, s.cwd),
+        cwd: s.cwd,
+        write: "ask",
+        engine,
+      });
+      store.threads.mergeContext(t.id, { model_choice: { model: engine, router: false } });
+      store.harnessSessions.set(t.id, engine, id);
+      for (const turn of turns)
+        store.messages.add({
+          thread_id: t.id,
+          author: turn.role === "user" ? { kind: "user" } : { kind: "agent", id: agent.id },
+          parts: [{ type: "text", text: turn.text.slice(0, TURN_CHARS) }],
+          ...(turn.role === "assistant" ? { model: engine } : {}),
+        });
+      const last = turns.at(-1)?.text ?? "";
+      return store.threads.patch(t.id, { preview: last.slice(0, 140) });
+    });
+  };
   /** The project a folder brought in lands in: the one APX has there, else the folder made one (or, gone, a new one). */
   const projectFor = (cwd: string, name: string): string => {
     const known = projectAt(store, cwd);
@@ -189,46 +257,35 @@ export function sessionHandlers(store: Store, homes: NativeHomes, deps: SessionD
         }),
       );
     },
-    "sessions.native": ({ engine, limit }) => {
+    "sessions.native": async ({ engine, limit }) => {
       const taken = store.harnessSessions.sessionIds(engine);
+      const all = engine.startsWith("acp:")
+        ? await acpOwned(engine)
+        : nativeSessions(homes, engine as NativeEngine, limit ?? 100);
       return {
-        sessions: nativeSessions(homes, engine, limit ?? 100)
+        sessions: all
           .filter((s) => !taken.has(s.id))
+          .slice(0, limit ?? 100)
           .map(({ id, title, cwd, updated_at }) => ({ id, title, cwd, updated_at })),
       };
     },
-    "sessions.resume": ({ engine, id }) => {
+    "sessions.resume": async ({ engine, id }) => {
       const already = store.harnessSessions.threadOf(engine, id);
       const open = already ? store.threads.get(already) : undefined;
       if (open) return open;
-      const s = nativeSession(homes, engine, id);
+      if (engine.startsWith("acp:")) {
+        const s =
+          (await acpOwned(engine)).find((x) => x.id === id) ?? (await acpOwned(engine, true)).find((x) => x.id === id);
+        if (!s) throw notFound(`${engine} session ${id}`);
+        if (!fs.existsSync(s.cwd)) throw badRequest(`the session's folder ${s.cwd} is not on this machine anymore`);
+        const { agent, binary } = await acpAgentOf(engine);
+        const turns = await acpTranscript(agent, binary, s, SHOWN_TURNS);
+        return resumedThread(engine, id, { title: s.title || path.basename(s.cwd), cwd: s.cwd }, turns);
+      }
+      const s = nativeSession(homes, engine as NativeEngine, id);
       if (!s) throw notFound(`${engine} session ${id}`);
       if (!fs.existsSync(s.cwd)) throw badRequest(`the session's folder ${s.cwd} is not on this machine anymore`);
-      const agent = store.agents.list().find((a) => a.kind === "secretary") ?? store.agents.list()[0];
-      if (!agent) throw notFound("an agent to own the session");
-      const turns = nativeTranscript(s, SHOWN_TURNS);
-      return store.tx(() => {
-        const t = store.threads.create({
-          kind: "code",
-          title: s.title,
-          agent_ids: [agent.id],
-          project_id: projectOf(store, s.cwd),
-          cwd: s.cwd,
-          write: "ask",
-          engine,
-        });
-        store.threads.mergeContext(t.id, { model_choice: { model: engine, router: false } });
-        store.harnessSessions.set(t.id, engine, id);
-        for (const turn of turns)
-          store.messages.add({
-            thread_id: t.id,
-            author: turn.role === "user" ? { kind: "user" } : { kind: "agent", id: agent.id },
-            parts: [{ type: "text", text: turn.text.slice(0, TURN_CHARS) }],
-            ...(turn.role === "assistant" ? { model: engine } : {}),
-          });
-        const last = turns.at(-1)?.text ?? "";
-        return store.threads.patch(t.id, { preview: last.slice(0, 140) });
-      });
+      return resumedThread(engine, id, s, nativeTranscript(s, SHOWN_TURNS));
     },
   } satisfies Partial<Handlers>;
 }
