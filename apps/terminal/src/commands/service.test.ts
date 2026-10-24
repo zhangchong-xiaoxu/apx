@@ -84,7 +84,10 @@ test("on Windows only an exact home supervisor and its child core may be stopped
   assert.ok(script.includes("$_.CommandLine -imatch"), "only complete command lines authorize a stop");
   assert.ok(!script.includes(".Contains("), "substrings never authorize a stop");
   assert.ok(!script.includes("service install"), "never the command that is running this");
-  assert.match(script, /while \(\(Get-Process -Id \$ids -ErrorAction SilentlyContinue\) -and \(Get-Date\) -lt \$until\)/);
+  assert.match(
+    script,
+    /while \(\(Get-Process -Id \$ids -ErrorAction SilentlyContinue\) -and \(Get-Date\) -lt \$until\)/,
+  );
 });
 
 for (const packaged of [false, true]) {
