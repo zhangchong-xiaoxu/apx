@@ -6,7 +6,7 @@ name: verify
 
 on:
   push:
-    branches: [release/v2]
+    branches: [release/v2, master]
   pull_request:
   workflow_dispatch:
 
