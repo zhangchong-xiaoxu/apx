@@ -176,6 +176,21 @@ export function windowsProcessPattern(args: string[]): string {
     .join("[ \\t]+")}$`;
 }
 
+/**
+ * Starts `command` detached and hidden via WMI (ShowWindow=0/SW_HIDE): without a hidden startup, Win32_Process
+ * opens a visible console for the cmd.exe wrapper, and closing that window (it looks like any other terminal)
+ * kills the whole supervisor + core tree with no graceful shutdown.
+ */
+export function windowsStartScript(command: string): string {
+  const quote = (value: string) => value.replaceAll("'", "''");
+  return [
+    `$cls = Get-CimClass -ClassName Win32_ProcessStartup`,
+    `; $startup = New-CimInstance -CimClass $cls -ClientOnly`,
+    `; $startup.ShowWindow = [uint16]0`,
+    `; Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{ CommandLine = '${quote(command)}'; ProcessStartupInformation = $startup } | Out-Null`,
+  ].join(" ");
+}
+
 /** Stops only the registered supervisor and its direct core children, never a PID file or the caller's paths. */
 export function windowsStopScript(home: string, command: string): string {
   const match = /"([^"]+)" ([^"]*) "([^"]+)" service run --home "([^"]+)""?$/.exec(command);

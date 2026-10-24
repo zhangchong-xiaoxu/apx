@@ -21,6 +21,7 @@ import {
   terminalMain,
   WINDOWS_RUN_VALUE,
   windowsRunCommand,
+  windowsStartScript,
   windowsStopScript,
 } from "./service-files.ts";
 
@@ -294,8 +295,7 @@ function windowsCommand(home: string): string {
  * the session when it closes, so a supervisor spawned from `apx service install` over SSH died at logout.
  */
 function startWindows(command: string) {
-  const ps = `Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{ CommandLine = '${command.replace(/'/g, "''")}' } | Out-Null`;
-  must("powershell", ["-NoProfile", "-NonInteractive", "-Command", ps]);
+  must("powershell", ["-NoProfile", "-NonInteractive", "-Command", windowsStartScript(command)]);
 }
 
 function stopWindows(home: string) {

@@ -6,7 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { after, test } from "node:test";
 import { lastLines, logs, stopCore } from "./service.ts";
-import { NODE_FLAGS, windowsRunCommand, windowsStopScript } from "./service-files.ts";
+import { NODE_FLAGS, windowsRunCommand, windowsStartScript, windowsStopScript } from "./service-files.ts";
 import { printed } from "./testing.ts";
 
 const home = fs.mkdtempSync(path.join(os.tmpdir(), "apx-logs-"));
@@ -150,11 +150,14 @@ test("Windows stop ends a running supervisor and succeeds once it is gone", asyn
       `@(Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -and $_.CommandLine.Contains('${dir.replaceAll("'", "''")}') -and $_.Name -ne 'powershell.exe' }).Count`,
     ).stdout.trim();
   try {
-    ps(
-      `Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{ CommandLine = '${command.replaceAll("'", "''")}' } | Out-Null`,
-    );
+    ps(windowsStartScript(command));
     for (let i = 0; i < 50 && running() !== "2"; i++) await new Promise((r) => setTimeout(r, 100));
     assert.equal(running(), "2", "cmd.exe and the supervisor are running");
+    // Regression: a visible console for the cmd.exe wrapper lets a stray click kill the whole supervisor tree.
+    const windowed = ps(
+      `@(Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -and $_.CommandLine.Contains('${dir.replaceAll("'", "''")}') }).ProcessId | ForEach-Object { (Get-Process -Id $_).MainWindowHandle }`,
+    ).stdout.trim();
+    assert.ok(!windowed || /^0(\s+0)*$/.test(windowed), `expected no visible window, got handles: ${windowed}`);
     const run = ps(windowsStopScript(home, command));
     assert.equal(run.status, 0, run.stderr);
     assert.equal(running(), "0");
