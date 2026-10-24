@@ -1,3 +1,14 @@
+> [!NOTE]
+> **这是个人 fork：[`zhangchong-xiaoxu/apx`](https://github.com/zhangchong-xiaoxu/apx)**，基于上游
+> [`agentprojectcontext/apx`](https://github.com/agentprojectcontext/apx) 的 `release/v2` 分支（MIT）。与上游的差异：
+>
+> - 默认分支是 `master`；上游改动用 `git fetch upstream --no-tags` 后手动合并 `upstream/release/v2`。
+> - Web 与 Mobile 增加简体中文（`zh`）界面。
+> - 关闭遥测；core 自更新只跟踪本 fork 的 `origin/master`，不会拉取上游。
+> - 安装包与 Android APK 由本 fork 的 `v2.x.y` tag 构建，见本仓库 [Releases](https://github.com/zhangchong-xiaoxu/apx/releases)（APK 为自签名）。
+>
+> 下方内容沿用上游 README，其中的网站、下载、npm 和 Discord 链接均指向上游项目。
+
 <p align="center">
   <img src="assets/banner.webp" alt="APX v2 beta — Meet your crew" width="820">
 </p>
