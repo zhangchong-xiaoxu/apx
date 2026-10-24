@@ -4,6 +4,7 @@ import { zhApp1 } from "./zh-app-1.ts";
 import { zhApp2 } from "./zh-app-2.ts";
 import { zhApp3 } from "./zh-app-3.ts";
 import { zhApp4 } from "./zh-app-4.ts";
+import { zhApp5 } from "./zh-app-5.ts";
 import { zhChannels } from "./zh-channels.ts";
 import { zhChat } from "./zh-chat.ts";
 import { zhEngines } from "./zh-engines.ts";
@@ -22,6 +23,7 @@ export const zh: Partial<Record<MessageKey, string>> = {
   ...zhApp2,
   ...zhApp3,
   ...zhApp4,
+  ...zhApp5,
   ...zhChannels,
   ...zhChat,
   ...zhEngines,
