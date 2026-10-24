@@ -291,6 +291,30 @@ test("a call carries the newest 4 images of the chat; older ones stay references
   assert.deepEqual(urls, ["i3", "i4", "i5", "i6"]);
 });
 
+test("a context window the provider reported skips a model too small for the chat before it is called", async () => {
+  const seen: string[] = [];
+  const llm = createLlm({
+    providers: () => providers,
+    secrets,
+    firstByteMs: 1000,
+    retryDelayMs: 5,
+    windowOf: (ref) => (ref === "pa/m1" ? 8_000 : undefined),
+    fetchImpl: (async (_url: string, init: RequestInit) => {
+      seen.push((JSON.parse(String(init.body)) as { model: string }).model);
+      return sse([{ choices: [{ delta: { content: "ok" }, finish_reason: "stop" }] }]);
+    }) as typeof fetch,
+  });
+  const out = await llm.complete({
+    models: ["pa/m1", "pa/m2"],
+    messages: [{ role: "user", content: "x".repeat(200_000) }],
+    tools: [],
+    signal: new AbortController().signal,
+    onText: () => {},
+  });
+  assert.equal(out.model, "pa/m2");
+  assert.deepEqual(seen, ["m2"]);
+});
+
 test("a server that cuts a long chat to its small context does not answer it; the reasons of every model come back", async () => {
   const llm = createLlm({
     providers: () => providers,

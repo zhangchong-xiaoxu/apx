@@ -165,6 +165,8 @@ export const CatalogEngine = z.object({
       /** The reasoning efforts it takes ("low", "high"…), and the one it uses when none is asked for. */
       efforts: z.array(z.string()).optional(),
       default_effort: z.string().optional(),
+      /** Most tokens it reads, when the API tells (LiteLLM's /model/info, OpenRouter's context_length). */
+      window: z.number().int().positive().optional(),
     }),
   ),
   fetched_at: z.string().optional(),

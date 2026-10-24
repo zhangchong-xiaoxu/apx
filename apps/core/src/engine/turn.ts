@@ -22,6 +22,7 @@ import { Canceled, DeadlineExceeded, errorMessage, Shutdown, Superseded } from "
 import type { Harnesses, TurnIO, TurnOutcome } from "../harness/index.ts";
 import { systemNote } from "../harness/native.ts";
 import type { Log } from "../log.ts";
+import { catalogWindow } from "../models/catalog.ts";
 import { candidates, modelSettings } from "../models/choice.ts";
 import type { ChatItem, Usage } from "../providers/types.ts";
 import { ProviderError } from "../providers/types.ts";
@@ -751,7 +752,9 @@ async function finishRun(
   else display.notice("info", "run.empty", empty);
   // Out of steps is not finished: the owner and any caller see it, never a plain completion.
   if (outcome.outOfSteps) display.notice("warn", "run.stepLimit", STEP_LIMIT, { vars: {} });
-  const window = outcome.usage?.window ?? (outcome.usage?.context ? contextWindow(outcome.model) : undefined);
+  const window =
+    outcome.usage?.window ??
+    (outcome.usage?.context ? (catalogWindow(store, outcome.model) ?? contextWindow(outcome.model)) : undefined);
   const usage = outcome.usage && { ...outcome.usage, ...(window ? { window } : {}) };
   let run = store.runs.patch(t.run, { model: outcome.model, ...(usage ? { usage } : {}) });
   // Only our own loop can tell; an outside engine's completed turn keeps no reason.

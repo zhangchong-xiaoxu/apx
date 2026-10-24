@@ -69,6 +69,8 @@ export function createLlm(opts: {
   media?: (id: string) => { mime: string; data: string } | undefined;
   /** Sign-ins by key reference ("oauth:chatgpt"). */
   signIns?: Record<string, SignIn>;
+  /** A model's context window as its provider reported it; names decide when it has none. */
+  windowOf?: (ref: string) => number | undefined;
 }): Llm {
   const { secrets } = opts;
 
@@ -117,7 +119,7 @@ export function createLlm(opts: {
       for (const t of list) {
         if (skipped.has(t.provider.id)) continue;
         const ref = `${t.provider.id}/${t.model}`;
-        const window = contextWindow(ref);
+        const window = opts.windowOf?.(ref) ?? contextWindow(ref);
         if (window && need > window) {
           failed.push({
             model: ref,

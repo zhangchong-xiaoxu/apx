@@ -66,7 +66,7 @@ import { createLog, type Log } from "./log.ts";
 import { mcpConfig } from "./mcp/config.ts";
 import { agentFiles } from "./mcp/file-args.ts";
 import { createMcp } from "./mcp/manager.ts";
-import { createCatalog } from "./models/catalog.ts";
+import { catalogWindow, createCatalog } from "./models/catalog.ts";
 import { createNews } from "./news/news.ts";
 import { nodeChildEnv } from "./node-runtime.ts";
 import { createNodeBroker } from "./nodes/broker.ts";
@@ -216,6 +216,7 @@ export async function createCore(config: CoreConfig, opts: CoreOptions = {}) {
       firstByteMs: config.llmTimeoutMs,
       media: (id) => mediaData(store, id),
       signIns,
+      windowOf: (ref) => catalogWindow(store, ref),
     });
   // Bound once the services exist: what the engines' check finds about Codex decides its image service.
   let codexSeen: ((codex: CliStatus) => void) | undefined;

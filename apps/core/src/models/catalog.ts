@@ -10,6 +10,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { CatalogEngine as CatalogEngineSchema } from "@apx/protocol";
 import type { ProviderConfig } from "../config.ts";
+import { parseRef } from "../domain/refs.ts";
 import type { Store } from "../domain/store.ts";
 import { errorMessage } from "../errors.ts";
 import { type AcpAgent, acpAgents, acpEngine, openSession } from "../harness/acp/agents.ts";
@@ -30,6 +31,7 @@ export type CatalogModel = {
   chat: boolean;
   efforts?: string[];
   default_effort?: string;
+  window?: number;
 };
 export type CatalogEngine = {
   /** "claude", "codex", or a provider id ("gemini", "anthropic", …). */
@@ -48,7 +50,7 @@ export type CatalogEngine = {
  * Where an engine's list is kept. The version moves whenever more is read from an engine (efforts were added later),
  * so a list kept by an older APX is asked again instead of hiding what is new for a day.
  */
-const cacheKey = (id: string) => `catalog.v2:${id}`;
+const cacheKey = (id: string) => `catalog.v3:${id}`;
 
 /** An engine's last fetched model list, kept per engine; none when unset or unreadable. */
 export function cachedCatalog(store: Store, id: string): CatalogEngine | undefined {
@@ -61,6 +63,44 @@ export function cachedCatalog(store: Store, id: string): CatalogEngine | undefin
     return undefined;
   }
 }
+
+/** The context window a provider reported for a model ref ("provider/model#effort"), from its cached list. */
+export function catalogWindow(store: Store, ref: string): number | undefined {
+  const { engine, model } = parseRef(ref);
+  if (!model) return undefined;
+  return cachedCatalog(store, engine)?.models.find((m) => m.id === model)?.window;
+}
+
+const positive = (n: unknown): number | undefined =>
+  typeof n === "number" && Number.isFinite(n) && n > 0 ? Math.floor(n) : undefined;
+
+/** LiteLLM-style gateways tell windows at /model/info; other servers lack it, so any failure is no figure. */
+async function gatewayWindows(base: string, key: string, fetchImpl: typeof fetch): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  try {
+    const res = await fetchImpl(`${base}/model/info`, {
+      headers: { authorization: `Bearer ${key}` },
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) return out;
+    const body = (await res.json()) as {
+      data?: Array<{ model_name?: string; model_info?: { max_input_tokens?: unknown } | null }>;
+    };
+    for (const m of Array.isArray(body.data) ? body.data : []) {
+      const window = positive(m.model_info?.max_input_tokens);
+      if (m.model_name && window && !out.has(m.model_name)) out.set(m.model_name, window);
+    }
+  } catch {
+    // Not a gateway that tells: names alone decide the window.
+  }
+  return out;
+}
+
+const withWindows = (models: CatalogModel[], windows: Map<string, number>): CatalogModel[] =>
+  models.map((m) => {
+    const window = m.window ?? windows.get(m.id);
+    return window ? { ...m, window } : m;
+  });
 
 // Ids that name non-chat models (speech, embeddings, images…); they stay listed but are not offered for agents.
 const NOT_CHAT = /(embed|tts|audio|speech|transcri|whisper|image|imagen|veo|dall-e|moderation|aqa|realtime)/i;
@@ -78,11 +118,22 @@ async function providerModels(p: ProviderConfig, key: string, fetchImpl: typeof 
           signal: AbortSignal.timeout(10_000),
         });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const body = (await res.json()) as { data?: Array<{ id: string; display_name?: string }> };
-  return (body.data ?? []).map((m) => {
+  const body = (await res.json()) as {
+    data?: Array<{
+      id: string;
+      display_name?: string;
+      context_length?: unknown;
+      context_window?: unknown;
+      max_input_tokens?: unknown;
+    }>;
+  };
+  const models = (body.data ?? []).map((m): CatalogModel => {
     const id = m.id.replace(/^models\//, "");
-    return { id, name: m.display_name ?? id, chat: !NOT_CHAT.test(id) };
+    const window = positive(m.context_length) ?? positive(m.context_window) ?? positive(m.max_input_tokens);
+    return { id, name: m.display_name ?? id, chat: !NOT_CHAT.test(id), ...(window ? { window } : {}) };
   });
+  if (p.transport !== "openai-chat" || models.every((m) => m.window)) return models;
+  return withWindows(models, await gatewayWindows(base, key, fetchImpl));
 }
 
 async function claudeModels(): Promise<CatalogModel[]> {
@@ -267,7 +318,12 @@ export function createCatalog(deps: {
           const key = p.key === NO_KEY ? "" : secrets.resolve(p.key);
           if (key === undefined || (key === "" && p.key !== NO_KEY)) throw new Error(`no key (${p.key})`);
           // A provider configured with an explicit list (e.g. a local gateway) is taken as given.
-          if (p.models.length) return p.models.map((id) => ({ id, name: id, chat: true }));
+          if (p.models.length) {
+            const given = p.models.map((id) => ({ id, name: id, chat: true }));
+            if (p.transport !== "openai-chat") return given;
+            const base = p.base_url.replace(/\/$/, "");
+            return withWindows(given, await gatewayWindows(base, key, deps.fetchImpl ?? fetch));
+          }
           return providerModels(p, key, deps.fetchImpl ?? fetch);
         },
       });

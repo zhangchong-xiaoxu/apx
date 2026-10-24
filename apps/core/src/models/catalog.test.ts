@@ -8,7 +8,81 @@ import type { ProviderConfig } from "../config.ts";
 import { openDb } from "../db/db.ts";
 import { createStore } from "../domain/store.ts";
 import { createSecrets } from "../secrets.ts";
-import { createCatalog } from "./catalog.ts";
+import { catalogWindow, createCatalog } from "./catalog.ts";
+
+test("a model's context window is read from what its API tells: LiteLLM's /model/info or a context_length", async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "apx-catalog-window-"));
+  const db = openDb(home);
+  try {
+    const store = createStore(db, createBus());
+    const secrets = createSecrets(home, "file", {});
+    secrets.set("k", "key");
+    const providers: ProviderConfig[] = [
+      {
+        id: "gw",
+        transport: "openai-chat",
+        base_url: "http://gw.test/v1/",
+        key: "secret://k",
+        models: ["glm-5", "unknown-x"],
+      },
+      { id: "or", transport: "openai-chat", base_url: "http://or.test/v1", key: "secret://k", models: [] },
+    ];
+    const asked: string[] = [];
+    const catalog = createCatalog({
+      store,
+      secrets,
+      providers: () => providers,
+      fetchImpl: (async (url: string) => {
+        asked.push(url);
+        if (url === "http://gw.test/v1/model/info")
+          return new Response(
+            JSON.stringify({
+              data: [
+                { model_name: "glm-5", model_info: { max_input_tokens: 202_752 } },
+                { model_name: "glm-5", model_info: { max_input_tokens: 1 } },
+                { model_name: "unknown-x", model_info: { max_input_tokens: null } },
+              ],
+            }),
+          );
+        if (url === "http://or.test/v1/models")
+          return new Response(
+            JSON.stringify({
+              data: [
+                { id: "minimax-m2-5", context_length: 1_000_000 },
+                { id: "gpt-x", max_input_tokens: 128_000 },
+              ],
+            }),
+          );
+        return new Response("not found", { status: 404 });
+      }) as unknown as typeof fetch,
+      home: "/nonexistent",
+      acpList: async () => [],
+      harnessLists: { claude: async () => [], codex: async () => [] },
+    });
+    const list = await catalog.list();
+    assert.deepEqual(
+      list.find((e) => e.id === "gw")?.models.map((m) => [m.id, m.window]),
+      [
+        ["glm-5", 202_752],
+        ["unknown-x", undefined],
+      ],
+    );
+    assert.deepEqual(
+      list.find((e) => e.id === "or")?.models.map((m) => [m.id, m.window]),
+      [
+        ["minimax-m2-5", 1_000_000],
+        ["gpt-x", 128_000],
+      ],
+    );
+    assert.ok(!asked.includes("http://or.test/v1/model/info"), "a list that tells its windows is not asked again");
+    assert.equal(catalogWindow(store, "gw/glm-5#high"), 202_752);
+    assert.equal(catalogWindow(store, "gw/unknown-x"), undefined);
+    assert.equal(catalogWindow(store, "gw"), undefined);
+  } finally {
+    db.close();
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
 
 test("the catalog asks each engine for its models, caches them and keeps the last good list on failure", async () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "apx-catalog-"));
@@ -27,7 +101,8 @@ test("the catalog asks each engine for its models, caches them and keeps the las
       store,
       secrets,
       providers: () => providers,
-      fetchImpl: (async () => {
+      fetchImpl: (async (url: string) => {
+        if (url.endsWith("/model/info")) return new Response("not found", { status: 404 });
         calls++;
         if (!up) return new Response("down", { status: 503 });
         return new Response(JSON.stringify({ data: [{ id: "models/g-pro" }, { id: "models/g-embedding-1" }] }));
