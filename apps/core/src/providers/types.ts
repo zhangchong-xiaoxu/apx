@@ -175,10 +175,10 @@ export type TransportRequest = {
 export type Transport = (req: TransportRequest) => Promise<Completion>;
 
 /**
- * How long a stream may go quiet once it started. A gateway that holds back a long thinking step (LiteLLM in front of
- * a reasoning model) sends nothing for more than 30 s while the model is still working.
+ * How long a stream may go quiet once it started. A gateway may hold back a tool call's arguments until the model
+ * wrote them all (a LiteLLM gateway in front of Claude sent nothing for 70 s while it wrote a 6,000-character file).
  */
-const STREAM_IDLE_MS = 90_000;
+const STREAM_IDLE_MS = 180_000;
 
 /**
  * POST with a first-byte timeout that becomes an idle timer once bytes flow, so long streamed answers are not cut.
