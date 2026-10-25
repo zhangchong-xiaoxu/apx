@@ -12,14 +12,14 @@ test("versions compare by number, with or without their v and a build suffix", (
   assert.equal(previousTag("v2.3.10", ["v2.3.9", "v2.3.10", "v2.3.11", "v1.9.0"]), "v2.3.9");
 });
 
-test("each commit people read becomes a sentence; chores are left out", () => {
+test("each commit people read becomes a sentence; chores are left out; the fork owner's are the fork's own", () => {
   assert.equal(sentence("fix(core): a chat turn gets 60 steps"), "A chat turn gets 60 steps");
   assert.equal(sentence("feat: apx chat shows the step limit"), "apx chat shows the step limit");
   const log =
-    "abc1234\0feat(web): mark every chat read\x1e\ndef5678\0chore: tidy\x1e\n0a1b2c3\0perf!: faster lists\x1e";
+    "abc1234\0feat(web): mark every chat read\0someone\x1e\ndef5678\0chore: tidy\x1e\n0a1b2c3\0perf!: faster lists\0Zhangchong-Xiaoxu\x1e";
   assert.deepEqual(changesIn(log), [
     { kind: "feat", text: "Mark every chat read", sha: "abc1234" },
-    { kind: "perf", text: "Faster lists", sha: "0a1b2c3" },
+    { kind: "perf", text: "Faster lists", sha: "0a1b2c3", fork: true },
   ]);
 });
 

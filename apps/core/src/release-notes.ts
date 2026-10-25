@@ -14,7 +14,14 @@ export const RELEASE_REPO: string | undefined = "zhangchong-xiaoxu/apx";
 const CARRIED = 20;
 const KINDS = ["feat", "fix", "perf"] as const;
 
-export type Change = { kind: (typeof KINDS)[number]; text: string; sha: string };
+/** The fork's owner: commits they authored are the fork's own, the rest came from upstream. */
+const FORK_AUTHOR = RELEASE_REPO?.split("/")[0]?.toLowerCase();
+/** Whether a commit by this author (git's %an) is the fork's own. */
+export const isForkAuthor = (author: string) => Boolean(FORK_AUTHOR) && author.toLowerCase() === FORK_AUTHOR;
+/** Before a change the fork made itself, to tell it from what came from upstream. */
+export const FORK_MARK = "【Chong】";
+
+export type Change = { kind: (typeof KINDS)[number]; text: string; sha: string; fork?: true };
 export type Release = { version: string; previous?: string; changes: Change[] };
 export type ReleaseNotes = {
   /** The release this APX is ("2.3.33"). */
@@ -57,16 +64,17 @@ export function sentence(subject: string): string {
   return s.startsWith("apx ") ? s : `${s.charAt(0).toUpperCase()}${s.slice(1)}`;
 }
 
-/** The changes people read in `git log --format=%h%x00%s%x1e`: what is new, fixed or faster. */
+/** The changes people read in `git log --format=%h%x00%s%x00%an%x1e`: what is new, fixed or faster. */
 export function changesIn(log: string): Change[] {
   return log
     .split("\x1e")
     .map((r) => r.trim())
     .filter(Boolean)
-    .flatMap((record) => {
-      const [sha = "", subject = ""] = record.split("\0");
+    .flatMap((record): Change[] => {
+      const [sha = "", subject = "", author = ""] = record.split("\0");
       const kind = KINDS.find((k) => new RegExp(`^${k}(\\([^)]*\\))?!?:`).test(subject));
-      return kind ? [{ kind, text: sentence(subject), sha }] : [];
+      const fork = isForkAuthor(author) ? { fork: true as const } : {};
+      return kind ? [{ kind, text: sentence(subject), sha, ...fork }] : [];
     });
 }
 
@@ -110,7 +118,7 @@ export function notesFromGit(cwd: string, branch = branchOf(cwd)): ReleaseNotes 
     const previous = previousTag(t, tags);
     // The first v2 tag has no range to read: its whole history is not "what changed".
     const changes = previous
-      ? changesIn(git(cwd, "log", "--no-merges", "--format=%h%x00%s%x1e", `${previous}..${t}`))
+      ? changesIn(git(cwd, "log", "--no-merges", "--format=%h%x00%s%x00%an%x1e", `${previous}..${t}`))
       : [];
     return { version: t.slice(1), ...(previous ? { previous: previous.slice(1) } : {}), changes };
   });

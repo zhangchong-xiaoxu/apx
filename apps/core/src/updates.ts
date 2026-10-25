@@ -8,6 +8,7 @@ import path from "node:path";
 import { type Platform, platformOf, type Release, releaseChanges } from "@apx/protocol";
 import { errorMessage } from "./errors.ts";
 import type { Log } from "./log.ts";
+import { FORK_MARK, isForkAuthor } from "./release-notes.ts";
 import { checkReleases, installRelease, runningVersion } from "./updates-release.ts";
 
 export type UpdateStatus = {
@@ -118,14 +119,17 @@ export function createUpdates(opts: {
     }
     const count = await sh("git", ["rev-list", "--count", `HEAD..origin/${BRANCH}`], 10_000);
     const latest = await sh("git", ["rev-parse", "--short=12", `origin/${BRANCH}`], 10_000);
-    const subjects = await sh("git", ["log", "--format=%s", `-n${CHANGES}`, `HEAD..origin/${BRANCH}`], 10_000);
+    const subjects = await sh("git", ["log", "--format=%an%x00%s", `-n${CHANGES}`, `HEAD..origin/${BRANCH}`], 10_000);
     status = {
       source: "git",
       behind: Number.parseInt(count.out.trim(), 10) || 0,
       latest: latest.out.trim() || undefined,
       changes: subjects.out
         .split("\n")
-        .map((s) => s.trim())
+        .map((line) => {
+          const [author = "", subject = ""] = line.trim().split("\0");
+          return subject && isForkAuthor(author) ? `${FORK_MARK}${subject}` : subject;
+        })
         .filter(Boolean),
       checked_at: now(),
     };

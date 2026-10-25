@@ -28,7 +28,8 @@ const runner = (fail?: string): Runner & { calls: string[] } => {
     if (fail && line.startsWith(fail)) return { code: 1, out: "error: not possible to fast-forward" };
     if (args[0] === "rev-list") return { code: 0, out: "3\n" };
     if (args[0] === "rev-parse") return { code: 0, out: "abc123def456\n" };
-    if (args[0] === "log") return { code: 0, out: "feat: whatsapp\nfix: dialogs\n\nfix: cards\n" };
+    if (args[0] === "log")
+      return { code: 0, out: "ann\0feat: whatsapp\nzhangchong-xiaoxu\0fix: dialogs\n\nann\0fix: cards\n" };
     return { code: 0, out: "ok" };
   };
   return Object.assign(answer, { calls });
@@ -56,7 +57,7 @@ test("a check tells how far behind origin/master the checkout is and what change
   const s = await u.check();
   assert.equal(s.behind, 3);
   assert.equal(s.latest, "abc123def456");
-  assert.deepEqual(s.changes, ["feat: whatsapp", "fix: dialogs", "fix: cards"]);
+  assert.deepEqual(s.changes, ["feat: whatsapp", "【Chong】fix: dialogs", "fix: cards"], "the fork's own are marked");
   assert.ok(s.checked_at);
   assert.deepEqual(u.status(), s);
   await removeDir(root);

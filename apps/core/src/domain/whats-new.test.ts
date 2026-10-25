@@ -10,7 +10,7 @@ const RELEASES: Release[] = [
     previous: "2.3.32",
     changes: [
       { kind: "feat", text: "A widget opens in the browser from its header", sha: "aaa1111" },
-      { kind: "fix", text: "A chat turn gets 60 steps", sha: "bbb2222" },
+      { kind: "fix", text: "A chat turn gets 60 steps", sha: "bbb2222", fork: true },
     ],
   },
   {
@@ -57,7 +57,7 @@ test("a new install starts quiet; the next release is told once, unread, with no
     assert.deepEqual(messages[0]?.author, { kind: "agent", id: "roby" });
     assert.match(text, /APX was updated to 2\.3\.33/);
     assert.match(text, /\*\*New\*\*\\n- A widget opens in the browser from its header/);
-    assert.match(text, /\*\*Fixed\*\*\\n- A chat turn gets 60 steps/);
+    assert.match(text, /\*\*Fixed\*\*\\n- 【Chong】A chat turn gets 60 steps/, "the fork's own change is marked");
     assert.doesNotMatch(text, /read-only folder/, "only what is new since the release the install was on");
     assert.equal(llm.calls.length, 0, "telling costs no tokens");
 

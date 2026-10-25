@@ -1,7 +1,7 @@
 // What an update brought, told by the super-agent: on the first start of a newer release, a chat of its own, unread,
 // with each new release's changes. Written from the notes the build carries (no model call); asking about them there
 // is an ordinary turn. See DECISIONS.md#d-100 and #d-117
-import { compareVersions, type Release, type ReleaseNotes, type ReleaseSource } from "../release-notes.ts";
+import { compareVersions, FORK_MARK, type Release, type ReleaseNotes, type ReleaseSource } from "../release-notes.ts";
 import type { Store } from "./store.ts";
 import { previewOf } from "./threads.ts";
 
@@ -17,13 +17,14 @@ const WORDS = {
   intro: (v: string) => `APX was updated to ${v}. This is what changed:`,
   sections: { feat: "New", fix: "Fixed", perf: "Faster" },
   more: (n: number) => `…and ${n} more`,
+  fork: FORK_MARK,
   internal: "Internal changes only.",
   outro: "Ask me anything about these changes.",
 };
 
 function releaseText(r: Release, w = WORDS): string {
   const blocks = (["feat", "fix", "perf"] as const).flatMap((kind) => {
-    const lines = r.changes.filter((c) => c.kind === kind).map((c) => `- ${c.text}`);
+    const lines = r.changes.filter((c) => c.kind === kind).map((c) => `- ${c.fork ? w.fork : ""}${c.text}`);
     if (!lines.length) return [];
     const more = lines.length - PER_SECTION;
     return [`**${w.sections[kind]}**\n${lines.slice(0, PER_SECTION).join("\n")}${more > 0 ? `\n${w.more(more)}` : ""}`];
