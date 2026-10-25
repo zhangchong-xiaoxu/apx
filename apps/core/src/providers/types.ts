@@ -63,6 +63,8 @@ export type ErrorKind =
 export class ProviderError extends Error {
   readonly kind: ErrorKind;
   readonly resetsAt: string | undefined;
+  /** The models a whole chain tried before giving up, in order; empty for a single call's error. */
+  models: string[] = [];
   constructor(kind: ErrorKind, message: string, resetsAt?: string) {
     super(message);
     this.name = "ProviderError";
@@ -173,6 +175,12 @@ export type TransportRequest = {
 export type Transport = (req: TransportRequest) => Promise<Completion>;
 
 /**
+ * How long a stream may go quiet once it started. A gateway that holds back a long thinking step (LiteLLM in front of
+ * a reasoning model) sends nothing for more than 30 s while the model is still working.
+ */
+const STREAM_IDLE_MS = 90_000;
+
+/**
  * POST with a first-byte timeout that becomes an idle timer once bytes flow, so long streamed answers are not cut.
  * Returns the response and a `touch` to call on every chunk, plus `done` to clear the timer.
  */
@@ -186,7 +194,7 @@ export async function post(
   let timer = setTimeout(() => deadline.abort(new Error("first-byte timeout")), req.firstByteMs);
   const touch = () => {
     clearTimeout(timer);
-    timer = setTimeout(() => deadline.abort(new Error("stream idle timeout")), 30_000);
+    timer = setTimeout(() => deadline.abort(new Error("stream idle timeout")), STREAM_IDLE_MS);
   };
   const done = () => clearTimeout(timer);
   try {

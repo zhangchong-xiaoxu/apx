@@ -342,6 +342,7 @@ test("a server that cuts a long chat to its small context does not answer it; th
     (err: Error) => {
       assert.match(err.message, /^pa\/m1: .*quota/m);
       assert.match(err.message, /^pa\/m2: the server read only 4k tokens of this chat \(50k tokens\)/m);
+      assert.deepEqual((err as ProviderError).models, ["pa/m1", "pa/m2"], "a failed run can name the models it tried");
       return true;
     },
   );
