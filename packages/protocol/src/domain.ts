@@ -402,6 +402,19 @@ export const PendingInput = z.object({
 });
 export type PendingInput = z.infer<typeof PendingInput>;
 
+/**
+ * Something the owner can connect, offered by an agent for what they asked: an integration (an account like Figma or
+ * GitHub, Resources › Integrations) or a channel (an app like WhatsApp, Settings › Channels). `coming`: not yet.
+ */
+export const ConnectOffer = z.object({
+  kind: z.enum(["integration", "channel"]),
+  id: z.string(),
+  label: z.string(),
+  description: z.string(),
+  coming: z.boolean().optional(),
+});
+export type ConnectOffer = z.infer<typeof ConnectOffer>;
+
 /** Where a document's file is in its chat: a path in the chat's folder, or (`scratch`) in its temp folder. */
 export const DocumentSource = z.object({ path: z.string().max(1000), scratch: z.boolean().optional() });
 export type DocumentSource = z.infer<typeof DocumentSource>;
@@ -527,6 +540,11 @@ const KnownPart = z.discriminatedUnion("type", [
     options: z.array(z.object({ label: z.string(), value: z.string() })),
     custom: z.boolean().optional(),
   }),
+  /**
+   * What the agent offers the owner to connect for what they asked (suggest_connection): each opens its form where it
+   * is shown. `why`: the agent's line on what it would do with it.
+   */
+  z.object({ type: z.literal("connect"), why: z.string().optional(), offers: z.array(ConnectOffer) }),
   /** Something the system says about the turn (interrupted, fallback engine, no answer): never the agent's words. */
   z.object({
     type: z.literal("notice"),
@@ -571,6 +589,8 @@ export const Message = z.object({
   delivery: MessageDelivery.optional(),
   /** Emoji put on it on a channel, at most one per side. */
   reactions: z.array(MessageReaction).optional(),
+  /** The channel (its id) it came on or went out on; a chat everyone writes into (Home) shows each channel's part. */
+  via: z.string().optional(),
   created_at: z.string(),
 });
 export type Message = z.infer<typeof Message>;
@@ -586,7 +606,31 @@ export const RunUsage = z.object({
 });
 export type RunUsage = z.infer<typeof RunUsage>;
 
-/** What an auxiliary model call was for: a chat's title, a long chat's summary, a room's gate, a commit message. */
+/** A sticker someone sent on a channel, kept so the agent reads what it means and can answer with it. */
+export const Sticker = z.object({
+  id: Id,
+  /** The channel type it came on ("whatsapp", "telegram"): the agent sends it only there. */
+  platform: z.string(),
+  media_id: Id,
+  mime: z.string(),
+  /** What it shows and says; none until a model that reads images named it. */
+  meaning: z.string().optional(),
+  /** The emoji the platform says it stands for. */
+  hint: z.string().optional(),
+  /** Times it arrived, and times the agent sent it. */
+  seen: z.number().int(),
+  sent: z.number().int(),
+  /** The owner said the agent may not send it. */
+  blocked: z.boolean(),
+  /** Waits for the owner's OK before the agent may send it. */
+  pending: z.boolean(),
+  /** A model saw it as adult-only: it always waits for the owner's OK. */
+  adult: z.boolean(),
+  last_at: z.string(),
+});
+export type Sticker = z.infer<typeof Sticker>;
+
+/** What an auxiliary model call was for: a chat's title, a long chat's summary, a room's gate, a sticker's meaning… */
 export const AuxPurpose = z.enum([
   "title",
   "summary",
@@ -596,6 +640,7 @@ export const AuxPurpose = z.enum([
   "memory_capture",
   "memory_dream",
   "news",
+  "sticker",
 ]);
 export type AuxPurpose = z.infer<typeof AuxPurpose>;
 
@@ -815,6 +860,8 @@ export const Person = z.object({
    * Silenced and supervised exclude each other (setting one clears the other).
    */
   supervised: z.boolean().default(false),
+  /** Answered at any hour, past the attention hours of the channel they write on. */
+  any_hour: z.boolean().default(false),
   perms: PersonPerms.default({ appointments: false, requests: false, notes: false }),
   addresses: z.array(Address),
   created_at: z.string(),
@@ -860,6 +907,15 @@ export const ChannelType = z.enum([
   "mattermost",
   "signal",
   "email",
+  "imessage",
+  "googlechat",
+  "sms",
+  "ntfy",
+  "nextcloud",
+  "irc",
+  "twitch",
+  "teams",
+  "line",
 ]);
 export type ChannelType = z.infer<typeof ChannelType>;
 
@@ -877,7 +933,8 @@ export type RoomMode = z.infer<typeof RoomMode>;
  */
 export const ChannelRooms = z.object({
   rooms: z
-    .array(z.object({ id: z.string().min(1).max(40), name: z.string().max(80).default(""), mode: RoomMode }))
+    // A Teams group chat's id runs to about 90 characters.
+    .array(z.object({ id: z.string().min(1).max(120), name: z.string().max(80).default(""), mode: RoomMode }))
     .max(50),
   /** Words that count as calling the bot (besides an @mention or a reply to it). */
   names: z.array(z.string().min(1).max(40)).max(10).default([]),
@@ -943,6 +1000,20 @@ export type ChannelClosers = z.infer<typeof ChannelClosers>;
 export const ChannelResearch = z.enum(["off", "owner", "everyone"]);
 export type ChannelResearch = z.infer<typeof ChannelResearch>;
 
+const HourOfDay = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
+
+/**
+ * When a channel answers its contacts, in the owner's time zone: the days it opens (0 = Sunday) and from when to when
+ * ("22:00"–"02:00" runs past midnight into the next day; the same time twice is the whole day). Outside them a
+ * contact's message waits, unanswered, until the hours begin. See DECISIONS.md#d-136
+ */
+export const ChannelHours = z.object({
+  days: z.array(z.number().int().min(0).max(6)).min(1).max(7),
+  from: HourOfDay,
+  to: HourOfDay,
+});
+export type ChannelHours = z.infer<typeof ChannelHours>;
+
 export const ChannelInfo = z.object({
   id: z.string(),
   type: ChannelType,
@@ -973,6 +1044,8 @@ export const ChannelInfo = z.object({
   closers: ChannelClosers.optional(),
   /** Web search and reading in its sealed chats (none set: only when the owner asks). See DECISIONS.md#d-059 */
   research: ChannelResearch.optional(),
+  /** When it answers contacts; none: at any hour. The owner is always answered. */
+  hours: ChannelHours.optional(),
   /** Email: the mailbox and its servers. */
   email: ChannelEmail.optional(),
   token_set: z.boolean(),
@@ -1221,6 +1294,10 @@ export const OutboxItem = z.object({
   state: OutboxState,
   attempts: z.number().int(),
   error: z.string().optional(),
+  /** A sticker that went out: what it shows ("" when it has no name). */
+  sticker: z.string().optional(),
+  /** An emoji the agent put on a message there. */
+  reaction: z.string().optional(),
   created_at: z.string(),
   updated_at: z.string(),
 });

@@ -9,6 +9,13 @@
 .chan.has-card {
   grid-template-columns: 320px minmax(0, 1fr) 340px;
 }
+/* A contact's chat opened from the Inbox: the Inbox is its list. */
+.chan.chan--single {
+  grid-template-columns: minmax(0, 1fr);
+}
+.chan.chan--single.has-card {
+  grid-template-columns: minmax(0, 1fr) 340px;
+}
 .chan--empty,
 .chan__pick {
   display: grid;
@@ -385,13 +392,15 @@
   display: none;
 }
 .chan__msgs {
-  display: flex;
   flex: 1;
+  min-height: 0;
+}
+.chan__msglist {
+  display: flex;
+  min-height: 100%;
   flex-direction: column;
   gap: 10px;
-  min-height: 0;
   padding: 20px 24px;
-  overflow-y: auto;
 }
 .chan__bubble {
   display: flex;
@@ -422,12 +431,20 @@
   background: transparent;
   color: var(--apx-fg-muted);
 }
-/* Their emoji (and the agent's) sit on the bubble's lower edge, as the chat apps show them. */
+/* Their emoji (and the agent's) sit on the bubble's lower edge, as the chat apps show them: above a sticker too. */
 .chan__reactions {
+  position: relative;
+  z-index: 1;
   display: inline-flex;
   align-self: flex-start;
   gap: 2px;
   margin: -12px 0 0 10px;
+  padding: 2px 6px;
+  border-radius: var(--apx-radius-pill);
+  background: var(--apx-surface);
+  box-shadow:
+    var(--apx-shadow-sm),
+    0 0 0 1px var(--apx-border);
   font-size: var(--apx-text-md);
   line-height: 1;
 }
@@ -532,6 +549,9 @@
   .chan.has-card {
     grid-template-columns: 300px minmax(0, 1fr);
   }
+  .chan.chan--single.has-card {
+    grid-template-columns: minmax(0, 1fr);
+  }
   .chan__card {
     position: fixed;
     top: calc(var(--shell-topbar-h) + 8px);
@@ -556,7 +576,7 @@
   .chan__back {
     display: inline-grid;
   }
-  .chan__msgs {
+  .chan__msglist {
     padding: 14px;
   }
   .chan__composer {
@@ -589,4 +609,9 @@
   align-items: center;
   padding: 8px 0;
   color: var(--apx-fg-muted);
+}
+
+/* The "?" after "What this conversation may do". */
+.chan__help {
+  margin-left: 4px;
 }

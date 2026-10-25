@@ -9,6 +9,7 @@ import { test } from "node:test";
 import { promisify } from "node:util";
 import { createLog } from "./log.ts";
 import { panelEntry } from "./server-wiring.ts";
+import { removeDir } from "./testkit/platform.ts";
 import { createUpdates, RESTART_CODE, type Runner, restartAfterClose, run } from "./updates.ts";
 import { runningVersion } from "./updates-release.ts";
 
@@ -58,7 +59,7 @@ test("a check tells how far behind origin/master the checkout is and what change
   assert.deepEqual(s.changes, ["feat: whatsapp", "fix: dialogs", "fix: cards"]);
   assert.ok(s.checked_at);
   assert.deepEqual(u.status(), s);
-  fs.rmSync(root, { recursive: true });
+  await removeDir(root);
 });
 
 test("an update pulls fast-forward only, installs and builds; supervised, the core restarts", async () => {
@@ -76,7 +77,7 @@ test("an update pulls fast-forward only, installs and builds; supervised, the co
   ]);
   await new Promise((resolve) => setTimeout(resolve, 600));
   assert.equal(restarted, true);
-  fs.rmSync(root, { recursive: true });
+  await removeDir(root);
 });
 
 test("a pull that cannot fast-forward stops the update before installing anything", async () => {
@@ -87,7 +88,7 @@ test("a pull that cannot fast-forward stops the update before installing anythin
   assert.equal(r.ok, false);
   assert.match(r.log, /not possible to fast-forward/);
   assert.ok(!run.calls.some((c) => c.startsWith("pnpm")));
-  fs.rmSync(root, { recursive: true });
+  await removeDir(root);
 });
 
 test("the served panel is known by its entry file, read again when the build changes", () => {
@@ -117,7 +118,8 @@ async function releaseFeed(o: { corrupt?: boolean } = {}) {
   fs.mkdirSync(path.join(src, "apx", "node", "bin"), { recursive: true });
   fs.writeFileSync(path.join(src, "apx", "node", "bin", "node"), "new");
   const name = "apx-core-2.1.0-linux-x64.tar.gz";
-  execFileSync("tar", ["-czf", path.join(src, name), "-C", src, "apx"]);
+  // Relative paths: Git's tar on Windows reads "C:" in a path as a remote host.
+  execFileSync("tar", ["-czf", name, "apx"], { cwd: src });
   const tarball = fs.readFileSync(path.join(src, name));
   const digest = createHash("sha256")
     .update(o.corrupt ? "something else" : tarball)

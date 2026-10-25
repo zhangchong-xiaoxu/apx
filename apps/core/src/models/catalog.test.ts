@@ -8,10 +8,12 @@ import type { ProviderConfig } from "../config.ts";
 import { openDb } from "../db/db.ts";
 import { createStore } from "../domain/store.ts";
 import { createSecrets } from "../secrets.ts";
+import { tempDir } from "../testkit/platform.ts";
 import { catalogWindow, createCatalog } from "./catalog.ts";
 
 test("a model's context window is read from what its API tells: LiteLLM's /model/info or a context_length", async () => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), "apx-catalog-window-"));
+  const dir = tempDir("apx-catalog-window-");
+  const home = dir.path;
   const db = openDb(home);
   try {
     const store = createStore(db, createBus());
@@ -80,7 +82,7 @@ test("a model's context window is read from what its API tells: LiteLLM's /model
     assert.equal(catalogWindow(store, "gw"), undefined);
   } finally {
     db.close();
-    fs.rmSync(home, { recursive: true, force: true });
+    await dir.remove();
   }
 });
 

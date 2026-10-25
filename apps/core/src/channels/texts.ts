@@ -32,10 +32,19 @@ const es = {
   failed: (why: string) => `No pude terminar: ${why}`,
   contactFailed: "Ahora no puedo responder; ya le avisé a mi dueño.",
   contactFailedOwner: (name: string, why: string) => `No pude responderle a ${name}: ${why}`,
+  passedOn: (name: string, kind: string, summary: string, rest: string) =>
+    `${name} ${kind === "appointment" ? "pidió un turno" : kind === "message" ? "te dejó un mensaje" : "te pidió algo"}: ${summary}${rest ? `\n${rest}` : ""}\nQuedó en tus tareas.`,
   reactFailed: (emoji: string, where: string) =>
     `No pude reaccionar con ${emoji} en ${where}: no hay un mensaje suyo al que reaccionar o el canal no tiene reacciones. No se envió nada.`,
   reactRefused: (emoji: string, where: string, why: string) =>
     `No pude reaccionar con ${emoji} en ${where}: la plataforma rechazó la reacción (${why}). No se envió nada.`,
+  reacted: (emoji: string) => `Reaccionó con ${emoji}`,
+  sentSticker: (meaning: string) => (meaning ? `Mandó un sticker: ${meaning}` : "Mandó un sticker"),
+  stickerTitle: "Sticker nuevo",
+  stickerWaits: (where: string, meaning: string | undefined, adult: boolean) =>
+    `Llegó un sticker por ${where}${meaning ? ` («${meaning}»)` : ""}${adult ? " que parece para adultos (+18)" : ""}. No lo uso hasta que lo apruebes en Configuración › Canales › ${where} › Stickers.`,
+  stickerMissing: (words: string, where: string) =>
+    `No mandé el sticker «${words}» en ${where}: no tengo uno guardado de este canal que diga eso. No se envió nada.`,
   tooMany: (name: string) => `${name} escribe mucho seguido: pausé sus respuestas automáticas por una hora.`,
   roomCap: (room: string) =>
     `Llegué al tope de respuestas por hora en ${room}: sigo leyendo, contesto cuando se libere.`,
@@ -77,6 +86,7 @@ const es = {
   suggestionDropped: (name: string) => `Listo: no le contesto a ${name}.`,
   suggestionGone: "Esa sugerencia ya no está pendiente (ya se decidió o llegó un mensaje más nuevo).",
   inputGone: "Eso ya no está pendiente: se respondió en otro lado o venció.",
+  inApp: "Esto se responde en la app de APX (el panel, el escritorio o tu teléfono vinculado), no por este canal.",
   writeNow: (name: string, minutes: number) =>
     `Escribí tu respuesta para ${name}: lo próximo que me mandes acá se lo envío tal cual (durante ${minutes} minutos). Mandá «cancelar» para no enviarle nada.`,
   writeCanceled: "Listo, no le mando nada.",
@@ -113,10 +123,19 @@ const en: typeof es = {
   failed: (why) => `I couldn't finish: ${why}`,
   contactFailed: "I can't answer right now; I've let my owner know.",
   contactFailedOwner: (name, why) => `I couldn't answer ${name}: ${why}`,
+  passedOn: (name, kind, summary, rest) =>
+    `${name} ${kind === "appointment" ? "asked for an appointment" : kind === "message" ? "left you a message" : "asked you for something"}: ${summary}${rest ? `\n${rest}` : ""}\nIt's in your tasks.`,
   reactFailed: (emoji, where) =>
     `I couldn't react with ${emoji} in ${where}: there is no message of theirs to react to, or the channel has no reactions. Nothing was sent.`,
   reactRefused: (emoji, where, why) =>
     `I couldn't react with ${emoji} in ${where}: the platform refused the reaction (${why}). Nothing was sent.`,
+  reacted: (emoji) => `Reacted with ${emoji}`,
+  sentSticker: (meaning) => (meaning ? `Sent a sticker: ${meaning}` : "Sent a sticker"),
+  stickerTitle: "New sticker",
+  stickerWaits: (where, meaning, adult) =>
+    `A sticker arrived on ${where}${meaning ? ` ("${meaning}")` : ""}${adult ? " that looks adults-only (18+)" : ""}. I won't use it until you approve it in Settings › Channels › ${where} › Stickers.`,
+  stickerMissing: (words, where) =>
+    `I didn't send the sticker "${words}" in ${where}: I have none kept from this channel that says that. Nothing was sent.`,
   tooMany: (name) => `${name} is writing a lot in a row: I paused their automatic answers for an hour.`,
   roomCap: (room) => `I hit the hourly cap of answers in ${room}: I keep reading and answer once it frees up.`,
   roomFailed: (room, why) => `I couldn't answer in ${room}: ${why}`,
@@ -155,6 +174,7 @@ const en: typeof es = {
   suggestionDropped: (name) => `Done: I won't answer ${name}.`,
   suggestionGone: "That suggestion is no longer pending (it was decided, or a newer message came in).",
   inputGone: "That is no longer pending: it was answered elsewhere or it expired.",
+  inApp: "Answer this in the APX app (the panel, the desktop or your paired phone), not on this channel.",
   writeNow: (name, minutes) =>
     `Write your answer for ${name}: the next thing you send me here goes to them as it is (for ${minutes} minutes). Send "cancel" to send nothing.`,
   writeCanceled: "Done, I'm sending nothing.",
@@ -191,10 +211,19 @@ const zh: ChannelTexts = {
   failed: (why) => `我无法完成：${why}`,
   contactFailed: "我现在无法回复；已通知我的主人。",
   contactFailedOwner: (name, why) => `我无法回复 ${name}：${why}`,
+  passedOn: (name, kind, summary, rest) =>
+    `${name} ${kind === "appointment" ? "想约个时间" : kind === "message" ? "给你留了言" : "有事请你帮忙"}：${summary}${rest ? `\n${rest}` : ""}\n已放进你的任务。`,
   reactFailed: (emoji, where) =>
     `我无法在 ${where} 用 ${emoji} 做出反应：没有对方的消息可以反应，或该渠道不支持反应。没有发送任何内容。`,
   reactRefused: (emoji, where, why) =>
     `我无法在 ${where} 用 ${emoji} 做出反应：平台拒绝了该反应（${why}）。没有发送任何内容。`,
+  reacted: (emoji) => `已用 ${emoji} 做出反应`,
+  sentSticker: (meaning) => (meaning ? `发送了一个贴纸：${meaning}` : "发送了一个贴纸"),
+  stickerTitle: "新贴纸",
+  stickerWaits: (where, meaning, adult) =>
+    `${where} 收到一个贴纸${meaning ? `（“${meaning}”）` : ""}${adult ? "，看起来仅限成人（18+）" : ""}。在你于 设置 › 渠道 › ${where} › 贴纸 中批准之前，我不会使用它。`,
+  stickerMissing: (words, where) =>
+    `我没有在 ${where} 发送贴纸“${words}”：这个渠道里没有保存表达这个意思的贴纸。没有发送任何内容。`,
   tooMany: (name) => `${name} 连续发了太多消息：我已将对其的自动回复暂停一小时。`,
   roomCap: (room) => `我在 ${room} 的每小时回复数已达上限：我会继续阅读，等恢复后再回复。`,
   roomFailed: (room, why) => `我无法在 ${room} 中回复：${why}`,
@@ -232,6 +261,7 @@ const zh: ChannelTexts = {
   suggestionDropped: (name) => `好的：我不会回复 ${name}。`,
   suggestionGone: "这条建议已不在待处理状态（已经决定，或收到了更新的消息）。",
   inputGone: "这个已不在待处理状态：已在其他地方回答，或已过期。",
+  inApp: "请在 APX 应用（面板、桌面端或已配对的手机）里回答，而不是在这个渠道里。",
   writeNow: (name, minutes) =>
     `请写下你给 ${name} 的回复：你在这里发给我的下一条内容会原样发送给对方（${minutes} 分钟内）。发送“取消”则不发送任何内容。`,
   writeCanceled: "好的，什么都不发送。",

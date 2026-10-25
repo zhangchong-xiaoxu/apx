@@ -6,9 +6,10 @@ import { after, before, test } from "node:test";
 import { ApxError } from "@apx/protocol/client";
 import { ftsQuery, looksSecret } from "../domain/memories.ts";
 import { realpath } from "../paths.ts";
+import { removeDir } from "../testkit/platform.ts";
 import { UNTRUSTED_MARK } from "../tools/result.ts";
 import { recallFor } from "./recall.ts";
-import { callTool, say, scriptedLlm, startCore } from "./testkit.ts";
+import { callTool, inputsOrEnd, say, scriptedLlm, startCore } from "./testkit.ts";
 
 const llm = scriptedLlm((req, { said, afterTool }) => {
   if (afterTool) return say(`Result: ${String(req.messages.at(-1)?.content).slice(0, 300)}`);
@@ -41,8 +42,8 @@ before(async () => {
 });
 after(async () => {
   await env.core.close();
-  env.cleanup();
-  fs.rmSync(repo, { recursive: true, force: true });
+  await env.cleanup();
+  await removeDir(repo);
 });
 
 const lastInput = () => String(llm.calls.at(-1)?.messages.at(-1)?.content);
@@ -216,6 +217,32 @@ test("a forgotten note leaves every turn, is not saved again by an agent, and th
   assert.equal((await env.client.call("memory.list", { query: "sister Ada" })).memories[0]?.id, note.id);
   await env.client.call("memory.remove", { id: note.id, forever: true });
   assert.equal(env.core.store.memories.get(note.id), undefined);
+});
+
+test("asked to let an agent forget a note, the owner reads what the note says, its id below", async () => {
+  const note = env.core.store.memories.add({
+    scope: "agent",
+    agent_id: "roby",
+    text: "Invoices to Acme go out on the 5th.",
+    source: "agent",
+    author_agent: "roby",
+  });
+  await env.client.call("agents.update", { agent: "roby", autonomy: "manual" });
+  try {
+    const t = await env.client.call("threads.create", { kind: "loose", agent_id: "roby" });
+    await env.client.call("threads.send", { thread: t.id, text: `forget note ${note.id}` });
+    const inputs: Awaited<ReturnType<typeof env.client.call<"runs.pending">>>["inputs"] = await inputsOrEnd(
+      env.client,
+      t.id,
+    );
+    assert.equal(inputs[0]?.tool, "forget");
+    assert.equal(inputs[0]?.detail, `Invoices to Acme go out on the 5th.\n(${note.id})`);
+    await env.client.call("runs.respond", { input: inputs[0]?.id ?? "", decision: "deny" });
+    await env.settle(t.id);
+    assert.equal(env.core.store.memories.get(note.id)?.forgotten_at, undefined, "declined, the note stays");
+  } finally {
+    await env.client.call("agents.update", { agent: "roby", autonomy: null });
+  }
 });
 
 test("a delegated turn gets its project's and its own notes, and global ones only when the task shares words", async () => {

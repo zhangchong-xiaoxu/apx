@@ -8,6 +8,14 @@ import { type Selectable, sql } from "kysely";
 import type { OutboxTable, PairingTable } from "../db/schema.ts";
 import { newId, now, opt, qb, type Sql } from "./sql.ts";
 
+/**
+ * The channels whose owner messages act directly: the platform proves the sending account (WhatsApp and Signal by its
+ * end-to-end keys). Elsewhere its word for who wrote is weaker (a topic, a nick, a From line), so the owner's words
+ * reach the super-agent to check first (DECISIONS.md#d-144, DECISIONS.md#d-150).
+ */
+const OWNER_ACTS_ON: ReadonlySet<string> = new Set(["telegram", "whatsapp", "signal"]);
+export const ownerActsOn = (type: string | undefined): boolean => type !== undefined && OWNER_ACTS_ON.has(type);
+
 /** What an adapter hands over for one platform message. */
 export type Inbound = {
   /** The platform's id for this message (dedupes a redelivery). */
@@ -25,8 +33,13 @@ export type Inbound = {
   private: boolean;
   /** A message in a server's room the owner listed: whether it called the bot (an @mention or a reply to it). */
   room?: { called: boolean } | undefined;
-  /** Downloaded attachments, persisted in the inbox before the platform confirms delivery. */
-  files?: Array<{ name: string; mime: string; data: string }> | undefined;
+  /**
+   * Downloaded attachments, persisted in the inbox before the platform confirms delivery. `sticker`: the file is one
+   * (`hint`: the emoji the platform says it stands for).
+   */
+  files?:
+    | Array<{ name: string; mime: string; data: string; sticker?: { hint?: string | undefined } | undefined }>
+    | undefined;
   /** A voice note or audio, to be transcribed before an agent reads it. */
   voice?: { mime: string; data: string } | undefined;
   /** The platform's id of the message itself, to react to it, when `external_id` is something else (an update id). */
@@ -61,8 +74,17 @@ export type Presentation = {
   silent?: boolean;
   /** Parts already delivered by an earlier attempt (text chunks first, then media). */
   skip?: number;
-  /** Images, voice notes and files (a document, sent as one, with its name), after the text. */
-  media?: Array<{ id: string; kind: "image" | "audio" | "file"; mime: string; name?: string | undefined }>;
+  /** Images, voice notes, stickers and files (a document, sent as one, with its name), after the text. */
+  media?: Array<{
+    id: string;
+    kind: "image" | "audio" | "file" | "sticker";
+    mime: string;
+    name?: string | undefined;
+    /** What a sticker shows, for the list of what was sent (adapters ignore it). */
+    about?: string | undefined;
+  }>;
+  /** An emoji the agent put on a message: recorded as sent, never queued (the adapter's `react` put it). */
+  reaction?: string;
   /** A voice note and what it says: the audio first, the text as its caption where the channel allows one. */
   mediaFirst?: boolean;
   /** In a room: the message this answers (shown as a reply to it). */
@@ -73,6 +95,16 @@ export type Presentation = {
   refused_by?: string[];
   /** Internal correlation for free-form replies to an input; adapters ignore it. */
   input_id?: string;
+};
+
+/** A contact's chat waiting for its channel's hours: where to answer, and since when it waits. */
+export type HeldChat = {
+  thread_id: string;
+  channel: string;
+  conversation: string;
+  sender: string;
+  person_id: string;
+  since: string;
 };
 
 export type InboxRow = { id: string; channel: string; payload: Inbound; state: string };
@@ -99,8 +131,14 @@ const toOut = (r: Selectable<OutboxTable>): OutboxRow => {
   };
 };
 
-export const publicOutbox = ({ body: _b, next_at: _n, external_id: _e, message_id: _m, ...o }: OutboxRow): OutboxItem =>
-  o;
+export const publicOutbox = ({ body, next_at: _n, external_id: _e, message_id: _m, ...o }: OutboxRow): OutboxItem => {
+  const sticker = body.media?.find((m) => m.kind === "sticker");
+  return {
+    ...o,
+    ...(sticker ? { sticker: sticker.about ?? "" } : {}),
+    ...(body.reaction ? { reaction: body.reaction } : {}),
+  };
+};
 
 const PAIRING_TTL_MS = 24 * 3600_000;
 
@@ -215,6 +253,29 @@ export function channelsRepo({ one, all, run }: Sql) {
         );
       },
     },
+    /** Contacts' chats whose messages came outside their channel's hours (DECISIONS.md#d-136). */
+    held: {
+      /** Marks a chat as waiting; one already waiting keeps the time it began to. */
+      mark(h: Omit<HeldChat, "since">): void {
+        run(
+          qb
+            .insertInto("channel_held")
+            .values({ ...h, since: now() })
+            .onConflict((c) => c.column("thread_id").doUpdateSet({ conversation: h.conversation, sender: h.sender })),
+        );
+      },
+      /** The chats waiting longest first. */
+      list(limit = 100): HeldChat[] {
+        return all(qb.selectFrom("channel_held").selectAll().orderBy("since").orderBy("thread_id").limit(limit));
+      },
+      get(threadId: string): HeldChat | undefined {
+        return one(qb.selectFrom("channel_held").selectAll().where("thread_id", "=", threadId));
+      },
+      /** No longer waiting; false when it was not (someone else took it). */
+      clear(threadId: string): boolean {
+        return run(qb.deleteFrom("channel_held").where("thread_id", "=", threadId)) > 0;
+      },
+    },
     outbox: {
       add(o: {
         channel: string;
@@ -245,6 +306,32 @@ export function channelsRepo({ one, all, run }: Sql) {
         );
         return toOut(outRow(id) as Selectable<OutboxTable>);
       },
+      /** Something that already went out (or failed) without the queue, kept so the owner sees it with the rest. */
+      settled(o: {
+        channel: string;
+        conversation: string;
+        thread_id?: string | undefined;
+        body: Presentation;
+        error?: string | undefined;
+      }): void {
+        const ts = now();
+        run(
+          qb.insertInto("outbox").values({
+            id: newId("out"),
+            channel: o.channel,
+            conversation: o.conversation,
+            thread_id: o.thread_id ?? null,
+            message_id: null,
+            kind: "reply",
+            body: JSON.stringify(o.body),
+            state: o.error ? "failed" : "sent",
+            error: o.error ?? null,
+            next_at: ts,
+            created_at: ts,
+            updated_at: ts,
+          }),
+        );
+      },
       get(id: string): OutboxRow | undefined {
         const r = outRow(id);
         return r ? toOut(r) : undefined;
@@ -261,7 +348,7 @@ export function channelsRepo({ one, all, run }: Sql) {
             .limit(limit),
         ).map(toOut);
       },
-      /** The last thing sent or queued to a conversation, of any kind. */
+      /** The last thing sent or queued to a conversation, of any kind (an emoji put on a message is not one). */
       last(channel: string, conversation: string): OutboxRow | undefined {
         const r = one(
           qb
@@ -269,6 +356,7 @@ export function channelsRepo({ one, all, run }: Sql) {
             .selectAll()
             .where("channel", "=", channel)
             .where("conversation", "=", conversation)
+            .where(sql`json_extract(body, '$.reaction')`, "is", null)
             .orderBy("created_at", "desc")
             .orderBy("id", "desc")
             .limit(1),

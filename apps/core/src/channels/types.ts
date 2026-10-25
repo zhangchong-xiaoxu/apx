@@ -12,7 +12,7 @@
 import type { ChannelInfo } from "@apx/protocol";
 import type { Inbound, InboundAction, InboundReaction, Presentation } from "../domain/channels.ts";
 
-type InboundFile = NonNullable<Inbound["files"]>[number];
+export type InboundFile = NonNullable<Inbound["files"]>[number];
 
 export type ChannelConfig = Omit<ChannelInfo, "token_set" | "token_hint" | "status" | "error" | "account">;
 
@@ -30,6 +30,8 @@ export type AdapterCaps = {
    * it; their request is only listed for the owner to approve.
    */
   ownAccount?: boolean;
+  /** Sends a sticker file as a sticker (an `OutFile` of kind "sticker"). */
+  stickers?: boolean;
 };
 
 /** Why a send failed: worth trying again (nothing went out), maybe delivered (never resend blindly), or final. */
@@ -75,7 +77,23 @@ export type AdapterIO = {
   room?(r: { id: string; name: string; left?: boolean }): void;
   /** Connected as this account; `owner` is the owner's own address on it (a linked device is the owner). */
   identified?(who: { account: string; owner?: string }): void;
+  /**
+   * This channel's public address for its platform's webhooks (`<base>/hooks/<channel id>`), when the owner turned
+   * one on (Settings › Channels › Public address); none otherwise. It can change while the channel runs (ngrok).
+   */
+  hookUrl?(): string | undefined;
   signal: AbortSignal;
+};
+
+/**
+ * A request a platform sent to this channel's public address: `path` is what follows `/hooks/<channel id>` ("" or
+ * "/…"), `headers` are lowercased, `body` is the bytes as they came (a signature is checked over them).
+ */
+export type HookRequest = { method: string; path: string; headers: Record<string, string>; body: Buffer };
+export type HookResponse = {
+  status: number;
+  body?: string | Record<string, unknown>;
+  headers?: Record<string, string>;
 };
 
 export interface ChannelAdapter {
@@ -88,6 +106,11 @@ export interface ChannelAdapter {
   stop(): Promise<void>;
   /** The channel is removed: drop its persisted state, even if start was never called. */
   forget?(): Promise<void>;
+  /**
+   * A platform that delivers to a webhook (Teams, LINE): the request it sent to this channel's public address. The
+   * adapter checks the platform's signature itself and refuses (401) what it cannot verify; nothing else guards it.
+   */
+  webhook?(req: HookRequest): Promise<HookResponse>;
   /** Text, then `files` (the presentation's media, already read). */
   send(conversation: string, p: Presentation, files?: OutFile[]): Promise<{ external_id?: string }>;
   typing?(conversation: string): Promise<void>;
@@ -125,15 +148,25 @@ export type ServerRoom = { id: string; name: string; server: string; writable: b
 
 export type Presence = { online: boolean; last_seen?: string };
 
-/** A media file to send: an image goes as a photo, OGG audio as a voice note, other audio as an audio file. */
-export type OutFile = { kind: "image" | "audio" | "file"; mime: string; data: Buffer; name?: string | undefined };
+/**
+ * A media file to send: an image goes as a photo, OGG audio as a voice note, other audio as an audio file, a sticker as
+ * a sticker where the channel has them (`caps.stickers`).
+ */
+export type OutFile = {
+  kind: "image" | "audio" | "file" | "sticker";
+  mime: string;
+  data: Buffer;
+  name?: string | undefined;
+};
 
 /** The name a file goes out with: its own, else one made from its kind and type ("image.png"). */
 export function fileName(f: OutFile): string {
   if (f.name) return f.name;
   const ext =
-    f.kind === "image"
-      ? (f.mime.split("/")[1] ?? "png")
+    f.kind === "image" || f.kind === "sticker"
+      ? f.mime === "application/x-tgsticker"
+        ? "tgs"
+        : (f.mime.split("/")[1] ?? "png")
       : f.mime === "audio/ogg"
         ? "ogg"
         : f.kind === "audio"

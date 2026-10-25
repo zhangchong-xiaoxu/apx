@@ -1,5 +1,5 @@
 import "../styles/screens.css";
-import type { ChannelInfo, Person, RoomMode, Thread } from "@apx/protocol";
+import type { ChannelInfo, RoomMode, Thread } from "@apx/protocol";
 import { EmptyState, IconButton, Icons, ProjectTile, SearchField } from "@apx/ui";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ChatView } from "../chat/ChatView.tsx";
@@ -15,25 +15,6 @@ import { ContactRow, type Row } from "./ContactRow.tsx";
 import { KindTile } from "./KindIcon.tsx";
 import { isChannelKind } from "./kinds.ts";
 import { LinkMe, LinkPhone, OwnerRow, ownerOn, PairingRow } from "./StartRows.tsx";
-
-export const RELATION_KEY: Record<NonNullable<Person["relation"]>, MessageKey> = {
-  partner: "ch.rel.partner",
-  family: "ch.rel.family",
-  friend: "ch.rel.friend",
-  coworker: "ch.rel.coworker",
-  client: "ch.rel.client",
-  associate: "ch.rel.associate",
-  provider: "ch.rel.provider",
-  other: "ch.rel.other",
-};
-
-export const initials = (name: string) =>
-  name
-    .split(/\s+/)
-    .map((w) => w[0] ?? "")
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
 
 /** A saved contact picked before they have a chat: the list's selection names them instead of a chat. */
 export const PERSON_PICK = "person:";
@@ -194,7 +175,10 @@ export function ChannelScreen() {
         <p className="chan__foot">{t("ch.foot", { agent: agents[channel.agent_id]?.name ?? channel.agent_id })}</p>
       </aside>
       {ownerOpen && ownerTarget ? (
-        <OpenChat threadId={ownerTarget} />
+        <OpenChat
+          threadId={ownerTarget}
+          {...(ownerTarget === "home" ? { via: { channel: channel.id, label: channel.label } } : {})}
+        />
       ) : roomOpen && picked ? (
         <OpenChat threadId={picked} />
       ) : current ? (
@@ -224,8 +208,11 @@ export function ChannelScreen() {
   );
 }
 
-/** The owner's chat or a room's, opened right here (the same chat as in the Inbox), so the channel stays in view. */
-function OpenChat({ threadId }: { threadId: string }) {
+/**
+ * The owner's chat or a room's, opened right here (the same chat as in the Inbox), so the channel stays in view. Home
+ * shows only this channel's part of it (`via`); all of it is in Home itself.
+ */
+function OpenChat({ threadId, via }: { threadId: string; via?: { channel: string; label: string } }) {
   const shown = useNav((s) => s.threadId);
   const panel = useNav((s) => s.panel);
   useEffect(() => {
@@ -233,7 +220,7 @@ function OpenChat({ threadId }: { threadId: string }) {
   }, [shown, threadId]);
   return (
     <div className="chan__owner">
-      <ChatView wideHeader={false} />
+      <ChatView wideHeader={false} {...(via ? { via } : {})} />
       {panel != null && <SidePanel />}
     </div>
   );

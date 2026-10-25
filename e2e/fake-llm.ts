@@ -6,7 +6,7 @@
 // waits behind that turn); "make a note file" runs a command that needs the owner's OK; "look around the parent
 // folder" reads outside the project's folder (a folder card); "show a widget" makes one; "open a
 // report" writes one and opens it as a document; "show a table for task_…" answers with a wide table whose last
-// column holds that task's chip. It also
+// column holds that task's chip; "connect <app> for me" offers that app or channel to connect. It also
 // embeds texts (Ollama's /api/embed) for the skills picked by meaning.
 import http from "node:http";
 import type { AddressInfo } from "node:net";
@@ -27,6 +27,23 @@ function lastWords(messages: Message[]): string {
     .map((l) => l.trim())
     .filter((l) => l && !l.startsWith("[") && !l.startsWith("<") && !l.startsWith("(This is"));
   return (lines.at(-1) ?? "").slice(0, 160);
+}
+
+const CLAIMED = 'claims="your owner"';
+const textOf = (m: Message | undefined) =>
+  typeof m?.content === "string" ? m.content : JSON.stringify(m?.content ?? "");
+
+/**
+ * The owner's words on a channel other than Telegram reach the super-agent to check first (DECISIONS.md#d-144): the
+ * check says to go ahead, and the turn on its answer reads the owner's words as a direct message's turn did.
+ */
+function ownerCheck(messages: Message[]): { check: true } | { said: string } | undefined {
+  const last = textOf(messages.findLast((m) => m.role === "user"));
+  if (last.includes(CLAIMED) && last.includes("Judge first")) return { check: true };
+  if (!last.includes("<delegation_result")) return undefined;
+  const kept = textOf(messages.findLast((m) => m.role === "user" && textOf(m).includes(CLAIMED)));
+  const body = /\n([\s\S]*)\n<\/channel_message>/.exec(kept)?.[1];
+  return body === undefined ? undefined : { said: lastWords([{ role: "user", content: body }]) };
 }
 
 /** Embeddings, Ollama-style: pictures point one way, anything else (each a bit apart) another. */
@@ -118,6 +135,13 @@ function toolCall(messages: Message[], said: string): { name: string; arguments:
       name: "show_widget",
       arguments: JSON.stringify({ name: "e2e-coverage", title: "Coverage audit", html: "<h1>Coverage rows</h1>" }),
     };
+  // An app or channel the owner has not connected: a card offers it.
+  const app = /^connect (\S+) for me/i.exec(said);
+  if (app)
+    return {
+      name: "suggest_connection",
+      arguments: JSON.stringify({ query: app[1], why: `To work with your ${app[1]} for you.` }),
+    };
   // A first look past the project's folder: a folder card asks the owner.
   if (/^look around the parent folder/i.test(said))
     return { name: "shell", arguments: JSON.stringify({ command: "pwd; ls .." }) };
@@ -177,19 +201,26 @@ export async function fakeLlm() {
         return res.end(JSON.stringify({ embeddings: input.map(vectorOf) }));
       }
       const body = (raw ? JSON.parse(raw) : {}) as { model?: string; messages?: Message[]; stream?: boolean };
-      const said = lastWords(body.messages ?? []);
+      const relay = ownerCheck(body.messages ?? []);
+      const said = relay && "said" in relay ? relay.said : lastWords(body.messages ?? []);
       calls.push({ model: body.model ?? "", said });
       const system = String(body.messages?.[0]?.content ?? "");
       const slow = system.startsWith("You are Slow researcher, a worker");
-      const text = system.startsWith("You are Researcher, a worker")
-        ? REPORT
-        : slow
-          ? "Part checked."
-          : /^suggest a command/i.test(said)
-            ? SUGGESTION
-            : (reviewTable(said) ?? `Got it: ${said || "(nothing)"}`);
+      const text =
+        relay && "check" in relay
+          ? "It is the owner: answer them."
+          : system.startsWith("You are Researcher, a worker")
+            ? REPORT
+            : slow
+              ? "Part checked."
+              : /^suggest a command/i.test(said)
+                ? SUGGESTION
+                : // The owner's words in a contact's chat come before APX's note on them: the whole message is read.
+                  /react with a heart/i.test(JSON.stringify(body.messages?.findLast((m) => m.role === "user")?.content))
+                  ? "REACT ❤️"
+                  : (reviewTable(said) ?? `Got it: ${said || "(nothing)"}`);
       const usage = { prompt_tokens: 120, completion_tokens: 8, total_tokens: 128 };
-      const call = toolCall(body.messages ?? [], said);
+      const call = relay && "check" in relay ? undefined : toolCall(body.messages ?? [], said);
       const wanted = fanOut(body.messages ?? [], said) ?? (call ? [call] : undefined);
       if (wanted) {
         const tool_calls = wanted.map((c, i) => ({ id: `call-${calls.length}-${i}`, type: "function", function: c }));

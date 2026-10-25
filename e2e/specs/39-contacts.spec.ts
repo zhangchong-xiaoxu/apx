@@ -28,10 +28,16 @@ test("a saved contact with no chat: listed, an empty chat to ask the agent to wr
   await card.getByRole("combobox", { name: "Relación" }).click();
   await page.getByRole("option", { name: "Amigo/a" }).click();
   await expect(card.getByRole("combobox", { name: "Relación" })).toContainText("Amigo/a");
-  // "This account is mine" removes the contact: it waits at the end of the card, as a warning.
-  await card.getByRole("button", { name: "Esta cuenta es mía" }).click();
-  await expect(card.getByText("Cuidado")).toBeVisible();
-  await card.getByRole("button", { name: "Cancelar" }).click();
+  // What each option does is behind the "?", not under every switch.
+  await card.getByRole("button", { name: "Sobre qué puede hacer esta conversación" }).hover();
+  const help = page.getByRole("dialog", { name: "Sobre qué puede hacer esta conversación" });
+  await expect(help.getByText(/queda como tarea y te aviso en el momento/)).toBeVisible();
+  await expect(help.getByText(/pareja, familia y amigos siempre pueden dejarte un mensaje/)).toBeVisible();
+  await page.keyboard.press("Escape");
+  // The owner's own WhatsApp number is linked (10-whatsapp): "This account is mine" is settled, so no card offers it.
+  await expect(card.getByRole("textbox", { name: "Nombre" })).toBeVisible();
+  await expect(card.getByRole("button", { name: "Esta cuenta es mía" })).toHaveCount(0);
+  await expect(card.getByText("Cuidado")).toHaveCount(0);
 
   const box = page.getByRole("textbox", { name: /que le escriba a Nora/ });
   await box.fill("decile hola a Nora");
@@ -46,15 +52,15 @@ test("a saved contact with no chat: listed, an empty chat to ask the agent to wr
   // Their emoji on it shows on the bubble, and goes when they take it off.
   await world.whatsapp.react({ phone: NORA, name: "Nora" }, "❤️");
   await expect(ticks.getByRole("img", { name: "Su reacción: ❤️" })).toBeVisible();
-  // The main chat shows the same: their emoji on the answer and how far it got.
+  // Opened from the Inbox it is the same chat as in its channel: their emoji on the answer and how far it got.
   const { threads } = await rpc<{ threads: Array<{ id: string; title: string }> }>("threads.list");
   const chat = threads.find((t) => t.title === "Nora");
   await open(page, `#thread=${chat?.id}`);
-  const turn = page.locator(".turn").last();
-  await expect(turn.getByRole("img", { name: "Su reacción: ❤️" })).toBeVisible();
-  await expect(turn.getByRole("img", { name: "Leído" })).toBeVisible();
+  const answer = page.locator(".chan--single .chan__bubble.is-out").last();
+  await expect(answer.getByRole("img", { name: "Su reacción: ❤️" })).toBeVisible();
+  await expect(answer.getByRole("img", { name: "Leído" })).toBeVisible();
   await world.whatsapp.react({ phone: NORA, name: "Nora" }, "");
-  await expect(turn.getByRole("img", { name: /Su reacción/ })).toHaveCount(0);
+  await expect(answer.getByRole("img", { name: /Su reacción/ })).toHaveCount(0);
 });
 
 test("who is online and what is set for a contact show on their row", async ({ page }) => {

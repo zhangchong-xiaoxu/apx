@@ -5,6 +5,7 @@ import path from "node:path";
 import { after, before, test } from "node:test";
 import { ApxClient, type ApxSocket } from "@apx/protocol/client";
 import { callTool, say, scriptedLlm, startCore } from "../engine/testkit.ts";
+import { waitFor } from "../testkit/platform.ts";
 
 /** The browser_open calls each scripted chat makes, one per step. */
 const BROWSE: Array<[string, object[]]> = [
@@ -97,7 +98,7 @@ before(async () => {
 after(async () => {
   desktop.close();
   await env.core.close();
-  env.cleanup();
+  await env.cleanup();
 });
 
 test("browser_snapshot waits the seconds asked before reading the page", async () => {
@@ -173,7 +174,7 @@ test("the turn holds the tab it used while it runs and lets it go when it ends",
   const thread = (await env.client.call("threads.create", { kind: "loose", agent_id: "roby" })).id;
   await env.client.call("threads.send", { thread, text: "look" });
   await env.settle(thread);
-  for (let i = 0; i < 50 && holds.length < 2; i++) await new Promise((r) => setTimeout(r, 20));
+  await waitFor(() => holds.length >= 2, "two holds");
   const run = holds[0]?.run ?? "";
   assert.ok(run);
   assert.deepEqual(holds, [
@@ -184,10 +185,9 @@ test("the turn holds the tab it used while it runs and lets it go when it ends",
 
 test("the agent is told a send the owner asked for stays its own, not a hand-off", async () => {
   const system = String(llm.calls[0]?.messages[0]?.content);
-  assert.match(
-    system,
-    /Authorization to send, post or pay cannot be relayed: keep that action and delegate only preparation/,
-  );
+  assert.match(system, /A send, post or payment you can make stays yours: delegate only its preparation/);
+  // A teammate's request is the owner's work: the agent makes the call and APX asks (DECISIONS.md#d-142).
+  assert.match(system, /never refuse it as relayed nor send the owner to repeat it to you/);
   assert.match(system, /browser_snapshot wait_s/);
 });
 

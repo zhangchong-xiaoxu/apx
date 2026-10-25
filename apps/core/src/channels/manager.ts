@@ -7,14 +7,13 @@
 import { type ChannelInfo, type CoreEvent, noticeText, type Part } from "@apx/protocol";
 import type { Bus } from "../bus.ts";
 import type { AuxAbout } from "../domain/aux-calls.ts";
-import type { OutboxRow, Presentation } from "../domain/channels.ts";
+import { type OutboxRow, ownerActsOn, type Presentation } from "../domain/channels.ts";
 import { inQuietHours, noticePrefs } from "../domain/notices.ts";
 import type { NewNotification } from "../domain/notifications.ts";
 import { OWNER_ID } from "../domain/persons.ts";
 import type { RunRecord } from "../domain/runs.ts";
 import type { Store } from "../domain/store.ts";
 import { audienceOf } from "../engine/audience.ts";
-import { isSkip } from "../engine/routines.ts";
 import type { Draft } from "../engine/suggest.ts";
 import { errorMessage } from "../errors.ts";
 import type { Log } from "../log.ts";
@@ -22,9 +21,9 @@ import type { InternalCall } from "../rpc/internal.ts";
 import type { Secrets } from "../secrets.ts";
 import { splitSpoken } from "../services/audio.ts";
 import type { Services } from "../services/registry.ts";
-import { reactAnswer } from "./closers.ts";
 import { createDelivery } from "./delivery.ts";
 import { guardReply } from "./guard.ts";
+import { createHeld } from "./held.ts";
 import { createInbound } from "./inbound.ts";
 import { createInputCards } from "./input-cards.ts";
 import { buttonId, inputPresentation } from "./notices.ts";
@@ -32,6 +31,8 @@ import { createOutgoing } from "./outgoing.ts";
 import { createPoster } from "./post.ts";
 import { createRecovery } from "./recover.ts";
 import { createRooms, quietMentions, roomMentions } from "./rooms.ts";
+import { createSignals } from "./signals.ts";
+import { createStickers, type See } from "./stickers.ts";
 import { createSuggestions } from "./suggestions.ts";
 import { channelTexts } from "./texts.ts";
 import {
@@ -39,6 +40,8 @@ import {
   type ChannelAdapter,
   type ChannelConfig,
   ChannelRefused,
+  type HookRequest,
+  type HookResponse,
   type ServerRoom,
 } from "./types.ts";
 
@@ -60,6 +63,7 @@ type Live = {
 };
 
 const tokenName = (id: string) => `channel-${id}`;
+const MASKED: ReadonlySet<string> = new Set(["email", "googlechat", "teams"]);
 const RETRY_MS = [10_000, 30_000, 60_000, 120_000, 300_000];
 
 export function createChannels(deps: {
@@ -81,6 +85,8 @@ export function createChannels(deps: {
   pushOwner?: (deviceId: string, text: string) => boolean;
   /** A cheap model's one-shot answer: whether an uncalled message in a "useful" room deserves an answer. */
   judge?: (system: string, user: string, about: AuxAbout) => Promise<string | undefined>;
+  /** A model that reads images naming what a picture shows (a sticker's meaning); none: stickers stay unnamed. */
+  see?: See;
   /** How long a room waits for one person's quick messages to settle (tests shorten it). */
   roomBurstMs?: number;
   /** The reply a supervised contact would get, drafted with the agent's model and not sent. */
@@ -89,8 +95,13 @@ export function createChannels(deps: {
   suggestBurstMs?: number;
   /** The owner's words kept without a turn, for memory (memory-maintenance.ts ownerReplied). */
   ownerReplied?: (messageId: string) => void;
+  /** The time attention hours are read against (tests move it). */
+  now?: () => Date;
+  /** The public address webhooks reach (`<base>`, without `/hooks/…`), while the owner has one on. */
+  hookBase?: () => string | undefined;
 }) {
   const retryMs = deps.retryMs ?? RETRY_MS;
+  const clock = deps.now ?? (() => new Date());
   const { store, secrets, log } = deps;
   const live = new Map<string, Live>();
   const typing = new Map<string, ReturnType<typeof setInterval>>();
@@ -142,13 +153,25 @@ export function createChannels(deps: {
         thread_id: threadId,
         kind,
         body: {
-          ...body,
+          ...shownOn(l.config.id, body),
           ...(inQuietHours(prefs) ? { silent: true } : {}),
         },
       });
       return true;
     }
     return false;
+  }
+
+  /**
+   * Something for the owner as a channel shows it: buttons only where the owner may answer there, so where the platform cannot vouch for them and
+   * for a card only the app answers they give way to where it is answered (DECISIONS.md#d-144).
+   */
+  function shownOn(channel: string, body: Presentation): Presentation {
+    const appOnly = body.input_id ? store.inputs.get(body.input_id)?.app_only : undefined;
+    const type = configs().find((c) => c.id === channel)?.type;
+    if (!body.buttons?.length || (ownerActsOn(type) && !appOnly)) return body;
+    const { buttons: _b, ...rest } = body;
+    return { ...rest, text: `${body.text}\n\n${channelTexts(store).inApp}` };
   }
 
   /**
@@ -176,6 +199,7 @@ export function createChannels(deps: {
     notifyOwner: (body) => notifyOwner(body),
     judge: deps.judge,
     ...(deps.roomBurstMs !== undefined ? { burstMs: deps.roomBurstMs } : {}),
+    now: () => clock().getTime(),
   });
   const poster = createPoster(store, delivery);
   const outgoing = createOutgoing({
@@ -197,6 +221,7 @@ export function createChannels(deps: {
     sendAsOwner: outgoing.sendAsOwner,
     burstMs: deps.suggestBurstMs,
   });
+  const held = createHeld({ store, configs, suggestions, now: clock });
   const cards = createInputCards({
     store,
     log,
@@ -204,6 +229,15 @@ export function createChannels(deps: {
       const l = live.get(id);
       return l?.status === "running" ? l.adapter : undefined;
     },
+  });
+  const stickers = createStickers({ store, home: deps.home, log, see: deps.see, attention: deps.attention });
+  const signals = createSignals({
+    store,
+    log,
+    live: (id) => live.get(id),
+    attention: deps.attention,
+    delivery,
+    stickers,
   });
   const inbound = createInbound({
     store,
@@ -218,8 +252,11 @@ export function createChannels(deps: {
     ownAccount: (id) => Boolean(live.get(id)?.adapter.caps.ownAccount),
     rooms,
     suggestions,
-    react: reactOn,
+    stickers,
+    react: signals.reactOn,
     answeredHere: cards.answeredHere,
+    held,
+    now: clock,
     ...(deps.ownerReplied ? { ownerReplied: deps.ownerReplied } : {}),
     setButtons: async (id, conversation, ref, buttons) => {
       const l = live.get(id);
@@ -239,61 +276,6 @@ export function createChannels(deps: {
       return l ? { adapter: l.adapter, label: l.config.label, running: l.status === "running" } : undefined;
     },
   });
-
-  /** Puts the agent's emoji on a platform message; false when the channel has no reactions or is not running. */
-  async function reactOn(id: string, conversation: string, ref: string, emoji: string): Promise<boolean> {
-    const l = live.get(id);
-    if (l?.status !== "running" || !l.adapter.caps.reactions || !l.adapter.react) return false;
-    await l.adapter.react(conversation, ref, emoji);
-    return true;
-  }
-
-  /**
-   * The agent answered with a reaction ("REACT ❤️") to the other side's last message here: put on it, shown on that
-   * message, and the words taken out of the chat (the model log keeps them). False when it could not be done.
-   */
-  async function reactInstead(run: RunRecord, to: { channel: string; conversation: string }, emoji: string) {
-    const last = theirLast(run.thread_id, to);
-    let refused: string | undefined;
-    const ok =
-      last &&
-      (await reactOn(to.channel, to.conversation, last.ref, emoji).catch((err: unknown) => {
-        refused = errorMessage(err, 200);
-        log.warn({ run: run.id, err: refused }, "channel reaction not sent");
-        return false;
-      }));
-    hideWords(run.message_id);
-    if (ok) {
-      if (last.message_id) store.messages.setReaction(last.message_id, "agent", emoji);
-      return;
-    }
-    // Words instead would be a stray emoji in their chat: nothing goes, and the owner hears why.
-    const where = store.threads.get(run.thread_id)?.title ?? to.channel;
-    const texts = channelTexts(store);
-    const text = refused ? texts.reactRefused(emoji, where, refused) : texts.reactFailed(emoji, where);
-    deps.attention({ kind: "channel", level: "warn", title: where, body: text, thread_id: run.thread_id });
-  }
-
-  /**
-   * The other side's last message in a chat: as kept when it arrived, else the last one stored for that
-   * conversation (messages from before that was kept; shown on the contact's last message here).
-   */
-  function theirLast(threadId: string, to: { channel: string; conversation: string }) {
-    const kept = store.threads.context(threadId).their_last;
-    if (kept?.channel === to.channel && kept.conversation === to.conversation) return kept;
-    const m = store.channels.inbox.latest(to.channel, to.conversation);
-    // A WhatsApp message's own id is its external_id; other channels' older rows did not keep one.
-    const ref = m?.ref ?? (live.get(to.channel)?.config.type === "whatsapp" ? m?.external_id : undefined);
-    if (!ref) return undefined;
-    const theirs = store.messages.list(threadId).findLast((x) => x.author.kind === "person");
-    return { ref, message_id: theirs?.id };
-  }
-
-  /** An answer that was only a signal (SKIP, REACT): its words leave the chat; the model log keeps them. */
-  function hideWords(messageId: string | undefined): void {
-    const msg = messageId ? store.messages.get(messageId) : undefined;
-    if (msg) store.messages.update({ ...msg, parts: msg.parts.filter((p) => p.type !== "text") });
-  }
 
   /** A confirmation nobody answered in the app after a while also goes to the owner's channel. */
   function followUp(part: Extract<Part, { type: "input" }>, threadId: string): void {
@@ -334,15 +316,28 @@ export function createChannels(deps: {
    */
   function afterRun(run: RunRecord): void {
     stopTyping(run.id);
+    passedOn(run);
     void reply(run).catch((err) => log.warn({ run: run.id, err: errorMessage(err, 200) }, "channel reply not sent"));
+  }
+
+  /** What a contact left for the owner in this turn (a request, an appointment, a message) reaches them now. */
+  function passedOn(run: RunRecord): void {
+    const thread = store.threads.get(run.thread_id);
+    const audience = thread ? audienceOf(store, thread) : undefined;
+    if (audience?.kind !== "contact" || audience.room) return;
+    const texts = channelTexts(store);
+    for (const s of store.runs.steps(run.id)) {
+      if (s.tool !== "pass_request" || s.state !== "ok" || !/^(passed on|updated)/.test(s.result ?? "")) continue;
+      const rest = [s.args.when, s.args.details].filter((v) => typeof v === "string" && v).join("\n");
+      const text = texts.passedOn(audience.name, String(s.args.kind), String(s.args.summary ?? ""), rest);
+      notifyOwner({ text: text.slice(0, 1500) }, "notice", run.thread_id);
+    }
   }
 
   async function reply(run: RunRecord): Promise<void> {
     const ack = acked.get(run.id);
     acked.delete(run.id);
     const to = replyTo(run.id);
-    // A stopped turn's half-written answer is not news: the owner stopped it.
-    if (!to || run.trigger === "surface" || run.state === "canceled") return;
     const msg = run.message_id ? store.messages.get(run.message_id) : undefined;
     let out = (msg?.parts ?? [])
       .map((p) => (p.type === "text" ? p.text : ""))
@@ -350,6 +345,9 @@ export function createChannels(deps: {
       .trim();
     // The "on it" line already went out on its own (an engine may keep it in front of the answer, or replace it).
     if (ack && out.startsWith(ack)) out = out.slice(ack.length).trim();
+    if (run.trigger !== "surface" && (await signals.handle(run, out, to))) return;
+    // A stopped turn's half-written answer is not news: the owner stopped it.
+    if (!to || run.trigger === "surface" || run.state === "canceled") return;
     const thread = store.threads.get(run.thread_id);
     const audience = thread ? audienceOf(store, thread) : undefined;
     const why = (run.error ?? "").replace(/^Could not finish: /, "").slice(0, 200);
@@ -376,15 +374,6 @@ export function createChannels(deps: {
       if (p.type === "file") return [{ id: p.media_id, kind: "file", mime: p.mime, name: p.name }];
       return [];
     });
-    if (run.state === "completed" && isSkip(out)) {
-      hideWords(run.message_id);
-      return;
-    }
-    const emoji = run.state === "completed" ? reactAnswer(out) : undefined;
-    if (emoji) {
-      await reactInstead(run, to, emoji);
-      return;
-    }
     if (!out && !attached.length) return;
     if (audience?.kind === "contact") out = guardReply(out);
     let mentions: Pick<Presentation, "mentions"> = {};
@@ -495,7 +484,7 @@ export function createChannels(deps: {
       conversation: to.conversation,
       thread_id: threadId,
       kind: "input",
-      body: { ...inputPresentation(part, channelTexts(store)), input_id: part.input_id },
+      body: shownOn(to.channel, { ...inputPresentation(part, channelTexts(store)), input_id: part.input_id }),
     });
   }
 
@@ -588,6 +577,10 @@ export function createChannels(deps: {
             if (a) store.persons.unlink(a.id);
           }
         },
+        hookUrl: () => {
+          const base = deps.hookBase?.();
+          return base ? `${base}/hooks/${config.id}` : undefined;
+        },
         signal: ac.signal,
       });
       if (r.account) l.account = r.account;
@@ -644,8 +637,8 @@ export function createChannels(deps: {
       return {
         ...c,
         token_set: token !== undefined,
-        // A mailbox's password shows none of its characters.
-        ...(token ? { token_hint: c.type === "email" ? "••••••••" : hintOf(token) } : {}),
+        // A mailbox's password, a Google key (JSON, cut anywhere) and a Teams secret show none of their characters.
+        ...(token ? { token_hint: MASKED.has(c.type) ? "••••••••" : hintOf(token) } : {}),
         status: l?.status ?? "off",
         ...(l?.error ? { error: l.error } : {}),
         ...(l?.account ? { account: l.account } : {}),
@@ -684,14 +677,24 @@ export function createChannels(deps: {
     return l.adapter.rooms();
   }
 
+  /** A request to a channel's public address: its running adapter answers it; anything else is not found. */
+  async function webhook(id: string, req: HookRequest): Promise<HookResponse> {
+    const l = live.get(id);
+    if (!l?.adapter.webhook) return { status: 404 };
+    return l.adapter.webhook(req);
+  }
+
   return {
     info,
     serverRooms,
+    webhook,
     ...outgoing,
     notifyOwner,
     approved: inbound.approved,
     afterRun,
     recover: recovery.recover,
+    /** Each tick of the office clock: contacts' chats whose channel's hours began are answered (held.ts). */
+    openHeld: held.open,
     /** A supervised contact's drafts: the owner sends one (as is or edited) or drops it. */
     suggestions: { send: suggestions.send, discard: suggestions.discard },
     /** Adds, changes or removes a channel and (re)starts it. */
@@ -730,6 +733,7 @@ export function createChannels(deps: {
       inbound.resume();
       await Promise.allSettled(configs().map(startOne));
       delivery.kick();
+      void stickers.nameUnnamed().catch((err) => log.warn({ err: errorMessage(err, 200) }, "stickers not named"));
     },
     async stop(): Promise<void> {
       rooms.stop();

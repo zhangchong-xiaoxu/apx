@@ -22,6 +22,14 @@ const LEAD: Partial<Record<ChannelKind, MessageKey>> = {
   signal: "sg.lead",
   imessage: "im.lead",
   email: "em.lead",
+  googlechat: "gc.lead",
+  sms: "sms.lead",
+  ntfy: "nt.lead",
+  nextcloud: "nc.lead",
+  irc: "irc.lead",
+  twitch: "tw.lead",
+  teams: "tm.lead",
+  line: "ln.lead",
 };
 
 /** Config › Channels: a tab per connected channel, and "+" for the kinds not connected yet. */

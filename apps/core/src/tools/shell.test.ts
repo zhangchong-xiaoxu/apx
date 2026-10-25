@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import type { PendingInput } from "@apx/protocol";
-import { callTool, say, scriptedLlm, startCore } from "../engine/testkit.ts";
+import { callTool, inputOrEnd, inputsOrEnd, say, scriptedLlm, startCore } from "../engine/testkit.ts";
 import { realpath } from "../paths.ts";
+import { removeDir } from "../testkit/platform.ts";
 import { broadScan, commandRisk, reachesOut } from "./shell.ts";
 
 test("command risk: reading runs, changing asks, destroying always asks", () => {
@@ -106,6 +107,21 @@ test("command risk: reading runs, changing asks, destroying always asks", () => 
   assert.equal(commandRisk("~/.local/bin/apx tasks"), "always");
   assert.equal(commandRisk("node apps/terminal/src/main.ts routines"), "always");
   assert.equal(commandRisk("cat apx-notes.md"), "never");
+  for (const c of [
+    "APX_AGENT=x apx tasks",
+    "echo x | xargs apx",
+    "bash -c 'apx tasks'",
+    "pnpm exec apx",
+    "(apx tasks)",
+  ])
+    assert.equal(commandRisk(c), "always", c);
+  // A folder named apx is only read: going into it or listing it is not running the CLI.
+  for (const c of [
+    "cd /code/agentprojectcontext/apx && rg -n teams docs | head -100",
+    "ls -la /code/agentprojectcontext/apx",
+    "git -C ~/code/apx status --short",
+  ])
+    assert.equal(commandRisk(c), "never", c);
 });
 
 const llm = scriptedLlm((req, { said, afterTool }) => {
@@ -160,7 +176,7 @@ before(async () => {
 });
 after(async () => {
   await env.core.close();
-  env.cleanup();
+  await env.cleanup();
 });
 
 const lastSeen = () => String(llm.calls.at(-1)?.messages.at(-1)?.content);
@@ -232,11 +248,10 @@ test("manual: a command that changes something waits for the owner", async () =>
   try {
     const t = await thread();
     await env.client.call("threads.send", { thread: t, text: "touch please" });
-    let inputs: Awaited<ReturnType<typeof env.client.call<"runs.pending">>>["inputs"] = [];
-    for (let i = 0; i < 100 && !inputs.length; i++) {
-      inputs = (await env.client.call("runs.pending", { thread: t })).inputs;
-      await new Promise((r) => setTimeout(r, 20));
-    }
+    const inputs: Awaited<ReturnType<typeof env.client.call<"runs.pending">>>["inputs"] = await inputsOrEnd(
+      env.client,
+      t,
+    );
     assert.equal(inputs[0]?.tool, "shell");
     await env.client.call("runs.respond", { input: inputs[0]?.id ?? "", decision: "deny" });
     await env.settle(t);
@@ -262,11 +277,7 @@ test("auto reads in a cwd outside its folders; manual, in a chat with no project
   await env.client.call("agents.update", { agent: "roby", autonomy: "manual" });
   try {
     await env.client.call("threads.send", { thread: t, text: "escape please" });
-    let input: PendingInput | undefined;
-    for (let i = 0; i < 80 && !input; i++) {
-      input = (await env.client.call("runs.pending", { thread: t })).inputs[0];
-      if (!input) await new Promise((r) => setTimeout(r, 25));
-    }
+    const input: PendingInput | undefined = await inputOrEnd(env.client, t);
     assert.equal(input?.folders?.length, 1, "a folder card, not a refusal");
     assert.deepEqual(input?.approval_scopes, ["once"]);
     await env.client.call("runs.respond", { input: input?.id ?? "", decision: "deny" });
@@ -297,8 +308,8 @@ test("a folder that is a symlink pointing outside the project is refused", async
   assert.equal(insideReal(root, "src"), true);
   assert.equal(insideReal(root, "escape"), false);
   assert.equal(insideReal(root, "escape/deeper/not-there"), false);
-  fs.rmSync(root, { recursive: true, force: true });
-  fs.rmSync(outside, { recursive: true, force: true });
+  await removeDir(root);
+  await removeDir(outside);
 });
 
 test("reading the agent's own folder does not count as outside content: a write after it runs without asking", async () => {

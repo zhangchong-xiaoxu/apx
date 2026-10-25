@@ -7,13 +7,13 @@ import type { AgentRecord } from "../domain/agents.ts";
 import { strictApproval } from "../domain/approvals.ts";
 import type { InputRecord } from "../domain/inputs.ts";
 import type { JobRecord } from "../domain/jobs.ts";
-import type { RunRecord } from "../domain/runs.ts";
+import { ownerAsked, type RunRecord } from "../domain/runs.ts";
 import type { Store } from "../domain/store.ts";
 import { worksInFolder } from "../domain/threads.ts";
 import { errorMessage } from "../errors.ts";
 import type { TurnIO } from "../harness/index.ts";
 import { MCP_CALL, MCP_SEARCH, unwrapCall } from "../tools/mcp-bridge.ts";
-import { authorize, decide } from "../tools/policy.ts";
+import { authorize, decide, keepsCard } from "../tools/policy.ts";
 import { cap, UNTRUSTED_MARK } from "../tools/result.ts";
 import { commandRisk, judgeCommand } from "../tools/shell.ts";
 import type { CheckContext, Confirm, ScopedThread, Tool, ToolContext } from "../tools/types.ts";
@@ -283,6 +283,15 @@ export function createExecutor(o: {
         text: `not run: ${decision.reason}. Do not retry it; tell the owner or continue without it.`,
       };
     }
+    // What the owner set up changes at their own word: not at another agent's, a contact's or a job's (DECISIONS.md#d-140).
+    const askedIn = (id: string) => store.runs.get(store.inputs.get(id)?.run_id ?? "")?.input?.origin;
+    if (tool.ownerSetting?.(args) && !ownerAsked(run.input?.origin, askedIn)) {
+      card("error", "only when the owner asks");
+      return {
+        ok: false,
+        text: "not run, nothing was asked of the owner: changes to what the owner set up happen only when they ask you themselves. Tell whoever asked that the owner has to ask for it.",
+      };
+    }
     // A path outside the agent's folders asks the owner to let it, instead of being refused (DECISIONS.md#d-099).
     const lent = await lend(tool, name, args, raw, callId, run);
     if ("card" in lent) {
@@ -358,12 +367,19 @@ export function createExecutor(o: {
       }
     }
     if (wide && !proposes) wideOk = true;
-    // A call that always asks has its own grant, apart from the tool's ordinary one (DECISIONS.md#d-089).
-    const target = level === "always" && tool.approval ? strictApproval(tool.approval) : tool.approval;
+    const keeps = keepsCard(tool, args, agent);
+    // A call that always asks has its own grant, apart from the tool's ordinary one (DECISIONS.md#d-089); one that
+    // keeps its card whatever is granted offers none (DECISIONS.md#d-143).
+    const target =
+      keeps === "card"
+        ? undefined
+        : level === "always" && tool.approval
+          ? strictApproval(tool.approval)
+          : tool.approval;
     if (
       gate.kind === "confirm" &&
       // The owner just said yes to this very call on its folder card: manual's ask for every change is answered.
-      !(lent.asked && gate.why === "asks_every") &&
+      !(lent.asked && gate.why === "asks_every" && !keeps) &&
       !(target && store.approvals.allows(target, thread.id, agent.id, args)) &&
       !o.inputs.takeGrant(thread.id, agent.id, name, raw, target?.key)
     ) {
@@ -377,11 +393,12 @@ export function createExecutor(o: {
         tool: name,
         approval: target,
         args: raw,
-        detail: describe(args),
+        detail: tool.explain?.(args) ?? describe(args),
         // A preview that fails only costs the patch: the owner still sees the arguments.
         change: await tool.preview?.(args, { agent, thread: callThread }).catch(() => undefined),
         external: o.external(),
         stays: true,
+        appOnly: tool.ownerSetting?.(args),
         signal,
       });
       signal.throwIfAborted();
@@ -418,8 +435,9 @@ export function createExecutor(o: {
       },
       upsertPart: display.upsert,
       call: (method, params) => o.call(method, params, { run, callId }),
-      // Only after the owner's OK on a tool that always asks for it (the confirmation above ran for this call).
-      ...(level === "always"
+      // A tool that always asks acts as the owner once this call passed its card (answered or granted above), or
+      // where the mode or rule let it run unasked and it keeps no card (DECISIONS.md#d-143).
+      ...(level === "always" && (gate.kind === "confirm" || !keeps)
         ? { callAsOwner: (method, params) => o.call(method, params, { run, callId, owner: true }) }
         : {}),
       delegate: o.delegate,
@@ -433,6 +451,19 @@ export function createExecutor(o: {
           prompt,
           options,
           multi,
+          external: o.external(),
+          stays: !canContinue,
+          signal,
+        }),
+      // No tool on the card: the owner accepts the action itself, and the calls it takes still pass their own checks.
+      proposeAction: (action, canContinue) =>
+        o.inputs.ask({
+          run,
+          agent,
+          display,
+          callId,
+          kind: "confirm",
+          prompt: action,
           external: o.external(),
           stays: !canContinue,
           signal,

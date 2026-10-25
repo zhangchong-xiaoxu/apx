@@ -2,6 +2,7 @@
 import { textLanguage } from "../domain/owner.ts";
 import type { Store } from "../domain/store.ts";
 import { stepsText } from "../tools/computer.ts";
+import { settingAct } from "../tools/settings.ts";
 import type { Tool } from "../tools/types.ts";
 
 type Args = Record<string, unknown>;
@@ -24,6 +25,30 @@ const TASK_STATE: Record<string, string> = {
   renegotiated: "renegociada",
 };
 
+/** What apx_settings changed, by the area of its method ("Cambió un canal"). */
+const SETTING_AREA: Record<string, string> = {
+  contacts: "un contacto",
+  channels: "un canal",
+  imessage: "iMessage",
+  owner: "tu perfil",
+  notices: "los avisos",
+  agents: "los agentes",
+  routines: "una rutina",
+  profiles: "un perfil de agente",
+  tasks: "una tarea",
+  threads: "un chat",
+  sessions: "las sesiones importadas",
+  projects: "un proyecto",
+  memory: "la memoria",
+  skills: "las habilidades",
+  resources: "lo que usa un proyecto",
+  mcp: "un servidor MCP",
+  extensions: "una extensión",
+  services: "los servicios de medios",
+  surfaces: "un widget",
+  stickers: "los stickers",
+};
+
 /** Spanish titles for the built-in tools, by tool name. */
 export const SPANISH_TITLES: Record<string, (a: Args) => string> = {
   video_transcript: (a) => `Miró ${str(a.url)}`,
@@ -31,6 +56,7 @@ export const SPANISH_TITLES: Record<string, (a: Args) => string> = {
     `${a.task === undefined ? "Revisó pedidos" : a.task ? "Actualizó pedido" : "Pasó el pedido"}: ${str(a.summary)}`,
   search_owner_notes: (a) => `Buscó «${str(a.query, 60)}» en tus notas`,
   contact_requests: () => "Revisó quién está esperando",
+  suggest_connection: (a) => `Buscó ${str(a.query, 60)} para conectar`,
   answer_contact_request: (a) => (a.decision === "answer" ? `Dejó pasar a ${str(a.code)}` : `Ignoró a ${str(a.code)}`),
   search_chats: (a) => `Buscó «${str(a.query, 60)}» en los chats`,
   read_chat: (a) => `Leyó el chat ${str(a.chat)}`,
@@ -44,6 +70,11 @@ export const SPANISH_TITLES: Record<string, (a: Args) => string> = {
         ? "Cambió los límites de los agentes"
         : "Revisó los límites de los agentes",
   contact_list: () => "Revisó los contactos",
+  apx_settings: (a) => {
+    const { act, area } = settingAct(a);
+    const what = SETTING_AREA[area] ?? "la configuración";
+    return act === "look" ? "Revisó la configuración" : `${act === "remove" ? "Quitó" : "Cambió"} ${what}`;
+  },
   list_agents: () => "Buscó agentes",
   agent_set: (a) =>
     !a.agent
@@ -124,6 +155,29 @@ const ZH_TASK_STATE: Record<string, string> = {
   renegotiated: "已改期",
 };
 
+const ZH_SETTING_AREA: Record<string, string> = {
+  contacts: "联系人",
+  channels: "渠道",
+  imessage: "iMessage",
+  owner: "你的资料",
+  notices: "通知",
+  agents: "智能体",
+  routines: "自动任务",
+  profiles: "智能体档案",
+  tasks: "任务",
+  threads: "对话",
+  sessions: "导入的会话",
+  projects: "项目",
+  memory: "记忆",
+  skills: "技能",
+  resources: "项目使用的资源",
+  mcp: "MCP 服务器",
+  extensions: "扩展",
+  services: "媒体服务",
+  surfaces: "小组件",
+  stickers: "贴纸",
+};
+
 /** Chinese titles for the built-in tools, by tool name. */
 export const CHINESE_TITLES: Record<string, (a: Args) => string> = {
   video_transcript: (a) => `观看了 ${str(a.url)}`,
@@ -131,6 +185,7 @@ export const CHINESE_TITLES: Record<string, (a: Args) => string> = {
     `${a.task === undefined ? "查看了请求" : a.task ? "更新了请求" : "转交了请求"}：${str(a.summary)}`,
   search_owner_notes: (a) => `在你的笔记中搜索了“${str(a.query, 60)}”`,
   contact_requests: () => "查看了谁在等待",
+  suggest_connection: (a) => `搜索了可连接的 ${str(a.query, 60)}`,
   answer_contact_request: (a) => (a.decision === "answer" ? `放行了 ${str(a.code)}` : `忽略了 ${str(a.code)}`),
   search_chats: (a) => `在对话中搜索了“${str(a.query, 60)}”`,
   read_chat: (a) => `阅读了对话 ${str(a.chat)}`,
@@ -144,6 +199,11 @@ export const CHINESE_TITLES: Record<string, (a: Args) => string> = {
         ? "修改了智能体的限制"
         : "查看了智能体的限制",
   contact_list: () => "查看了联系人",
+  apx_settings: (a) => {
+    const { act, area } = settingAct(a);
+    const what = ZH_SETTING_AREA[area] ?? "设置";
+    return act === "look" ? "查看了设置" : `${act === "remove" ? "移除了" : "修改了"}${what}`;
+  },
   list_agents: () => "查找了智能体",
   agent_set: (a) =>
     !a.agent

@@ -131,15 +131,15 @@ for (const packaged of [false, true]) {
 test("Windows stop ends a running supervisor and succeeds once it is gone", async () => {
   // Only Windows has the cmd.exe wrapper and WMI this checks.
   if (process.platform !== "win32") return;
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "apx-stop-"));
+  const dir = fs.mkdtempSync(path.join(home, "stop-"));
   const terminal = path.join(dir, "main.ts");
   fs.writeFileSync(terminal, "setInterval(() => {}, 1000);\n");
-  const home = path.join(dir, "home");
+  const coreHome = path.join(dir, "home");
   // With env the entry is a cmd.exe wrapper, which exits by itself once its supervisor is stopped.
   const command = windowsRunCommand({
     node: process.execPath,
     terminal,
-    home,
+    home: coreHome,
     electron: false,
     env: { APX_PORT: "1" },
   });
@@ -151,21 +151,21 @@ test("Windows stop ends a running supervisor and succeeds once it is gone", asyn
     ).stdout.trim();
   try {
     ps(windowsStartScript(command));
-    for (let i = 0; i < 50 && running() !== "2"; i++) await new Promise((r) => setTimeout(r, 100));
+    for (const end = Date.now() + 10_000; running() !== "2" && Date.now() < end; )
+      await new Promise((r) => setTimeout(r, 100));
     assert.equal(running(), "2", "cmd.exe and the supervisor are running");
     // Regression: a visible console for the cmd.exe wrapper lets a stray click kill the whole supervisor tree.
     const windowed = ps(
       `@(Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -and $_.CommandLine.Contains('${dir.replaceAll("'", "''")}') }).ProcessId | ForEach-Object { (Get-Process -Id $_).MainWindowHandle }`,
     ).stdout.trim();
     assert.ok(!windowed || /^0(\s+0)*$/.test(windowed), `expected no visible window, got handles: ${windowed}`);
-    const run = ps(windowsStopScript(home, command));
+    const run = ps(windowsStopScript(coreHome, command));
     assert.equal(run.status, 0, run.stderr);
     assert.equal(running(), "0");
   } finally {
     ps(
       `Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -and $_.CommandLine.Contains('${dir.replaceAll("'", "''")}') -and $_.Name -ne 'powershell.exe' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }`,
     );
-    fs.rmSync(dir, { recursive: true, force: true });
   }
 });
 

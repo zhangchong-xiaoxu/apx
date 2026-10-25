@@ -13,6 +13,7 @@ import {
   CatalogEngine,
   ChannelClosers,
   ChannelEmail,
+  ChannelHours,
   ChannelInfo,
   ChannelResearch,
   ChannelRooms,
@@ -54,6 +55,7 @@ import {
   ServiceKind,
   ServiceSettings,
   ServiceTest,
+  Sticker,
   Surface,
   SurfaceOrigin,
   SurfaceState,
@@ -803,12 +805,23 @@ export const appMethods = {
   /**
    * Tokens and turns by model since a date. `billing`: included = the owner's subscription (Claude Code, Codex, an
    * ACP agent); metered = a provider's API, paid per token. `aux`: the auxiliary model's calls outside any turn
-   * (always metered). With `thread`, only that chat's, all it kept.
+   * (always metered). With `thread`, only that chat's, all it kept, and `totals` over every run of it (`seconds` at
+   * work; `cached` prompt tokens are counted inside `input`).
    */
   "usage.summary": {
     params: z.object({ since: z.string().optional(), project: Id.optional(), thread: Id.optional() }).strict(),
     result: z.object({
       since: z.string(),
+      totals: z
+        .object({
+          runs: z.number().int(),
+          failed: z.number().int(),
+          seconds: z.number(),
+          input: z.number().int(),
+          output: z.number().int(),
+          cached: z.number().int(),
+        })
+        .optional(),
       models: z.array(
         z.object({
           model: z.string(),
@@ -1042,10 +1055,12 @@ export const appMethods = {
             rooms: ChannelRooms.optional(),
             closers: ChannelClosers.default("silent"),
             research: ChannelResearch.default("owner"),
+            hours: ChannelHours.optional(),
             email: ChannelEmail.optional(),
           })
           .nullable(),
-        token: z.string().min(8).max(400).optional(),
+        // A Google service account key travels whole (about 2.3 KB).
+        token: z.string().min(8).max(8000).optional(),
       })
       .strict(),
     result: z.object({ channels: z.array(ChannelInfo) }),
@@ -1107,6 +1122,40 @@ export const appMethods = {
     params: z.object({ limit: z.number().int().min(1).max(200).default(50) }).strict(),
     result: z.object({ items: z.array(OutboxItem) }),
     effect: false,
+    access: "human",
+  },
+  /** The stickers kept from a channel type, the most used first, named or not, blocked or not. */
+  "stickers.list": {
+    params: z.object({ platform: z.string().min(1).max(40) }).strict(),
+    /** `auto`: new stickers are the agent's to use as they come (the default), else each waits for the owner's OK. */
+    result: z.object({ stickers: z.array(Sticker), auto: z.boolean() }),
+    effect: false,
+    access: "human",
+  },
+  /** The owner's words for what a sticker means (no model names it again), or whether the agent may send it. */
+  "stickers.set": {
+    params: z
+      .object({ id: Id, meaning: z.string().trim().min(1).max(160).optional(), blocked: z.boolean().optional() })
+      .strict(),
+    result: Sticker,
+    effect: true,
+    access: "human",
+  },
+  /**
+   * Whether new stickers are the agent's to use as they come, or each waits for the owner's OK. One for adults, or one
+   * no model could see, always waits.
+   */
+  "stickers.auto": {
+    params: z.object({ on: z.boolean() }).strict(),
+    result: z.object({ on: z.boolean() }),
+    effect: true,
+    access: "human",
+  },
+  /** Forgets a sticker and its file; if someone sends it again it is kept and named again. */
+  "stickers.remove": {
+    params: z.object({ id: Id }).strict(),
+    result: z.object({ removed: z.boolean() }),
+    effect: true,
     access: "human",
   },
   /**
@@ -1371,6 +1420,7 @@ export const appMethods = {
         rules: z.string().max(1000).optional(),
         muted: z.boolean().optional(),
         supervised: z.boolean().optional(),
+        any_hour: z.boolean().optional(),
         // Only the flags sent change (PersonPerms' defaults would reset the others).
         perms: z
           .object({ appointments: z.boolean(), requests: z.boolean(), notes: z.boolean() })

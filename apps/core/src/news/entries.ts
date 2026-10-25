@@ -1,6 +1,7 @@
 // Release news worth acting on: what a release lets the super-agent do for this owner. Each entry is told once, and
 // only to an owner it applies to. See rules/DECISIONS.md#d-117
 import type { Store } from "../domain/store.ts";
+import { CATALOG } from "../integrations/catalog.ts";
 
 /** What an entry may ask about this install before it is told. */
 export type NewsFacts = {
@@ -10,6 +11,12 @@ export type NewsFacts = {
   google: { calendar: boolean; gmail: boolean; drive: boolean; gmailReadable: boolean };
   /** The super-agent runs the secretary profile (chief of staff). */
   secretary: boolean;
+  /** People other than the owner write to them on a channel (contacts the agents answer). */
+  contacts: boolean;
+  /** Channels the owner connected (Telegram, WhatsApp…). */
+  channels: number;
+  /** Catalog integrations the owner connected (GitHub, Notion…). */
+  integrations: number;
 };
 
 export type NewsAction = {
@@ -106,7 +113,161 @@ export const NEWS: readonly NewsEntry[] = [
       },
     ],
   },
+  {
+    id: "channel-hours",
+    since: "2.10.0",
+    title: "Attention hours for contacts",
+    applies: (f) => f.contacts,
+    text:
+      "A channel can now keep attention hours (days, from, to, in the owner's time zone): a contact who writes " +
+      "outside them gets no answer then, and the agent answers everything they sent, once, when the hours begin. " +
+      "The owner is always answered, and a contact can be marked to be answered at any hour. The owner sets them in " +
+      "each channel's settings and on the contact's card, or asks the super-agent, who sets both with " +
+      "apx_settings once the owner approves each change.",
+    actions: [
+      {
+        label: { en: "Suggest my hours", es: "Sugerime un horario" },
+        prompt:
+          "Look at when my contacts usually write to me and suggest attention hours for my channels, and which " +
+          "contacts you would answer at any hour. If I agree, set them.",
+      },
+    ],
+  },
+  {
+    id: "super-agent-settings",
+    since: "2.10.0",
+    title: "Settings changed from chat",
+    // The owner's profile, notices, projects and memory are every owner's: contacts are only part of it.
+    applies: () => true,
+    text:
+      "The super-agent can now change, with apx_settings, almost anything the owner sets up in the panel: a " +
+      "contact (who they are, the rules to answer them, their relation), a channel (who answers it, strangers, " +
+      "rooms), the owner's own profile and time zone, when they are notified, projects, memory, skills, agent " +
+      "profiles, routines, archived agents, tasks, chats, widgets and MCP servers (their keys named by a variable the " +
+      "owner saved, never typed in chat). Each change shows the owner the fields before and after, and waits for " +
+      "their yes. Saving a key, sign-ins, models, what agents may do and this computer stay the owner's, in Settings.",
+    actions: [
+      {
+        label: { en: "What can you change?", es: "¿Qué podés cambiar?" },
+        prompt:
+          "Tell me in a few lines what you can change in my APX settings from chat, then ask me what I would like " +
+          "to adjust, and change it as I tell you.",
+      },
+      {
+        label: { en: "Set my quiet hours", es: "Configurá mis horas de silencio" },
+        prompt: "Ask me when I do not want to be notified and how many notices a day are fine, then set it up.",
+      },
+    ],
+  },
+  {
+    id: "stickers",
+    since: "2.10.0",
+    title: "Stickers kept and sent back",
+    applies: (f) => f.contacts,
+    text:
+      "Every sticker someone sends on WhatsApp or Telegram is now kept the moment it arrives, named once by what it " +
+      "shows, so the agent understands it and can answer a chat with one of them instead of words, on the same " +
+      "platform. They are listed in each channel's settings, under Stickers, where the owner can say what one " +
+      "means or that the agent may not use it, and choose whether new ones are the agent's to use at once (the " +
+      "default) or wait for their OK; one for adults always waits. Reactions the agent puts now show in the app too.",
+    actions: [
+      {
+        label: { en: "Answer me with a sticker", es: "Contestame con un sticker" },
+        prompt:
+          "Answer this message with one of the stickers people sent me on this channel, the one that fits best. If " +
+          "none is kept here yet, tell me in words that a sticker sent to you is kept and you can use it after.",
+      },
+    ],
+  },
+  {
+    id: "more-apps",
+    since: "2.10.0",
+    title: "Fifty more integrations",
+    applies: (f) => f.integrations > 0,
+    text:
+      "Resources › Integrations now connects about fifty more apps, most with one click and a sign-in in the " +
+      "browser, nothing to paste: Linear, Jira and Confluence, GitLab, Vercel, Supabase, Stripe, Todoist, Airtable, " +
+      "Figma, Canva, Cloudflare, Dropbox, Calendly, PayPal and more; Home Assistant and n8n take their address and a " +
+      "token. The catalog has a search box. GitHub, Slack and Brave Search now run on their maintained servers: " +
+      "editing and saving one switches it.",
+    actions: [
+      {
+        label: { en: "Which ones help me?", es: "¿Cuáles me sirven?" },
+        prompt:
+          "Look at what I work on and the integrations I already have, and suggest the two or three new ones from " +
+          "Resources › Integrations that would help me most, saying in a line what you would do with each.",
+      },
+    ],
+  },
+  {
+    id: "more-channels",
+    since: "2.10.0",
+    title: "New channels",
+    applies: (f) => f.channels > 0,
+    text:
+      "Agents can now be reached on more apps: iMessage on the owner's Mac, Google Chat, SMS through Twilio, ntfy " +
+      "push notifications, Nextcloud Talk, IRC and Twitch chat. Each is set up in Settings › Channels, like the others.",
+    actions: [
+      {
+        label: { en: "Set one up", es: "Configurar uno" },
+        prompt:
+          "Tell me in a few lines which of the new channels (iMessage, Google Chat, SMS, ntfy, Nextcloud Talk, IRC, " +
+          "Twitch) would suit how I use you, and walk me through setting up the one I pick.",
+      },
+    ],
+  },
+  {
+    id: "teams-line",
+    since: "2.10.0",
+    title: "Microsoft Teams and LINE",
+    applies: (f) => f.channels > 0,
+    text:
+      "Agents can now be reached on Microsoft Teams and LINE. Both send their messages to a web address, so their " +
+      "screen in Settings › Channels turns on a public address first: Tailscale Funnel (a fixed address), ngrok " +
+      "(started by APX, which says when its address is new) or the " +
+      "owner's own. Only a door for webhooks is published, never the panel, and every message is checked.",
+    actions: [
+      {
+        label: { en: "Set up Teams", es: "Configurar Teams" },
+        prompt:
+          "Walk me through connecting Microsoft Teams: what to create in Azure, how to turn on the public address " +
+          "(Tailscale or ngrok, whichever I have), and where to paste each value.",
+      },
+    ],
+  },
+  {
+    id: "owner-check",
+    since: "2.10.0",
+    title: "Channel messages checked first",
+    applies: (f) => f.channels > 0,
+    text:
+      "On every channel but Telegram, WhatsApp and Signal, a message that comes as the owner no longer acts by " +
+      "itself: those apps cannot always prove who wrote. The super-agent reads it first, asks the owner in the app " +
+      "when it is unsure or the request is risky, and then the channel's agent does what was decided and answers " +
+      "there. Confirmations and questions are answered in the app (the panel, the desktop or the paired phone); on " +
+      "Telegram, WhatsApp and Signal they still can be, except a change to the owner's settings, which is approved " +
+      "only in the app.",
+    actions: [
+      {
+        label: { en: "How it works for me", es: "Cómo me queda a mí" },
+        prompt:
+          "Tell me in a few lines which of my channels act on my word directly and which go through you first, and " +
+          "where I approve things now.",
+      },
+    ],
+  },
 ];
+
+/** The catalog integrations among the owner's global MCP servers. */
+const connectedIntegrations = (store: Store): number => {
+  try {
+    const servers = JSON.parse(store.settings.get("mcp_servers") ?? "{}") as { mcpServers?: object };
+    const names = Object.keys(servers.mcpServers ?? {});
+    return CATALOG.filter((e) => names.includes(e.id)).length;
+  } catch {
+    return 0;
+  }
+};
 
 const signedIn = (store: Store, id: string) => Boolean(store.settings.get(`google_account:${id}`));
 
@@ -119,6 +280,9 @@ export const newsFacts = (store: Store): NewsFacts => ({
     gmailReadable: signedIn(store, "gmail") && store.settings.get("google_client:gmail") === "own",
   },
   secretary: store.settings.read("profile").id === "secretary",
+  contacts: store.persons.list().some((p) => p.role !== "owner" && p.role !== "blocked" && p.addresses.length > 0),
+  channels: store.settings.read("channels").length,
+  integrations: connectedIntegrations(store),
 });
 
 /** The action a channel button stands for. */

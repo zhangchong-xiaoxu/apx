@@ -1,7 +1,7 @@
 import { esHelper } from "./es-helper.ts";
 // UI strings, Spanish (Rioplatense, voseo). A missing key falls back to English.
 
-import { noticeEs } from "@apx/protocol";
+import { noticeEs } from "@apx/protocol/notices";
 import type { MessageKey } from "./en.ts";
 import { esChannels } from "./es-channels.ts";
 import { esChat } from "./es-chat.ts";
@@ -351,6 +351,10 @@ export const es: Partial<Record<MessageKey, string>> = {
   "account.cloud": "Cuenta en la nube",
   "account.cloudHint": "Sincronizar entre dispositivos y compartir con tu equipo.",
   "input.confirmTitle": "Necesita tu OK",
+  "input.actionTitle": "¿Aceptás esta acción?",
+  "input.accept": "Aceptar",
+  "input.accepted": "Aceptada",
+  "input.askedAction": "Propuso una acción",
   "input.questionTitle": "Pregunta para vos",
   "input.approve": "Aprobar",
   "input.deny": "Rechazar",
@@ -503,6 +507,7 @@ export const es: Partial<Record<MessageKey, string>> = {
   "chat.readOnly": "Conversación entre agentes · solo lectura",
   "chat.with": "Chat con {name}",
   "chat.startHint": "Escribí abajo para empezar.",
+  "chat.toBottom": "Ir al último mensaje",
   "chat.fromWidget": "Desde el widget",
   "chat.theAgent": "El agente",
   "chat.agentWorking": "{name} está trabajando…",
@@ -1374,9 +1379,26 @@ export const es: Partial<Record<MessageKey, string>> = {
   "tg.unblock": "Desbloquear",
   "tg.forget": "Olvidar a esta persona",
   "tg.sent": "Enviado hace poco",
+  "stk.title": "Stickers",
+  "stk.lead":
+    "Los stickers que te mandan por {channel} se guardan al llegar, con lo que significan. El agente los entiende y puede contestar con los que tienen permitido usarse.",
+  "stk.none": "Todavía no llegó ningún sticker por {channel}.",
+  "stk.meaning": "Qué significa",
+  "stk.unnamed": "Sin nombre todavía",
+  "stk.counts": "Recibido {seen} · enviado {sent}",
+  "stk.usable": "Puede usarlo",
+  "stk.forget": "Olvidar este sticker",
+  "stk.auto": "Aprobar stickers nuevos automáticamente",
+  "stk.autoHint":
+    "Prendido, el agente puede usar cada sticker apenas lo guarda; apagado, cada uno espera tu OK. Los +18 y los que ningún modelo pudo ver siempre esperan tu OK.",
+  "stk.adult": "+18",
+  "stk.waits": "Esperando tu OK",
   "tg.out.queued": "En cola",
   "tg.out.sending": "Enviando",
   "tg.out.sent": "Enviado",
+  "tg.out.sticker": "Envió un sticker",
+  "tg.out.stickerAbout": "Envió un sticker: {about}",
+  "tg.out.reaction": "Reaccionó a un mensaje con {emoji}",
   "tg.out.uncertain": "Quizás enviado",
   "tg.out.failed": "Falló",
   "error.channels": "Canales: {error}",

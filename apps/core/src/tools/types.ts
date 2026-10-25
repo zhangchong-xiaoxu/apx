@@ -23,6 +23,8 @@ export type Effect = "none" | "local" | "external" | "message";
 export type Confirm = "never" | "untrusted" | "ask" | "always";
 /** `url_data`: the URL carries values (a query) that outside content could have put there to send away. */
 export type UntrustedWhy = "url_data";
+/** How a call keeps its card where the mode would skip it (Tool.keepsCard). */
+export type KeepsCard = "card" | "grant";
 
 /** The thread a tool call runs in, with how far its agent reaches: made only by engine/permissions.ts. */
 export type ScopedThread = Thread & FolderThread;
@@ -49,7 +51,8 @@ export type ToolContext = {
   call<M extends MethodName>(method: M, params: Params<M>): Promise<Result<M>>;
   /**
    * The same, for the owner: only a tool that always needs the owner's OK has it, and only once they approved this
-   * call (an owner-only method, like copying their browser's session, runs as their own act).
+   * call (its card or their grant), or where its agent's mode or rule lets it run unasked and the tool keeps no card
+   * (DECISIONS.md#d-143). An owner-only method, like copying their browser's session, then runs as their own act.
    */
   callAsOwner?<M extends MethodName>(method: M, params: Params<M>): Promise<Result<M>>;
   /** Hands a task to another agent or a worker (a new session, or one to continue): the one a2a path. */
@@ -70,6 +73,8 @@ export type ToolContext = {
    * continue without it, the question stays open after the turn stops waiting and its answer wakes the agent.
    */
   askOwner(prompt: string, options?: string[], canContinue?: boolean, multi?: boolean): Promise<InputRecord>;
+  /** Puts one concrete action to the owner as a card to accept or decline, and waits as askOwner does. */
+  proposeAction(action: string, canContinue?: boolean): Promise<InputRecord>;
   /** Takes back this agent's own open question: it ends `withdrawn` and the owner is not told anything new. */
   withdrawQuestion(inputId: string): InputRecord;
   /** Runs a shell command as a terminal job of this run: waits for it (up to timeoutMs) unless `background`. */
@@ -125,6 +130,18 @@ export type Tool = {
   outside?: ((args: Record<string, unknown>, ctx: CheckContext) => string[]) | undefined;
   /** What the call would change in a file, shown to the owner when they are asked to confirm it. */
   preview?: ((args: Record<string, unknown>, ctx: CheckContext) => Promise<FileChange | undefined>) | undefined;
+  /** What the owner reads about the call when asked to confirm it, in place of arguments that say nothing (an id). */
+  explain?: ((args: Record<string, unknown>) => string | undefined) | undefined;
+  /**
+   * The call changes what the owner set up (their contacts, channels, agents, settings): it runs only on the owner's
+   * own word in this chat, never another agent's, and always on their card, whatever the mode (DECISIONS.md#d-140).
+   */
+  ownerSetting?: ((args: Record<string, unknown>) => boolean) | undefined;
+  /**
+   * Total and the agent's own rule `auto` do not skip this call's card (DECISIONS.md#d-143): `card`, nothing does, not
+   * even a grant; `grant`, only the owner's grant for it does. An ownerSetting call is always `card`.
+   */
+  keepsCard?: ((args: Record<string, unknown>, agent: AgentRecord) => KeepsCard | undefined) | undefined;
   /** Checks the model's arguments; a failure goes back to the model as the tool's result. */
   parse(raw: Record<string, unknown>): { ok: true; args: Record<string, unknown> } | { ok: false; error: string };
   /** Short human title for the tool card ("Opened github.com"). Gets the raw arguments. */
@@ -152,6 +169,9 @@ export function defineTool<S extends Args>(def: {
   check?: (args: z.output<S>, ctx: CheckContext) => void | Promise<void>;
   outside?: (args: z.output<S>, ctx: CheckContext) => string[];
   preview?: (args: z.output<S>, ctx: CheckContext) => Promise<FileChange | undefined>;
+  explain?: (args: z.output<S>) => string | undefined;
+  ownerSetting?: (args: z.output<S>) => boolean;
+  keepsCard?: (args: z.output<S>, agent: AgentRecord) => KeepsCard | undefined;
   title(args: Partial<z.input<S>>): string;
   run(args: z.output<S>, ctx: ToolContext): Promise<string>;
 }): Tool {
@@ -175,6 +195,13 @@ export function defineTool<S extends Args>(def: {
       : {}),
     ...(def.preview
       ? { preview: async (a: Record<string, unknown>, ctx: CheckContext) => def.preview?.(a as z.output<S>, ctx) }
+      : {}),
+    ...(def.explain ? { explain: (a: Record<string, unknown>) => def.explain?.(a as z.output<S>) } : {}),
+    ...(def.ownerSetting
+      ? { ownerSetting: (a: Record<string, unknown>) => def.ownerSetting?.(a as z.output<S>) === true }
+      : {}),
+    ...(def.keepsCard
+      ? { keepsCard: (a: Record<string, unknown>, agent: AgentRecord) => def.keepsCard?.(a as z.output<S>, agent) }
       : {}),
     ...(def.local ? { local: (a: Record<string, unknown>) => def.local?.(a as z.output<S>) === true } : {}),
     ...(def.reads ? { reads: (a: Record<string, unknown>) => def.reads?.(a as z.output<S>) === true } : {}),

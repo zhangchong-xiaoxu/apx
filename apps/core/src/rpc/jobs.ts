@@ -21,6 +21,9 @@ function fromOf(origin: Origin): JobFrom {
       return { kind: origin.kind, name: origin.name };
     case "surface":
       return { kind: origin.kind, name: origin.title };
+    // A contact's messages answered once the channel's hours began: shown as theirs.
+    case "hours_began":
+      return { kind: "channel", name: origin.name };
     default:
       return { kind: origin.kind };
   }
@@ -60,6 +63,7 @@ export function jobHandlers(store: Store, engine: Engine) {
       const from = since ?? (thread ? "" : new Date(Date.now() - 30 * 86_400_000).toISOString());
       return {
         since: from,
+        ...(thread ? { totals: store.runs.threadTotals(thread) } : {}),
         aux: thread ? store.auxCalls.ofThread(thread) : store.auxCalls.since(from, project),
         models: store.runs.usage(from, project, thread).map((u) => ({
           model: u.model,

@@ -7,7 +7,7 @@ import type { Store } from "../domain/store.ts";
 import { defineTool, type Tool } from "./types.ts";
 
 /** Tools only the super-agent is offered (see policy.ts). */
-export const SUPER_AGENT_TOOLS: ReadonlySet<string> = new Set(["agent_set"]);
+export const SUPER_AGENT_TOOLS: ReadonlySet<string> = new Set(["agent_set", "apx_settings"]);
 
 const Slug = z
   .string()
@@ -107,6 +107,7 @@ export function agentSetTools(store: Store): Tool[] {
       args,
       effect: "local",
       confirm: (a) => (changes(a) ? "always" : "never"),
+      ownerSetting: changes,
       deadlineMs: 15_000,
       title: (a) =>
         !a.agent

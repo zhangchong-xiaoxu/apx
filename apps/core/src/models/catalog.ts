@@ -242,7 +242,7 @@ async function acpModels(agent: AcpAgent, home: string): Promise<CatalogModel[]>
   try {
     return s.models.map((m) => ({ id: m.id, name: m.name, chat: true }));
   } finally {
-    s.close();
+    await s.close();
   }
 }
 

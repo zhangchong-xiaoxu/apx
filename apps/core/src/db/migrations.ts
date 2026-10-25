@@ -847,4 +847,47 @@ export const MIGRATIONS: readonly string[] = [
   `ALTER TABLE tasks ADD COLUMN plan TEXT;`,
   // A task an agent proposed: it waits for the owner to accept it before any work starts.
   `ALTER TABLE tasks ADD COLUMN proposed INTEGER NOT NULL DEFAULT 0;`,
+  // A channel's attention hours: contacts answered at any hour, and chats whose messages wait for the hours to begin.
+  `
+  ALTER TABLE persons ADD COLUMN any_hour INTEGER NOT NULL DEFAULT 0;
+  CREATE TABLE channel_held (
+    thread_id TEXT PRIMARY KEY REFERENCES threads(id) ON DELETE CASCADE,
+    channel TEXT NOT NULL, conversation TEXT NOT NULL, sender TEXT NOT NULL,
+    person_id TEXT NOT NULL REFERENCES persons(id) ON DELETE CASCADE,
+    since TEXT NOT NULL
+  );
+  CREATE INDEX channel_held_since ON channel_held(since);
+  `,
+  // Stickers people sent, one per platform and file (its bytes' hash), with what each means; the file is its own media.
+  `
+  CREATE TABLE stickers (
+    id TEXT PRIMARY KEY, platform TEXT NOT NULL, hash TEXT NOT NULL,
+    media_id TEXT NOT NULL REFERENCES media(id) ON DELETE CASCADE,
+    meaning TEXT, hint TEXT, seen INTEGER NOT NULL DEFAULT 1, sent INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL, last_at TEXT NOT NULL,
+    UNIQUE(platform, hash)
+  );
+  `,
+  // Stickers named before their picture reached the model were named unseen: they are named again.
+  `UPDATE stickers SET meaning = NULL;`,
+  // A sticker the owner said the agent may not send (it still reads what it means when it comes).
+  `ALTER TABLE stickers ADD COLUMN blocked INTEGER NOT NULL DEFAULT 0;`,
+  // A sticker waiting for the owner's OK before the agent may send it, and one a model saw as adult-only.
+  `
+  ALTER TABLE stickers ADD COLUMN pending INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE stickers ADD COLUMN adult INTEGER NOT NULL DEFAULT 0;
+  `,
+  // A card only the app answers: a change to the owner's settings is never approved on a channel (DECISIONS.md#d-144).
+  `ALTER TABLE pending_inputs ADD COLUMN app_only INTEGER;`,
+  // The channel a message came on or went out on, so a channel shows its part of Home. Filled for the past from the
+  // contact who wrote, the owner's channel turns and what the outbox sent.
+  `
+  ALTER TABLE messages ADD COLUMN via TEXT;
+  UPDATE messages SET via = json_extract(author, '$.channel') WHERE json_extract(author, '$.kind') = 'person';
+  UPDATE messages SET via = r.channel FROM (
+    SELECT json_extract(input, '$.origin.message_id') AS message_id, json_extract(input, '$.origin.channel') AS channel
+    FROM runs WHERE json_extract(input, '$.origin.kind') = 'channel'
+  ) AS r WHERE messages.id = r.message_id AND messages.via IS NULL;
+  UPDATE messages SET via = o.channel FROM outbox AS o WHERE o.message_id = messages.id AND messages.via IS NULL;
+  `,
 ];

@@ -13,17 +13,27 @@ import {
 } from "../../../packages/install/src/desktop.ts";
 import { prepareLocalTarget } from "../../../packages/install/src/paths.ts";
 import { desktopSessionEnv } from "../../../packages/install/src/session.ts";
-import { createAccess } from "./access.ts";
+import { createAccess, type TailscaleRun } from "./access.ts";
 import { createApcSync } from "./apc/sync.ts";
+import type { TemplateRoot } from "./apc/templates.ts";
 import { createBus } from "./bus.ts";
 import { discordAdapter } from "./channels/discord.ts";
 import { emailAdapter } from "./channels/email.ts";
+import { googlechatAdapter } from "./channels/googlechat.ts";
+import { imessageAdapter } from "./channels/imessage.ts";
+import { ircAdapter } from "./channels/irc.ts";
+import { lineAdapter } from "./channels/line.ts";
 import { createChannels } from "./channels/manager.ts";
 import { matrixAdapter } from "./channels/matrix.ts";
 import { mattermostAdapter } from "./channels/mattermost.ts";
+import { nextcloudAdapter } from "./channels/nextcloud.ts";
+import { ntfyAdapter } from "./channels/ntfy.ts";
 import { signalAdapter } from "./channels/signal.ts";
 import { slackAdapter } from "./channels/slack.ts";
+import { smsAdapter } from "./channels/sms.ts";
+import { teamsAdapter } from "./channels/teams.ts";
 import { telegramAdapter } from "./channels/telegram.ts";
+import { twitchAdapter } from "./channels/twitch.ts";
 import type { AdapterFactory } from "./channels/types.ts";
 import { whatsappAdapter } from "./channels/whatsapp.ts";
 import { type CoreConfig, OAUTH_CHATGPT } from "./config.ts";
@@ -107,7 +117,9 @@ import { scratchRoot } from "./tools/folders.ts";
 import { googleTools } from "./tools/google.ts";
 import { imessageTools } from "./tools/imessage.ts";
 import type { Tool } from "./tools/types.ts";
+import { listenHooks } from "./transport/hooks.ts";
 import { createUpdates, type Runner } from "./updates.ts";
+import { createWebhooks, type NgrokStart } from "./webhooks.ts";
 
 /** `apx mcp --run` (token in APX_RUN_TOKEN): how an external harness (Codex) reaches the tools of its run. */
 const TERMINAL_MAIN = path.resolve(import.meta.dirname, "../../terminal/src/main.ts");
@@ -116,6 +128,8 @@ const TERMINAL_MAIN = path.resolve(import.meta.dirname, "../../terminal/src/main
 export type CoreOptions = {
   /** Asana transport; tests record REST requests without contacting an account. */
   asanaFetch?: typeof fetch;
+  /** What asks an integration's remote server whether it takes the owner's account; tests pass a fake. */
+  integrationFetch?: typeof fetch;
   quiet?: boolean;
   llm?: Llm;
   harnesses?: Partial<Record<HarnessId, Harness>>;
@@ -123,6 +137,9 @@ export type CoreOptions = {
   extraTools?: Tool[];
   /** Channel adapters by type; tests use a fake one instead of Telegram. */
   channelAdapters?: Record<string, AdapterFactory>;
+  /** The tailscale CLI and ngrok behind the public address for webhooks; tests pass fakes. */
+  tailscale?: TailscaleRun;
+  ngrok?: NgrokStart;
   /** Waits before a channel that failed to start tries again; tests shorten them. */
   channelRetryMs?: readonly number[];
   /** How long a room waits for one person's quick messages to settle (tests shorten it). */
@@ -267,12 +284,23 @@ export async function createCore(config: CoreConfig, opts: CoreOptions = {}) {
     fetch: opts.asanaFetch,
     offIn: (project) => !integrationsOff.takesGlobals(project) || integrationsOff.offIn(project).includes("asana"),
   });
+  // APX's own profiles, then the ones the owner installed (theirs win an id).
+  const profileRoots: ProfileRoot[] = [
+    { source: "apx", dir: path.resolve(import.meta.dirname, "../../../examples/profiles") },
+    { source: "owner", dir: path.join(config.home, "profiles") },
+  ];
+  // APX's own templates, then the owner's v1 vault (read-only).
+  const templateRoots: TemplateRoot[] = [
+    { source: "apx", dir: path.resolve(import.meta.dirname, "../../../examples/agents") },
+    { source: "v1", dir: path.join(config.v1.home, "agents") },
+  ];
   const tools = builtinTools(
     store,
     config.home,
     () => listening,
     [...imessageTools(imessage), ...googleTools(google), ...asanaTools(asana, store), ...(opts.extraTools ?? [])],
     config.runtimeSkills.homes,
+    { profiles: profileRoots, templates: templateRoots },
   );
   // Tools reach the core through the router like any client, as the agent (owner-only methods refuse them).
   // The router exists only after the engine, hence the late binding.
@@ -334,9 +362,18 @@ export async function createCore(config: CoreConfig, opts: CoreOptions = {}) {
     ...(opts.unseenAfterMs !== undefined ? { unseenAfterMs: opts.unseenAfterMs } : {}),
   });
   const noticePush = createNoticePush({ store, bus, push });
+  let hooksPort = config.hooksPort;
+  const webhooks = createWebhooks({
+    store,
+    port: () => hooksPort,
+    log,
+    ...(opts.tailscale ? { tailscale: opts.tailscale } : {}),
+    ...(opts.ngrok ? { ngrok: opts.ngrok } : {}),
+  });
   const channels = createChannels({
     store,
     home: config.home,
+    hookBase: webhooks.base,
     secrets,
     bus,
     log,
@@ -352,14 +389,27 @@ export async function createCore(config: CoreConfig, opts: CoreOptions = {}) {
       email: (c, password) => emailAdapter(c, password, { dir: path.join(config.home, "channels", c.id) }),
       whatsapp: (c) =>
         whatsappAdapter({ dir: path.join(config.home, "channels", c.id), selfOwner: c.self_owner === true, log }),
+      // Messages' database on this Mac: no secret; it refuses to start anywhere else.
+      imessage: (c, s) => imessageAdapter(c, s, { dir: path.join(config.home, "channels", c.id) }),
+      googlechat: (c, secret) => googlechatAdapter(c, secret),
+      sms: (c, secret) => smsAdapter(c, secret, { dir: path.join(config.home, "channels", c.id) }),
+      ntfy: (c, secret) => ntfyAdapter(c, secret, { dir: path.join(config.home, "channels", c.id) }),
+      nextcloud: (c, secret) => nextcloudAdapter(c, secret, { dir: path.join(config.home, "channels", c.id) }),
+      irc: (c, secret) => ircAdapter(c, secret),
+      twitch: (c, secret) => twitchAdapter(c, secret),
+      // These deliver to a webhook: they answer through the public address (webhooks.ts).
+      line: (c, secret) => lineAdapter(c, secret, { dir: path.join(config.home, "channels", c.id) }),
+      teams: (c, secret) => teamsAdapter(c, secret, { dir: path.join(config.home, "channels", c.id) }),
     },
     ...(opts.channelRetryMs ? { retryMs: opts.channelRetryMs } : {}),
     call: internal,
     services,
     attention: attention.add,
     judge: upkeep.judge,
+    see: upkeep.see,
     ownerReplied: (messageId) => memoryMaintenance.ownerReplied(messageId),
     draft: createDrafter({ store, llm, fallbackModels: upkeep.auxModels }).draft,
+    ...(opts.clock ? { now: opts.clock } : {}),
     ...(opts.roomBurstMs !== undefined ? { roomBurstMs: opts.roomBurstMs } : {}),
     ...(opts.suggestBurstMs !== undefined ? { suggestBurstMs: opts.suggestBurstMs } : {}),
     pushOwner: (deviceId, text) => {
@@ -376,11 +426,6 @@ export async function createCore(config: CoreConfig, opts: CoreOptions = {}) {
     notifyOwner: (body, threadId) => channels.notifyOwner(body, "notice", threadId),
     log,
   });
-  // APX's own profiles, then the ones the owner installed (theirs win an id).
-  const profileRoots: ProfileRoot[] = [
-    { source: "apx", dir: path.resolve(import.meta.dirname, "../../../examples/profiles") },
-    { source: "owner", dir: path.join(config.home, "profiles") },
-  ];
   const engine = createEngine({
     store,
     harnesses,
@@ -425,6 +470,7 @@ export async function createCore(config: CoreConfig, opts: CoreOptions = {}) {
     admit: (a) => engine.admit(a),
     attention,
     notifyOwner: (body, threadId) => channels.notifyOwner(body, "notice", threadId),
+    openHeld: () => channels.openHeld((a) => engine.admit(a)),
     log,
     ...(opts.clock ? { now: opts.clock } : {}),
   });
@@ -470,6 +516,8 @@ export async function createCore(config: CoreConfig, opts: CoreOptions = {}) {
       permissions,
       addresses: () => reachableAt(config.host, listening, config.publicUrl),
       terminals,
+      webhooks,
+      integrationFetch: opts.integrationFetch,
       access: createAccess({
         home: config.home,
         running: { host: config.host, publicUrl: config.publicUrl, token: config.token },
@@ -523,11 +571,7 @@ export async function createCore(config: CoreConfig, opts: CoreOptions = {}) {
       news,
       panel: () => panelEntry(servedPanel(config)),
       profileRoots,
-      // APX's own templates, then the owner's v1 vault (read-only).
-      templateRoots: [
-        { source: "apx", dir: path.resolve(import.meta.dirname, "../../../examples/agents") },
-        { source: "v1", dir: path.join(config.v1.home, "agents") },
-      ],
+      templateRoots,
     }),
     store.idempotency,
   );
@@ -548,6 +592,10 @@ export async function createCore(config: CoreConfig, opts: CoreOptions = {}) {
   const url = transport.url;
   selfUrl = url;
   engine.start();
+  const hookListener = await listenHooks({ port: config.hooksPort, deliver: channels.webhook, log });
+  hooksPort = hookListener.port;
+  // Not awaited: ngrok may take 15 s, and a channel reads its public address when it needs it (hookBase).
+  void webhooks.start();
   await channels.start();
   // After the channels: the message goes out on one (it waits in the outbox until that one is up).
   if (config.news)
@@ -597,6 +645,8 @@ export async function createCore(config: CoreConfig, opts: CoreOptions = {}) {
       noticePush.stop();
       plugins.close();
       await channels.stop();
+      webhooks.close();
+      await hookListener.close();
       await engine.stop();
       await upkeep.stop();
       await memoryMaintenance.stop();

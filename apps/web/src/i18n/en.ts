@@ -1,4 +1,4 @@
-import { noticeEn } from "@apx/protocol";
+import { noticeEn } from "@apx/protocol/notices";
 import { enChannels } from "./en-channels.ts";
 import { enChat } from "./en-chat.ts";
 import { enEngines } from "./en-engines.ts";
@@ -342,6 +342,10 @@ export const en = {
   "account.cloud": "Cloud account",
   "account.cloudHint": "Sync across devices and share with your team.",
   "input.confirmTitle": "Needs your OK",
+  "input.actionTitle": "Accept this action?",
+  "input.accept": "Accept",
+  "input.accepted": "Accepted",
+  "input.askedAction": "Proposed an action",
   "input.questionTitle": "Question for you",
   "input.approve": "Approve",
   "input.deny": "Decline",
@@ -493,6 +497,7 @@ export const en = {
   "chat.readOnly": "Conversation between agents · read only",
   "chat.with": "Chat with {name}",
   "chat.startHint": "Write below to get started.",
+  "chat.toBottom": "Go to the latest message",
   "chat.fromWidget": "From the widget",
   "chat.theAgent": "The agent",
   "chat.agentWorking": "{name} is working…",
@@ -1362,9 +1367,26 @@ export const en = {
   "tg.unblock": "Unblock",
   "tg.forget": "Forget this person",
   "tg.sent": "Recently sent",
+  "stk.title": "Stickers",
+  "stk.lead":
+    "Stickers people send you on {channel} are kept as they arrive, with what they mean. The agent understands them and can answer with the ones allowed.",
+  "stk.none": "No sticker has arrived on {channel} yet.",
+  "stk.meaning": "What it means",
+  "stk.unnamed": "Not named yet",
+  "stk.counts": "Arrived {seen} · sent {sent}",
+  "stk.usable": "May use it",
+  "stk.forget": "Forget this sticker",
+  "stk.auto": "Approve new stickers automatically",
+  "stk.autoHint":
+    "On, the agent may use each sticker as soon as it is kept; off, each one waits for your OK. 18+ ones and ones no model could see always wait for your OK.",
+  "stk.adult": "18+",
+  "stk.waits": "Waiting for your OK",
   "tg.out.queued": "Queued",
   "tg.out.sending": "Sending",
   "tg.out.sent": "Sent",
+  "tg.out.sticker": "Sent a sticker",
+  "tg.out.stickerAbout": "Sent a sticker: {about}",
+  "tg.out.reaction": "Reacted to a message with {emoji}",
   "tg.out.uncertain": "Maybe sent",
   "tg.out.failed": "Failed",
   "error.channels": "Channels: {error}",

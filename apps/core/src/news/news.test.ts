@@ -15,6 +15,8 @@ import { NEWS, type NewsEntry, newsAction } from "./entries.ts";
 import { createNews } from "./news.ts";
 
 const quiet: Log = { info: () => {}, warn: () => {}, error: () => {} };
+/** The entries the upgrade tests below count on: one that every owner gets would be told on each of them. */
+const SOME_NEWS = NEWS.filter((e) => e.id !== "super-agent-settings");
 
 function setup(o: { entries?: readonly NewsEntry[]; models?: string[]; fail?: boolean; noGoogle?: boolean } = {}) {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "apx-news-"));
@@ -37,7 +39,7 @@ function setup(o: { entries?: readonly NewsEntry[]; models?: string[]; fail?: bo
       return true;
     },
     log: quiet,
-    ...(o.entries ? { entries: o.entries } : {}),
+    entries: o.entries ?? SOME_NEWS,
   });
   const done = () => {
     db.close();
@@ -238,6 +240,45 @@ test("Google news reach an owner without Calendar; mail alerts only a secretary 
     assert.equal(applies("mail-alerts"), true);
     store.settings.write("profile", { id: null, values: {} });
     assert.equal(applies("mail-alerts"), false, "without the secretary nobody reads mail");
+  } finally {
+    done();
+  }
+});
+
+test("attention hours news reach only an owner whom contacts write to on a channel", () => {
+  const { store, news, done } = setup();
+  try {
+    const applies = () => news.list().find((n) => n.id === "channel-hours")?.applies;
+    assert.equal(applies(), false, "nobody but the owner");
+    const saved = store.persons.create({ name: "Northwind Buyer", role: "contact" });
+    assert.equal(applies(), false, "a saved contact nobody hears from on a channel");
+    store.persons.link(saved.id, { channel: "tg", external_id: "2201" });
+    assert.equal(applies(), true);
+  } finally {
+    done();
+  }
+});
+
+test("settings changed from chat reach every owner, with no contacts or channels yet", () => {
+  const { news, done } = setup({ entries: NEWS });
+  try {
+    assert.equal(news.list().find((n) => n.id === "super-agent-settings")?.applies, true);
+  } finally {
+    done();
+  }
+});
+
+test("more integrations reach an owner who connected one; new channels an owner with a channel", () => {
+  const { store, news, done } = setup();
+  try {
+    const applies = (id: string) => news.list().find((n) => n.id === id)?.applies;
+    assert.equal(applies("more-apps"), false, "no integration yet");
+    assert.equal(applies("more-channels"), false, "no channel yet");
+    store.settings.set("mcp_servers", JSON.stringify({ mcpServers: { notion: { command: "npx" }, acme: {} } }));
+    assert.equal(applies("more-apps"), true, "a catalog one counts; the owner's own servers do not");
+    const telegram = { id: "telegram", type: "telegram", label: "Telegram", enabled: true, agent_id: "roby" } as const;
+    store.settings.write("channels", [{ ...telegram, strangers: "pair", concurrency: "steer", owner_thread: "home" }]);
+    assert.equal(applies("more-channels"), true);
   } finally {
     done();
   }

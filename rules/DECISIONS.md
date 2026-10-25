@@ -509,7 +509,7 @@ alone. Closing the terminal before the command ends tells nobody. Only a human o
 cannot press run for itself.
 
 <a id="d-047"></a>
-## D-047 — 2026-10-07 — Total autonomy asks for nothing; low-impact tools stop asking in standard
+## D-047 — 2026-10-07 — Total autonomy asks for nothing; low-impact tools stop asking in standard (amended by D-140)
 D-012 kept `always` confirmations even under total autonomy, so an agent the owner set to run on its own still stopped
 for them. Total is the owner's explicit choice: now nothing waits for them there, `always` included (destructive
 shell commands, commands that reach APX's own API, iMessage, answering a contact, using the owner's browser login).
@@ -2002,3 +2002,294 @@ own Google client (D-130: APX's cannot read mail), and stays silent otherwise. T
 mail", every `mail_every_min` (default 5, 2 to 60), and its morning brief reads today's events with `calendar_events`
 when Google Calendar is connected, so `calendar_command` is only for other calendars. Profile numbers now keep inside
 their declared range, since they end up in schedules.
+
+<a id="d-136"></a>
+## D-136 — 2026-10-22 — A channel's attention hours: contacts wait outside them and are answered once when they begin
+The owner wanted channels not to answer contacts all day: a message at 22:00 is read at 08:00. A channel can keep
+**hours** (days, from, to), read on the clocks of the owner's declared time zone (`ownerTimeZone`; none: the core
+computer's), never the machine's when they differ. Hours past midnight belong to the day they start on; the same time
+twice is the whole day.
+
+Outside them a contact's direct message is kept like a silenced one (`keepQuiet`, unread, the agent's note says it came
+outside the hours), transcribed if it is a voice note, and the chat is marked in `channel_held` (a table, so a restart
+keeps it and the clock does not scan every chat's context). Each tick of the office clock opens chats whose hours have
+begun, three at a time, longest waiting first: one turn with origin `hours_began` (a contact's words, framed as
+untrusted) reads the night's messages from the history and answers once; a supervised contact gets its draft then. A
+message inside the hours before that tick clears the mark and is answered by its own turn, so nothing is answered
+twice. A chat whose person was silenced or removed, or whose channel went off, stops waiting with no turn.
+
+Not held: the owner (on any channel, their Home always answers), answers to buttons and questions, a contact marked
+`any_hour`, and rooms for the owner; for anyone else a room keeps its messages outside the hours and never catches up,
+since its conversation moved on. No automatic "we are closed" reply in this version: the owner's example was simply to
+read at 08:00, and a reply at night is a message sent on their behalf.
+
+<a id="d-137"></a>
+## D-137 — 2026-10-23 — Stickers are kept as they arrive, named once, and sent back by meaning
+v1 kept a sticker lexicon and the owner missed it: an agent that reads "[sticker]" cannot tell a hug from a shrug, and
+on WhatsApp a sticker is often the natural answer. Every sticker that reaches a one-to-one chat on WhatsApp or Telegram
+is kept the moment it arrives in `stickers`, one row per **platform** and file (the bytes' SHA-256, the same whoever
+sends it), its file a media row of its own so it outlives the chat. Platforms never share: a Telegram sticker (often
+animated `.tgs`) is not a WhatsApp one, and the agent only sends a platform's own.
+
+It is named once, by the models known to read images, auxiliary first, then the router's (`see` in upkeep, aux purpose `sticker`),
+in the owner's language; an animated one, or an install with no such model, takes the emoji the platform says it stands
+for. The message waits up to 20 seconds for the name, then the agent reads it unnamed and the name lands later. The
+agent reads `[sticker: meaning]`; a silenced contact's sticker is kept without a model call.
+
+To answer with one the agent writes `STICKER <what it shows>`, a signal like `REACT` (no tool: no prompt cost on turns
+without stickers). Matching is by words of the meaning, at least half of them; below that nothing goes and the owner is
+told, since the wrong sticker says something the agent did not mean. A channel turn lists the platform's twelve most
+used meanings under `[stickers]`, so the agent picks among stickers that exist. Whether the agent may send a sticker is the owner's: by default a new one is
+the agent's to use as soon as a model named it (the owner blocks what they do not want), or, with `stickers_auto` off,
+each waits for their OK. One the naming model marks `[18+]`, or one no model could see (an animated sticker, an install
+with no vision model), always waits: what nobody looked at may be anything. The owner is told in the tray when one
+waits, and approves it in the channel's Stickers section or by asking the super-agent (`apx_settings`, approved). Discord's stickers are not read nor sent
+yet: a bot can only send its own servers' stickers.
+
+<a id="d-138"></a>
+## D-138 — 2026-10-23 — The super-agent changes the owner's settings through one tool, and every owner method is placed
+The owner wants to ask the super-agent for anything they can change in the panel ("add rules to this contact and say
+who she is") without other agents getting the same reach. Two ways were open. The `apx` CLI from the agent's shell
+announces itself as the agent, so the router refuses owner-only methods there; letting it through would make a shell
+command, read as a command line, the only card the owner approves, and a command an agent may run freely would act as
+the owner. One tool per setting would grow every super-agent call with the panel (rules/PROMPT_SIZE.md).
+
+So `apx_settings` is one tool, offered only to the super-agent (`SUPER_AGENT_TOOLS`): with no args it lists what it
+reads and changes, with a method alone it gives that method's fields (from the protocol's own schema), and with params
+it runs the owner's method through the router as the owner, after the owner approves a card that names the record and
+shows each field before and after (`explain`). The arguments are checked against the method before anyone is asked.
+Reads come from the store, with nothing secret in them.
+
+`tools/settings-reach.ts` places every owner-only method that changes something: in `apx_settings`, in a tool of its
+own (`agent_set`, `routine_set`…), kept the owner's with its reason (keys and sign-ins, what agents may do and their
+models per D-060, the machine, the panel's own views, the owner's own answer or send), or `NOT_YET`, the list still to
+place. `settings.test.ts` fails on a new owner method nobody placed, so the super-agent's reach is decided with each
+new setting instead of found missing by the owner. Contacts are the first area in it.
+
+Every area is placed now (`NOT_YET` is empty), in `tools/settings-people.ts` (contacts, channels, iMessage, the
+owner's profile, notices), `settings-team.ts` (archived agents, copies and templates, one agent's limits, routines,
+agent profiles, tasks, chats, imported sessions) and `settings-work.ts` (projects, memory, skills, MCP servers and
+extensions on or off, media services, widgets). A method that replaces a whole record (a channel, the owner's
+profile, notices, memory's settings, image defaults) gets the record merged under the fields asked for, so a field
+left out keeps its value and the card lists only what changes, nested ones by path (`channel.strangers`); a change
+equal to the record answers "nothing to change" and asks nobody. Some fields are refused before the owner is asked,
+because the method carries more than the area: a channel's token, mail account, type and `research` (D-059), removing
+a channel (its sign-in goes with it), a project's autonomy and read-only folders and a chat's write policy (D-060),
+memory's model. Kept the owner's as a whole: adding an MCP server (its command runs here and its env carries keys),
+the fan-out question (how far agents act), installing a profile, an extension, a local model (the machine), and the
+panel's own acts (recovering a chat's lost files, importing a widget file, resuming a coding session). Reads stay
+from the store with nothing secret: channels without tokens, services without keys.
+
+<a id="d-139"></a>
+## D-139 — 2026-10-23 — Channels that deliver only to a webhook get a public address, on a listener of their own
+Teams, LINE and WhatsApp's business API do not let a bot pull its messages: they POST each one to a public HTTPS URL.
+The core listens only on loopback (rule 7) and has one contract, the router (rule 1), so those channels stayed
+"coming". openclaw and hermes open their gateway's port and leave the owner to put a tunnel in front (Microsoft's dev
+tunnels, ngrok, Tailscale Funnel); hermes also tries a hosted relay. Exposing the core's own port would publish the
+panel and the API, and a hosted relay is a service APX would have to run for everyone.
+
+So webhooks get a second HTTP listener (`transport/hooks.ts`), on 127.0.0.1, at the core's port + 8 (`APX_HOOKS_PORT`;
+a free one when that is taken), that takes only `POST …/hooks/<channel id>[/…]` up to 1 MB and hands the raw request
+to that channel's running adapter (`ChannelAdapter.webhook`); every other path is 404, and an adapter answers in 15 s
+or the platform gets 503. It is not a client↔core call, so it is not a router method: the platform is no client, and
+each adapter verifies its platform's own signature (Teams' Bot Framework JWT, LINE's HMAC) over the bytes as they came
+and refuses what it cannot verify. A failure's detail stays in the log.
+
+What publishes that port is the owner's choice (`webhooks.set`, Settings › Channels › Public address), kept and applied
+again at every start (`webhooks.ts`): Tailscale Funnel on HTTPS port 8443 (443 stays what `apx tailscale connect`
+serves to the tailnet, and only APX's own Funnel is undone when it is turned off); ngrok, started and watched by the
+core, which remembers the last address ngrok gave and tells the owner only when one is new (a free account usually
+keeps one across starts; a reserved domain can be given); or the owner's own https URL (a proxy they run). Each adapter reads its address through `io.hookUrl()`, and a
+channel that needs one and has none says so in its status until one exists.
+
+<a id="d-140"></a>
+## D-140 — 2026-10-23 — The owner's settings change on their card, at their word alone
+With D-138 the super-agent can change nearly everything the owner sets up. The owner asked that each such change
+always show its card (do it or not), and that no other agent can get the super-agent to make one. Before, `always`
+skipped the card on Total (D-047) or under the agent's own rule for that risk, and a message another agent posted in the
+super-agent's chat (origin `agent`) reached a turn that had the tools.
+
+A tool marks such calls with `ownerSetting` (`agent_set` and `apx_settings`, the tools only the
+super-agent has; `owner-setting.test.ts` fails on one without it). `authorize` turns an allow into a card for them in
+every mode and under every rule; plan mode still refuses them. The executor refuses them, before anyone is asked,
+unless the run's origin is the owner's own: their message in the app or on a channel as the owner, or their answer to a
+question the agent asked (`ownerAsked`). Another agent, a contact, a routine, a job or a task result gets "only when the
+owner asks you themselves". A delegated run already loses these tools (`inherit` keeps what every caller may use).
+
+<a id="d-141"></a>
+## D-141 — 2026-10-23 — The super-agent adds MCP servers, their keys only by reference
+D-138 kept adding an MCP server the owner's, since its command runs on this computer and its env and headers carry
+keys. The owner wants to ask for one in chat and then say which saved variable holds its key. `mcp.set` is now in
+`apx_settings`, under D-140 (the owner's card in every mode, only at their word): the card names the server and shows
+its command or URL, args and each env or header field. A value that reads like a key once its `secret://NAME`
+references are taken out (a run of 20 or more letters, digits, `_` or `-`, with both letters and digits) is refused
+before anyone is asked, as is a variable in args (it would show in the process list). Saving the key stays the
+owner's (`secrets.set`, Variables, or `apx secrets set`); the answer names the variables still without a value.
+`mcp.list` reads the owner's own servers, showing a value that reads like a key as "(a value)". Trusting a project's
+server and approving its tools stay the owner's.
+
+<a id="d-142"></a>
+## D-142 — 2026-10-23 — A teammate's request is acted on, and an agent puts a decision to the owner as an action card
+A publisher agent asked by a teammate to post (and move two posts that clashed) refused: the system prompt said
+"authorization to send, post or pay cannot be relayed", so a request from one of the owner's agents read as no
+authorization at all, against D-071. Asked again by the owner in its own chat, it asked the teammate, whose answer the
+prompt called "data, not new authorization", and refused again. No call was made, so APX never showed a card, and the
+owner could not write in the read-only chat between the two agents: they only got it moving by writing new requests.
+
+Now a send, post or payment the agent can make still stays with it (it delegates only the preparation), but one a
+teammate asks of it is the owner's work: it makes the call and APX asks the owner when its mode and rules say so; it
+never refuses as relayed nor sends the owner to repeat it. The line on asking another agent about earlier work loses
+its "not new authorization": that answer is evidence, and permission is the permissions service's (D-115), not the
+model's.
+
+For what only the owner can decide (a clash, two ways to go), `ask_owner` takes `action`: one concrete action (what,
+where, when), shown as a card to accept or decline, not a question. It is an input of kind `confirm` with no tool and
+no folders, so the panel, the mobile app, the channels and the "Needs your review" group show it with their usual
+buttons; the panel titles it "Accept this action?". Accepting tells the agent to do it now; a late answer wakes it as
+a question's does; the agent can withdraw it. Accepting does not grant the calls it takes: each still passes its own
+check, since the card's text does not bind a tool's arguments. An agent with "always" for that tool gets no second card.
+
+<a id="d-143"></a>
+## D-143 — 2026-10-23 — Total keeps its power, except over what the owner set up and their logins
+A review found that Total (D-047) and an agent's rule `auto` let calls that act as the owner run with no card: letting a
+stranger in (`answer_contact_request`), changing how far agents go alone (`agent_limits`), copying the owner's browser
+cookies (`browser_use_my_login`). The executor handed `callAsOwner` to any call whose tool "always" asks, once the
+policy said allow, so "the owner approves it every time" (the tool's own description) was false on Total.
+
+The owner's rule: Total keeps its power, with these limits. A change to something the owner set up asks on its card in
+every mode: D-140's `ownerSetting` now marks every tool that acts through `callAsOwner` on their setup, not only
+`SUPER_AGENT_TOOLS` (`answer_contact_request` when it lets someone in, `agent_limits` when it changes or lets go on), so
+accepting a contact request also needs the owner's own word (`ownerAsked`). Such a card offers no "always" answer, and
+no grant skips it. Routines change freely: `routine_set` keeps no card in Total. A tool can also keep its card where the
+mode would skip it (`keepsCard`): `card`, nothing skips it; `grant`, only the owner's grant does.
+`settings-reach.ts` `TOTAL_SKIPS` lists the tools that act as the owner and may run unasked in Total (routines, an Asana
+write), with their reason; every other tool in `BY_TOOL` keeps its card, and `owner-setting.test.ts` fails otherwise.
+`callAsOwner` is given only when this call passed its card (answered, or the owner's grant) or ran unasked under a mode
+or rule on a tool that keeps no card. The MCP server card (D-141) shows each value whole, never cut at 300 characters
+(`Setting.whole`), and says in a plain line which saved variables go, as which env or header, to which address or
+command.
+
+`browser_use_my_login` runs without a card only when the agent's browser is declared shared. Every agent's profile is
+`shared` unless the owner picks another (the column's default, and the seed's), so the stored value says nothing about
+a choice, and copying the owner's logins on a default is what the review found. The declaration is the owner's own
+"Always for this agent" on its card: the tool keeps its card in Total (`grant`) for a shared profile, and an isolated
+one keeps it whatever is granted (`card`). A setting of its own would have meant a new field in the protocol, the
+editor and every agent file for one tool; the card already asks, and its answer is the explicit choice.
+
+<a id="d-144"></a>
+## D-144 — 2026-10-23 — Only the app approves, and the owner's words on other channels go through the super-agent
+A review found that the owner's identity on most channels is the platform's word, and that word is weak: ntfy knows
+only a topic, IRC a nick without an account, an SMS sender's number and a mail's From can be forged, an email channel
+may trust unverified mail. Whoever passed as the owner there got an owner run (`inbound.ts` sent their words as the
+owner's) and could answer the cards APX sent to that chat (a button, a number, a text answer), and since D-141 that
+reaches `mcp.set`: a command run on the owner's machine.
+
+The owner's rule. A card about the owner's settings (`ownerSetting`) is approved only in the app: the panel, the
+desktop or the paired phone. Its input is stored `app_only`; `runs.respond` refuses it when the call came from a
+channel (the channel manager sets `channel` on its calls, never a request), a channel shows it without buttons and
+says where to answer it, and a press on it is refused. Telegram stays the one channel whose owner messages act
+directly (`OWNER_ACTS_ON` in `domain/channels.ts`), its other cards answered there as before; that reading of the
+owner's words ("Telegram is the exception for direct owner runs, but setting approvals still happen only in the
+app") is a judgment call, flagged as such. On every other channel the owner's words trigger nothing directly: no owner
+run, no answer to a card or question, no button, no draft sent to a supervised contact. The words are kept in the
+owner's chat as a sender's (untrusted, marked as claiming to be the owner, not verified) and become a conversation
+with the super-agent, even when the channel's agent is the super-agent itself: `engine/owner-relay.ts` opens the
+"owner-check" sub-thread of that chat and starts the super-agent there, with the channel and what its platform can
+vouch for. It judges whether it really is the owner and whether the request is risky, may ask the owner in the app
+(`ask_owner`: a question or an action card, D-142; its run's answers go to the app, never to that channel), and its
+answer comes back to the channel's chat as a delegated result (`delegation_result`, the sub-thread's session), whose
+agent then does what was decided and answers on the channel. Nothing new carries it: the run enters through `admit`
+like a delegation, the answer returns on the delegation result's path, and the owner is asked through inputs.
+
+What follows from it. The relayed run's origin is another agent's, so it is not owner-asked: the super-agent cannot
+change the owner's settings from there (D-140), and an owner's late answer to its question does not make it so either
+(an `input_answer` counts only when the run that asked was owner-asked). Cards and notices with buttons sent to a
+channel other than Telegram lose their buttons and say to answer in the app; a supervised contact's draft, a request
+from a stranger and a news button are decided in the app. The unverified words sit in the owner's chat as outside
+content, so that chat's next turns see outside content in their context (rule 10) until it leaves the window. Each
+relayed message still starts a new spend window for the breaker (D-080), as the owner's own words did: it opens at the
+answer turn, which stands for the owner's own and is not counted, so the check and its answer never pile up into a
+pause. "Pará" still stops a running turn from any channel: stopping acts for
+nobody. Steering a running turn and interrupting it are Telegram's and the app's. A public room the owner speaks in
+stays sealed as before (its turns have no owner tools).
+
+## D-145 — 2026-10-23 — CI in parallel parts, flaky Windows files rerun once and counted, only verified commits tagged
+`verify` took 16–28 minutes: the panel's 229 specs ran in one part (13–21 min) because they shared one sandbox, and
+Linux preflight ran every unit test in series (8.5 of its 11.5 min). The v2.9.0 tag went on a commit whose run then
+failed on a Windows flake, and publication slipped ten hours until a re-tag on a verified commit.
+
+- **The panel runs in three parts**, each with its own core. What specs may share is a Playwright `setup` project
+  (the first-run setup, the owner's Telegram, the WhatsApp line), replayed first in every part; any other state a spec
+  needs, it makes itself. Local runs keep one core and the same order.
+- **Preflight is split, not reduced:** static checks (`pnpm preflight:static`) on one machine, every package's unit
+  tests over two (`test-shard.ts`). The lightness budgets join the static job instead of queueing for a runner.
+- **Windows reruns a failed test file once.** Its runners are slow and noisy enough that waits tuned elsewhere miss
+  (hence also `TEST_TIME_SCALE=3`), and one such miss held a release for ten hours. A file that passes on the rerun
+  is reported, never muted: a warning annotation on the run and a row in the job summary, so every flake is seen and
+  counted from the run's annotations; each is a bug to fix, not a pass. A file that fails twice fails the job. A
+  crash no test reported is never rerun. Linux and macOS, coverage and the panel do not rerun (Playwright's own one
+  retry in CI stays as it was). If the flaky count does not fall, the rerun goes, not the reporting.
+- **Windows before merge:** `windows.yml` runs the Windows parts on pushes to `feat/**` and `fix/**`.
+- **Only a verified commit is tagged** (AGENTS.md rule 28): `pnpm release:check --tag v2.x.y` reads that commit's
+  newest verify run and tags only after it passed. The publish job's wait stays as the second guard.
+
+<a id="d-147"></a>
+## D-147 — 2026-10-23 — The panel's late code is declared in one registry, and the first load is measured from the build
+The first-load budget counted only the files `index.html` names, about 270 of its 275 KB. The language chunk
+`main.tsx` waits for imported its notice strings from the `@apx/protocol` barrel, and that barrel's side effects kept
+zod and every method schema on the boot path, unmeasured: what a first screen really downloaded was 379 KB gz. Opening
+the inbox then fetched the widget chat and the project settings too (the Apps dock and the new-project dialog took
+helpers from them), bringing that protocol chunk again. Lazy declarations were spread over 19 files, some targets
+declared three times, and the `$initial` chunk group merges whatever the entry reaches, so one stray static import
+moves a whole screen into the first script without any error.
+
+Now `scripts/bundle.ts` reads the built `dist/`: `boot_gzip_kb` is the entry, its CSS, the heavier language chunk and
+the static imports of each, budgeted beside `initial_bundle_gzip_kb`; `pnpm perf` also fails when zod reaches that set
+or a named lazy screen loses its own chunk, and names the heaviest chunks and, from a sourcemap, packages. Every
+`lazy()` and late `import()` of panel code lives in `apps/web/src/lazy.ts`, and a Biome `noRestrictedImports` override
+lists those files for `App`, `main`, `shell/`, `inbox/` and `chat/`. The registry was kept only after measuring that it
+adds nothing: entry −0.1 KB gz, the same chunk count, the same heap after load. `e2e/specs/89-first-load.spec.ts`
+checks what opening the inbox fetches, the late parts included.
+
+Measured on the built panel and in the e2e sandbox (JS heap after opening the inbox, median of 5): first load
+379.3 → 324.7 KB gz, entry 272.8 → 260.7 KB gz, heap 11.1 → 7.3 MB.
+<a id="d-148"></a>
+## D-148 — 2026-10-23 — An agent offers to connect what a request needs, never from a sealed chat
+Asked for something an app or channel the owner has not connected would do (open a Figma file, send it on WhatsApp),
+an agent could only say it could not. `suggest_connection` looks the request up through `integrations.find`, a method
+open to agents that returns only names, descriptions, kinds and whether each is connected: the integrations catalog,
+Google, Asana and the channel kinds (`integrations/find.ts`). A name match outranks a description match, and a
+connected one comes first.
+
+- **When the card appears:** only when the best match is not connected. Up to three of the unconnected matches go on a
+  "Suggested connections" card in the answer; Connect opens that integration's form in the chat, a channel opens its
+  setup in Settings › Channels. The agent is told what it showed and to stop there until the owner says it is
+  connected. An already connected match gets no card: the agent is told to use it. No match: the agent says APX does
+  not connect to it yet.
+- **Never in sealed chats:** a contact's or a room's turn gets only the tools the owner allowed for that person, and
+  `suggest_connection` is not one of them, so nobody but the owner is ever offered a connection. It stays in the
+  owner's turns even when no channel is on (unlike the channel tools), since connecting the first one is its job.
+- **What agents see:** labels and descriptions of what APX can connect and a connected flag; never credentials,
+  accounts or settings. Connecting stays the owner's act on the card or in Settings.
+
+<a id="d-149"></a>
+## D-149 — 2026-10-24 — A close contact's message for the owner always reaches them, and every passed request is told
+A contact's agent told the person "I'll pass it on", but without the requests flag (D-022) nothing was passed, and
+with it the task only showed in the app's tray: the owner learned of it at the next morning summary. `pass_request`
+now has a third kind, `message` (something they want the owner to know or do, like calling someone they shared), open
+to anyone with the requests flag and, with no flag, to the owner's partner, family and friends. It still only files a
+task for the owner, capped per person. Each request, appointment or message passed or updated in a turn is told to the
+owner on their notice channel when the turn ends (silent in quiet hours), as well as in the tray.
+
+<a id="d-150"></a>
+## D-150 — 2026-10-24 — WhatsApp and Signal act on the owner's word, like Telegram
+D-144 sent the owner's words on every channel but Telegram through the super-agent's check. On WhatsApp that left the
+owner unanswered when writing from their own number: the check asked them in the app, the chat waited, and the agent
+later doubted the link between the number and the owner. WhatsApp and Signal are not weak the way D-144's list is: the
+sender is the account whose end-to-end keys signed the message, which nobody forges by typing a name, a topic or a
+From line; the remaining risk (someone holding the owner's unlocked phone) is the same as Telegram's. So both join
+`OWNER_ACTS_ON` (`domain/channels.ts`): the owner's words there start an owner run, and cards and notices come with
+their options (numbered on WhatsApp). What D-144 keeps stands: a change to the owner's settings is approved only in
+the app (`app_only`), and the channels whose sender can be forged (ntfy, IRC, SMS, email, Twitch) and the rest still go
+through the super-agent first. Discord, Slack and the other account-based platforms stay as D-144 left them until the
+owner asks otherwise.

@@ -53,6 +53,15 @@ export interface AuxCallsTable {
   cached: Generated<number>;
 }
 
+export interface ChannelHeldTable {
+  thread_id: string;
+  channel: string;
+  conversation: string;
+  sender: string;
+  person_id: string;
+  since: string;
+}
+
 export interface ChannelInboxTable {
   id: string;
   channel: string;
@@ -233,6 +242,7 @@ export interface MessagesTable {
   created_at: string;
   delivery: string | null;
   reactions: string | null;
+  via: string | null;
 }
 
 export interface MessagesNTable {
@@ -333,6 +343,7 @@ export interface PendingInputsTable {
   change: string | null;
   multi: number | null;
   folders: string | null;
+  app_only: number | null;
 }
 
 export interface PersonsTable {
@@ -349,6 +360,7 @@ export interface PersonsTable {
   perms: string | null;
   unreviewed: Generated<number>;
   supervised: Generated<number>;
+  any_hour: Generated<number>;
 }
 
 export interface ProjectsTable {
@@ -436,6 +448,22 @@ export interface StepsTable {
   started_at: string;
   ended_at: string | null;
   output: string | null;
+}
+
+export interface StickersTable {
+  id: string;
+  platform: string;
+  hash: string;
+  media_id: string;
+  meaning: string | null;
+  hint: string | null;
+  seen: Generated<number>;
+  sent: Generated<number>;
+  created_at: string;
+  last_at: string;
+  blocked: Generated<number>;
+  pending: Generated<number>;
+  adult: Generated<number>;
 }
 
 export interface SuggestionsTable {
@@ -543,6 +571,7 @@ export interface Database {
   agents: AgentsTable;
   api_clients: ApiClientsTable;
   aux_calls: AuxCallsTable;
+  channel_held: ChannelHeldTable;
   channel_inbox: ChannelInboxTable;
   devices: DevicesTable;
   extensions: ExtensionsTable;
@@ -573,6 +602,7 @@ export interface Database {
   routines: RoutinesTable;
   runs: RunsTable;
   steps: StepsTable;
+  stickers: StickersTable;
   suggestions: SuggestionsTable;
   surfaces: SurfacesTable;
   task_events: TaskEventsTable;

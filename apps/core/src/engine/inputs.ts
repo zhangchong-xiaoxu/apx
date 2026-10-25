@@ -7,7 +7,7 @@ import { type ApprovalTarget, writeFolderApproval } from "../domain/approvals.ts
 import { type InputRecord, publicInput } from "../domain/inputs.ts";
 import type { RunRecord } from "../domain/runs.ts";
 import type { Store } from "../domain/store.ts";
-import { badRequest, conflict, errorMessage, notFound, Shutdown } from "../errors.ts";
+import { badRequest, conflict, errorMessage, notFound, Shutdown, unauthorized } from "../errors.ts";
 import { addReadOnly } from "../tools/folders.ts";
 import type { Display } from "./display.ts";
 import type { AdmitFn } from "./engine.ts";
@@ -22,6 +22,10 @@ export const OPEN_INPUT_MS = 30 * 24 * 60 * 60_000;
 const MAX_TIMER_MS = 2 ** 31 - 1;
 
 export type InputWaits = { turn: number; external: number };
+
+/** Why a channel cannot answer a card about the owner's settings. */
+export const APP_ONLY =
+  "a change to the owner's settings is answered in the app (panel, desktop or phone), never on a channel";
 
 /** What a folder card's "once" answer is kept under, when it comes after the turn stopped waiting. */
 /** The grant a folder card gives for one call; one to change files there never doubles as one to read them. */
@@ -75,7 +79,14 @@ export function createInputs(deps: {
   function wake(r: InputRecord): void {
     settleCard(r);
     let text: string;
+    const note = r.answer ? ` Their note: ${r.answer}` : "";
     if (r.kind === "question") text = `You asked the owner: "${r.prompt}". Their answer: ${r.answer ?? "(empty)"}`;
+    // An action card (no tool): the owner accepted or declined the action itself.
+    else if (!r.tool && !r.folders)
+      text =
+        r.state === "approved"
+          ? `The owner accepted the action you proposed: "${r.prompt}". Do it now, as proposed.${note}`
+          : `The owner declined the action you proposed: "${r.prompt}". Do not do it.${note}`;
     else if (r.state === "approved") {
       const binding = r.approval?.key ?? (r.folders ? folderBinding(r.folders, r.folders_write) : undefined);
       if (r.tool && (!r.approval_scope || r.approval_scope === "once"))
@@ -161,6 +172,8 @@ export function createInputs(deps: {
       external: boolean;
       /** Stays open after the turn stops waiting, instead of counting as no answer. */
       stays: boolean;
+      /** Only the app answers it, never a channel (DECISIONS.md#d-144). */
+      appOnly?: boolean | undefined;
       signal: AbortSignal;
     }): Promise<InputRecord> {
       const waitMs = o.external ? waits.external : waits.turn;
@@ -186,6 +199,7 @@ export function createInputs(deps: {
           ...(o.write ? { write: true } : {}),
         },
         waitMs: o.stays ? OPEN_INPUT_MS : waitMs,
+        app_only: o.appOnly,
       });
       const show = (r: InputRecord) => o.display.upsert((p) => p.type === "input" && p.input_id === r.id, partOf(r));
       show(rec);
@@ -219,12 +233,15 @@ export function createInputs(deps: {
       }
     },
 
+    /** `onChannel`: the answer came on a channel, which never answers what only the app may (DECISIONS.md#d-144). */
     respond(
       id: string,
       a: { decision?: "approve" | "deny" | undefined; text?: string | undefined; scope?: ApprovalScope | undefined },
+      onChannel = false,
     ): InputRecord {
       const rec = store.inputs.get(id);
       if (!rec) throw notFound(`input ${id}`);
+      if (rec.app_only && onChannel) throw unauthorized(APP_ONLY);
       if (rec.state === "pending" && rec.expires_at <= new Date().toISOString()) store.inputs.settle(id, "expired");
       const cur = store.inputs.get(id) as InputRecord;
       if (cur.state !== "pending") throw conflict(`input ${id} is already ${cur.state}`);
@@ -269,7 +286,8 @@ export function createInputs(deps: {
      */
     withdraw(id: string, agentId: string): InputRecord {
       const rec = store.inputs.get(id);
-      if (rec?.kind !== "question" || rec.agent_id !== agentId) throw notFound(`question ${id} of yours`);
+      const own = rec && rec.agent_id === agentId && (rec.kind === "question" || (!rec.tool && !rec.folders));
+      if (!own) throw notFound(`question ${id} of yours`);
       const settled = store.inputs.settle(id, "withdrawn");
       if (!settled) throw conflict(`question ${id} is already ${store.inputs.get(id)?.state ?? "closed"}`);
       const listener = waiting.get(id);

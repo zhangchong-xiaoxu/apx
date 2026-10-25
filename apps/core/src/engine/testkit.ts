@@ -3,8 +3,9 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { Message } from "@apx/protocol";
+import type { Message, PendingInput } from "@apx/protocol";
 import { ApxClient } from "@apx/protocol/client";
+import type { TailscaleRun } from "../access.ts";
 import type { AdapterFactory } from "../channels/types.ts";
 import { type ProviderConfig, testConfig } from "../config.ts";
 import type { DesktopOps } from "../desktop.ts";
@@ -15,8 +16,10 @@ import type { AssistantItem, Completion } from "../providers/types.ts";
 import type { ReleaseSource } from "../release-notes.ts";
 import { createCore } from "../server.ts";
 import type { TelemetrySink } from "../telemetry-sink.ts";
+import { removeDir, waitFor } from "../testkit/platform.ts";
 import { scratchRoot } from "../tools/folders.ts";
 import type { Tool } from "../tools/types.ts";
+import type { NgrokStart } from "../webhooks.ts";
 import type { RunTimers } from "./engine.ts";
 import type { InputWaits } from "./inputs.ts";
 
@@ -45,6 +48,26 @@ export function scriptedLlm(script: Script): Llm & { calls: LlmRequest[] } {
       if (out.message.content) req.onText?.(String(out.message.content));
       return { model: "fake/fake-1", finish: out.message.tool_calls?.length ? "tool_calls" : "stop", ...out };
     },
+  };
+}
+
+const CLAIMED = 'claims="your owner"';
+
+/**
+ * For a channel where the owner's words reach the super-agent first (DECISIONS.md#d-144): the check says go ahead, and
+ * the chat's turn on its answer sees the owner's words as `said` and as its last message, as a direct message's did.
+ */
+export function throughOwnerCheck(script: Script): Script {
+  return (req, ctx) => {
+    if (ctx.afterTool) return script(req, ctx);
+    if (ctx.said.includes(CLAIMED) && ctx.said.includes("Judge first")) return say("It is the owner: go ahead.");
+    if (!ctx.said.includes("<delegation_result")) return script(req, ctx);
+    const kept = req.messages.findLast((m) => m.role === "user" && String(m.content).includes(CLAIMED));
+    const body = /\n([\s\S]*)\n<\/channel_message>/.exec(String(kept?.content ?? ""))?.[1];
+    if (body === undefined) return script(req, ctx);
+    const at = req.messages.findLastIndex((m) => m.role === "user" && !String(m.content).startsWith("<system_note>"));
+    const messages = req.messages.map((m, i) => (i === at ? { role: "user" as const, content: body } : m));
+    return script({ ...req, messages }, { ...ctx, said: body });
   };
 }
 
@@ -80,6 +103,9 @@ export async function startCore(opts: {
   desktop?: DesktopOps;
   /** Messages on a Mac; none by default, so a test never reads the machine's own. */
   imessage?: IMessageOps | null;
+  /** The tailscale CLI (by default one that is not connected, never the machine's) and ngrok. */
+  tailscale?: TailscaleRun;
+  ngrok?: NgrokStart;
   clock?: () => Date;
   unseenAfterMs?: number;
   /** Where push notices go (a stand-in Expo push service). */
@@ -91,6 +117,8 @@ export async function startCore(opts: {
   /** The Google OAuth client the core ships, as `client_id:client_secret` (none: a build without one). */
   googleClient?: string;
   asanaFetch?: typeof fetch;
+  /** Answers an integration's account check (GitHub's server); by default it refuses nothing and is never the net. */
+  integrationFetch?: typeof fetch;
   /** Where telemetry goes (a recorder); none sends nothing, like any test core. */
   telemetrySink?: TelemetrySink;
   /** The release this core starts on and its notes; none tells nothing. */
@@ -114,6 +142,7 @@ export async function startCore(opts: {
     {
       quiet: true,
       ...(opts.asanaFetch ? { asanaFetch: opts.asanaFetch } : {}),
+      integrationFetch: opts.integrationFetch ?? (async () => new Response("{}", { status: 200 })),
       llm: opts.llm,
       ...(opts.harnesses ? { harnesses: opts.harnesses } : {}),
       ...(opts.extraTools ? { extraTools: opts.extraTools } : {}),
@@ -128,6 +157,8 @@ export async function startCore(opts: {
       ...(opts.runTimers ? { runTimers: opts.runTimers } : {}),
       ...(opts.desktop ? { desktop: opts.desktop } : {}),
       imessage: opts.imessage ?? null,
+      tailscale: opts.tailscale ?? (async () => ({ ok: false, out: "not connected" })),
+      ...(opts.ngrok ? { ngrok: opts.ngrok } : {}),
       ...(opts.clock ? { clock: opts.clock } : {}),
       ...(opts.unseenAfterMs !== undefined ? { unseenAfterMs: opts.unseenAfterMs } : {}),
       ...(opts.telemetrySink ? { telemetrySink: opts.telemetrySink } : {}),
@@ -156,14 +187,36 @@ export async function startCore(opts: {
     }
     throw new Error(`thread ${thread} never settled`);
   };
-  const cleanup = () => {
-    // Retry transient filesystem locks; persistent cleanup failures still fail the test.
-    const options = { recursive: true, force: true, maxRetries: 10, retryDelay: 50 };
-    fs.rmSync(home, options);
-    fs.rmSync(scratchRoot(home), options);
+  /** Removes the core's folders; close the core (and anything it started) first. */
+  const cleanup = async () => {
+    await removeDir(home);
+    await removeDir(scratchRoot(home));
   };
   return { core, client, home, settle, cleanup };
 }
+
+/** The first input a run in `thread` waits on (a confirmation, a question); fails after `ms` (× TEST_TIME_SCALE). */
+export const pendingInput = (client: ApxClient, thread: string, ms = 10_000): Promise<PendingInput> =>
+  waitFor(async () => (await client.call("runs.pending", { thread })).inputs[0], `an input in ${thread}`, { ms });
+
+/** Like pendingInput, but undefined once the thread's runs all ended without asking anything. */
+export const inputOrEnd = (client: ApxClient, thread: string, ms = 10_000): Promise<PendingInput | undefined> =>
+  waitFor(
+    async () => {
+      const input = (await client.call("runs.pending", { thread })).inputs[0];
+      if (input) return { input };
+      const { runs } = await client.call("threads.get", { thread });
+      return runs.length && runs.every((r) => r.ended_at) ? { input: undefined } : undefined;
+    },
+    `an input or the end of ${thread}`,
+    { ms },
+  ).then((r) => r.input);
+
+/** inputOrEnd as a list: the input, or none. */
+export const inputsOrEnd = async (client: ApxClient, thread: string, ms = 10_000): Promise<PendingInput[]> => {
+  const input = await inputOrEnd(client, thread, ms);
+  return input ? [input] : [];
+};
 
 export const texts = (messages: Message[]) =>
   messages.flatMap((m) => m.parts.flatMap((p) => (p.type === "text" ? [p.text] : [])));

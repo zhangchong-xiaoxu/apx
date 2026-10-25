@@ -14,6 +14,7 @@ import type { Log } from "../log.ts";
 import { modelSettings } from "../models/choice.ts";
 import type { Llm } from "../providers/llm.ts";
 import type { ChatItem } from "../providers/types.ts";
+import { readsImages } from "../providers/vision.ts";
 import { UNTRUSTED_MARK } from "../tools/result.ts";
 import { FULL_OUTPUT_RUNS, HISTORY_BUDGET_CHARS } from "./context.ts";
 import { memoryHistory } from "./memory-projection.ts";
@@ -194,7 +195,7 @@ export function createUpkeep(deps: { store: Store; llm: Llm; log: Log }) {
     agentId: string | undefined,
     system: string,
     user: string,
-    o: { models?: string[]; timeoutMs?: number } = {},
+    o: { models?: string[]; timeoutMs?: number; images?: Array<{ media_id: string; mime: string }> } = {},
   ): Promise<string | undefined> {
     const models = o.models ?? auxModels(agentId);
     if (!models.length) return undefined;
@@ -202,7 +203,7 @@ export function createUpkeep(deps: { store: Store; llm: Llm; log: Log }) {
       models,
       messages: [
         { role: "system", content: system },
-        { role: "user", content: user },
+        o.images?.length ? { role: "user", content: user, images: o.images } : { role: "user", content: user },
       ],
       tools: [],
       ...(about.purpose === "memory_capture" || about.purpose === "memory_dream" ? { maxOutputTokens: 1800 } : {}),
@@ -340,6 +341,16 @@ export function createUpkeep(deps: { store: Store; llm: Llm; log: Log }) {
     auxModels,
     voiceModels,
     memory: (agentId: string, system: string, user: string, about: AuxAbout) => ask(about, agentId, system, user),
+    /**
+     * What a picture shows (a sticker's meaning), from the models known to read images: the auxiliary ones, then the
+     * router's; none without one. A model not known to read them would name what it never saw.
+     */
+    see: (system: string, user: string, image: { media_id: string; mime: string }, about: AuxAbout) => {
+      const models = [...new Set([...auxModels(), ...agentModels()])].filter((m) => readsImages(m) === true);
+      return models.length
+        ? ask(about, undefined, system, user, { models, images: [image] })
+        : Promise.resolve(undefined);
+    },
     /** A one-shot answer from the auxiliary model (a room's "is this worth answering?"); none without one. */
     judge: (system: string, user: string, about: AuxAbout) => ask(about, undefined, system, user),
     /**

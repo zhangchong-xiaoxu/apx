@@ -1,19 +1,20 @@
 import assert from "node:assert/strict";
-import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { after, before, test } from "node:test";
 import { say, scriptedLlm, startCore, texts } from "../engine/testkit.ts";
 import { realpath } from "../paths.ts";
+import { type TempDir, tempDir } from "../testkit/platform.ts";
 
 const FAKE = path.join(import.meta.dirname, "..", "harness", "acp", "fake-agent.test-support.mjs");
 
 let env: Awaited<ReturnType<typeof startCore>>;
+let dir: TempDir;
 let repo = "";
 
 before(async () => {
   env = await startCore({ llm: scriptedLlm(() => say("ok")) });
-  repo = realpath(fs.mkdtempSync(path.join(os.tmpdir(), "apx-acp-owned-")));
+  dir = tempDir("apx-acp-owned-");
+  repo = realpath(dir.path);
   // Windows lists the same folder in either case: the session must still land in the project.
   const listed = process.platform === "win32" ? repo.charAt(0).toLowerCase() + repo.slice(1) : repo;
   env.core.store.settings.set(
@@ -24,6 +25,7 @@ before(async () => {
 after(async () => {
   await env.core.close();
   env.cleanup();
+  await dir.remove();
 });
 
 test("an ACP agent's own sessions are listed and gone on with in APX, with what was said there", async () => {

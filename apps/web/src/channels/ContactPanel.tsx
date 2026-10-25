@@ -1,15 +1,17 @@
 import type { Person } from "@apx/protocol";
 import { PERSON_RELATIONS } from "@apx/protocol/client";
-import { Button, IconButton, Icons, Input, Select, Switch, Textarea, Tooltip } from "@apx/ui";
+import { Button, Help, IconButton, Icons, Input, Select, Switch, Textarea, Tooltip } from "@apx/ui";
 import { useState } from "react";
-import { claimAddress, saveContact } from "../data/channels.ts";
+import { claimAddress, saveContact, useChannels } from "../data/channels.ts";
 import { notify } from "../data/notices.ts";
 import { useT } from "../i18n/index.ts";
-import { RELATION_KEY } from "./ChannelScreen.tsx";
+import { RELATION_KEY } from "./people.ts";
+import { ownerOn } from "./StartRows.tsx";
 
 /**
  * A contact's card beside their chat: name and nickname, how they relate to the owner, who they are and the rules for
- * answering them (in the owner's words), what their chat may do (all off by default), and silencing.
+ * answering them (in the owner's words), what their chat may do (all off by default), whether they are answered past
+ * the channel's attention hours, and silencing.
  */
 const NO_RELATION = "none";
 
@@ -21,6 +23,7 @@ export function ContactPanel({ person, onClose }: { person: Person; onClose(): v
     relation: person.relation,
     note: person.note ?? "",
     rules: person.rules ?? "",
+    any_hour: person.any_hour,
     perms: person.perms,
   });
   const [busy, setBusy] = useState(false);
@@ -30,6 +33,7 @@ export function ContactPanel({ person, onClose }: { person: Person; onClose(): v
     d.relation !== person.relation ||
     d.note !== (person.note ?? "") ||
     d.rules !== (person.rules ?? "") ||
+    d.any_hour !== person.any_hour ||
     JSON.stringify(d.perms) !== JSON.stringify(person.perms);
   const save = async () => {
     setBusy(true);
@@ -37,13 +41,12 @@ export function ContactPanel({ person, onClose }: { person: Person; onClose(): v
     setBusy(false);
     if (ok) notify(t("ch.saved"), "info");
   };
-  const perm = (k: keyof Person["perms"], label: string, hint: string) => (
+  const perm = (k: keyof Person["perms"], label: string) => (
     <li>
       <Switch
         size="sm"
         checked={d.perms[k]}
         label={label}
-        description={hint}
         onCheckedChange={(on) => setD((x) => ({ ...x, perms: { ...x.perms, [k]: on } }))}
       />
     </li>
@@ -109,11 +112,35 @@ export function ContactPanel({ person, onClose }: { person: Person; onClose(): v
           />
           <span className="pform__hint">{t("ch.rulesHint")}</span>
         </div>
-        <div className="pform__label">{t("ch.may")}</div>
+        <div className="pform__label">
+          {t("ch.may")}
+          <Help
+            label={t("ch.may.help")}
+            title={t("ch.may.helpTitle")}
+            className="chan__help"
+            width={340}
+            items={[
+              { term: t("ch.perm.appointments"), text: t("ch.perm.appointmentsHint") },
+              { term: t("ch.perm.requests"), text: t("ch.perm.requestsHint") },
+              { term: t("ch.perm.notes"), text: t("ch.perm.notesHint") },
+              { term: t("ch.anyHour"), text: t("ch.anyHourHint") },
+            ]}
+          >
+            {t("ch.may.close")}
+          </Help>
+        </div>
         <ul className="chan__perms">
-          {perm("appointments", t("ch.perm.appointments"), t("ch.perm.appointmentsHint"))}
-          {perm("requests", t("ch.perm.requests"), t("ch.perm.requestsHint"))}
-          {perm("notes", t("ch.perm.notes"), t("ch.perm.notesHint"))}
+          {perm("appointments", t("ch.perm.appointments"))}
+          {perm("requests", t("ch.perm.requests"))}
+          {perm("notes", t("ch.perm.notes"))}
+          <li>
+            <Switch
+              size="sm"
+              checked={d.any_hour}
+              label={t("ch.anyHour")}
+              onCheckedChange={(on) => setD((x) => ({ ...x, any_hour: on }))}
+            />
+          </li>
         </ul>
         <ItsMine person={person} onDone={onClose} />
       </div>
@@ -147,14 +174,16 @@ export function ContactPanel({ person, onClose }: { person: Person; onClose(): v
 
 /**
  * An address approved as a contact by mistake that is really the owner's: "This account is mine" gives it (and its
- * chats on that channel) to the owner, after saying what will happen.
+ * chats on that channel) to the owner, after saying what will happen. Once the owner has an account on that channel
+ * the question is settled, so it is not offered.
  */
 function ItsMine({ person, onDone }: { person: Person; onDone(): void }) {
   const t = useT();
   const [asking, setAsking] = useState(false);
   const [busy, setBusy] = useState(false);
   const address = person.addresses[0];
-  if (!address) return null;
+  const settled = useChannels((s) => ownerOn(s.persons, address?.channel ?? ""));
+  if (!address || settled) return null;
   const claim = async () => {
     setBusy(true);
     const ok = await claimAddress(address.id);
