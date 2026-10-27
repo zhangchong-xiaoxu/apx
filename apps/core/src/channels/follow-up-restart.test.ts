@@ -23,11 +23,13 @@ const probe = defineTool({
   run: async () => "probed",
 });
 
-test("a question still waiting in the app after a restart follows the owner to Telegram once, when its time comes", async () => {
+test("a question still waiting in the app after a restart follows the owner to Telegram once, when its time comes", async (t) => {
   const home = tempDir("apx-follow-up-").path;
   const tg = await fakeTelegram(TOKEN);
   // One clock across the restarts: the owner's two minutes pass when the test says so.
   const timers = manualTimers();
+  // Persisted input dates and follow-up deadlines must start on the same clock.
+  t.mock.timers.enable({ apis: ["Date"], now: timers.now() });
   const boot = () =>
     startCore({
       home,
