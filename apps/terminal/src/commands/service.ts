@@ -5,7 +5,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { exitWhenClosed } from "@apx/protocol/exit";
-import { apxHome, corePort, coreUp, serviceConnection } from "./local.ts";
+import { apxHome, corePort, coreUp, serviceConnection, waitForCore } from "./local.ts";
 import {
   appRoot,
   bundleRun,
@@ -20,7 +20,10 @@ import {
   serviceOwnsHome,
   systemdUnit,
   terminalMain,
+  WINDOWS_LAUNCHER_FILE,
   WINDOWS_RUN_VALUE,
+  windowsLauncherScript,
+  windowsLoginCommand,
   windowsRunCommand,
   windowsStartScript,
   windowsStopScript,
@@ -176,9 +179,13 @@ export async function install(): Promise<void> {
     console.log(`logs: ${s.log}`);
   } else {
     const command = windowsCommand(home);
+    must("where.exe", ["wscript.exe"]);
     if (wasInstalled) stopWindows(home);
-    must("reg", ["add", RUN_KEY, "/v", names().windows, "/t", "REG_SZ", "/d", command, "/f"]);
-    startWindows(command);
+    fs.writeFileSync(path.join(home, WINDOWS_LAUNCHER_FILE), windowsLauncherScript(command));
+    const login = windowsLoginCommand(home);
+    must("reg", ["add", RUN_KEY, "/v", names().windows, "/t", "REG_SZ", "/d", login, "/f"]);
+    startWindows(login);
+    if (!(await waitForCore(url))) throw new Error(`The Windows service did not start on ${url}; read ${s.log}.`);
     console.log(`installed the login entry ${names().windows}`);
     console.log(`logs: ${s.log}`);
   }
@@ -196,7 +203,10 @@ export async function uninstall(): Promise<void> {
     fs.rmSync(launchdFile(), { force: true });
   } else if (process.platform === "win32") {
     if (wasInstalled) stopWindows(apxHome());
-    sh("reg", ["delete", RUN_KEY, "/v", names().windows, "/f"]);
+    if (wasInstalled) {
+      must("reg", ["delete", RUN_KEY, "/v", names().windows, "/f"]);
+      fs.rmSync(path.join(apxHome(), WINDOWS_LAUNCHER_FILE), { force: true });
+    }
   }
   console.log("the core no longer runs as a service");
 }
@@ -223,6 +233,11 @@ export async function restart(): Promise<void> {
   else {
     const command = stopWindows(apxHome());
     startWindows(command);
+    const { url } = serviceConnection();
+    if (!(await waitForCore(url)))
+      throw new Error(
+        `The Windows service did not restart on ${url}; read ${path.join(apxHome(), "logs", "core.log")}.`,
+      );
   }
   console.log("restarting the core");
 }
@@ -309,15 +324,31 @@ function stopWindows(home: string) {
 }
 
 /** `apx service run`: keeps one core alive, started again with backoff whenever it exits. */
-async function supervise(home: string): Promise<void> {
+export async function supervise(home: string, s: ServiceSpec = spec(home)): Promise<void> {
   process.env.APX_HOME = home;
   fs.mkdirSync(path.join(home, "logs"), { recursive: true });
-  const log = fs.createWriteStream(path.join(home, "logs", "core.log"), { flags: "a" });
-  const s = spec(home);
+  const file = path.join(home, "logs", "core.log");
+  const record = (level: "info" | "warn" | "error", msg: string, fields: Record<string, unknown> = {}) =>
+    fs.appendFileSync(
+      file,
+      `${JSON.stringify({ t: new Date().toISOString(), level, scope: "supervisor", msg, supervisor: process.pid, ...fields })}\n`,
+    );
+  const log = fs.createWriteStream(file, { flags: "a" });
+  record("info", "supervisor started", { parent: process.ppid });
   let child: ChildProcess | undefined;
   let backoff = 1000;
   let stopped = false;
   let retry: NodeJS.Timeout | undefined;
+  const exiting = (code: number) => record("info", "supervisor exiting", { code, core: child?.pid });
+  const fatal = (error: Error, origin: string) =>
+    record("error", "supervisor fatal", {
+      error: error.name,
+      code: (error as NodeJS.ErrnoException).code,
+      origin,
+      core: child?.pid,
+    });
+  process.once("exit", exiting);
+  process.on("uncaughtExceptionMonitor", fatal);
   const start = () => {
     const startedAt = Date.now();
     child = spawn(s.node, [...NODE_FLAGS, s.main], {
@@ -329,17 +360,30 @@ async function supervise(home: string): Promise<void> {
     child.stdout?.pipe(log, { end: false });
     child.stderr?.pipe(log, { end: false });
     fs.writeFileSync(pidFile(home), JSON.stringify({ supervisor: process.pid, core: child.pid }));
-    child.on("exit", (code) => {
-      log.write(`${new Date().toISOString()} core exited (${code})\n`);
+    child.once("spawn", () => record("info", "core started", { core: child?.pid }));
+    const restart = (code: number | null) => {
       if (stopped) return;
       if (Date.now() - startedAt > 60_000 || code === RESTART_CODE) backoff = 1000;
+      record("warn", "core restart scheduled", { delay_ms: backoff });
       retry = setTimeout(start, backoff);
       backoff = Math.min(backoff * 2, 30_000);
+    };
+    let failed = false;
+    child.once("error", (error: NodeJS.ErrnoException) => {
+      failed = true;
+      record("error", "core spawn failed", { code: error.code });
+      restart(null);
+    });
+    child.once("exit", (code, signal) => {
+      record(code === 0 || code === RESTART_CODE ? "info" : "warn", "core exited", { code, signal, core: child?.pid });
+      if (!failed) restart(code);
     });
   };
   const done = new Promise<void>((resolve) => {
     for (const signal of ["SIGINT", "SIGTERM"] as const)
       process.once(signal, () => {
+        if (stopped) return;
+        record("info", "supervisor stopping", { signal, core: child?.pid });
         stopped = true;
         clearTimeout(retry);
         // Ends on its own after a clean stop; by force only if the stop hangs.
