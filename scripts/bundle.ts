@@ -10,7 +10,7 @@ type Mapping = { generatedLine: number; generatedCharacter: number; sourceIndex?
 const { decodeMappings } = ts as typeof ts & { decodeMappings: (mappings: string) => Iterable<Mapping> };
 
 /** The languages main.tsx can wait for; each is its own chunk, named after its file (i18n/en.ts → en-<hash>.js). */
-const LANGUAGE_CHUNK = /^assets\/(en|es)-[\w-]+\.js$/;
+const LANGUAGE_CHUNK = /^assets\/(en|es|zh)-[\w-]+\.js$/;
 
 export type Boot = {
   /** The files index.html names (entry script and stylesheet) and the chunks they import statically. */

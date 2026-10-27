@@ -47,10 +47,25 @@ test("a late string pack named after a language is not taken for that language",
     "assets/index-A.js": `${panel["assets/index-A.js"]}const k=()=>import("./es-pack-I.js");`,
     "assets/es-pack-I.js": "export const p={};",
   });
+
   t.after(() => removeDir(dir));
   const boot = bootFiles(dir);
   assert.ok(boot);
   assert.deepEqual(boot.languages.es?.sort(), ["assets/es-E.js", "assets/notices-G.js"]);
+});
+
+test("Chinese is included when it is the heaviest first-load language", (t) => {
+  const dir = dist({
+    ...panel,
+    "assets/index-A.js": `${panel["assets/index-A.js"]}const zh=()=>import("./zh-I.js");`,
+    "assets/zh-I.js":
+      'export const zh={"greeting":"你好","details":"请先连接服务，然后选择项目和智能体，查看所有聊天、任务、设备以及当前设置。"};',
+  });
+  t.after(() => removeDir(dir));
+  const boot = bootFiles(dir);
+  assert.ok(boot);
+  assert.deepEqual(boot.languages.zh, ["assets/zh-I.js"]);
+  assert.ok(boot.files.includes("assets/zh-I.js"));
 });
 
 test("zod or a lazy screen pulled onto the first load is named", (t) => {

@@ -6,6 +6,7 @@ import { enEngines } from "./en-engines.ts";
 import { enFiles } from "./en-files.ts";
 import { enHelper } from "./en-helper.ts";
 import { enOffice } from "./en-office.ts";
+import type { OnboardingKey } from "./en-onboarding.ts";
 import { enResources } from "./en-resources.ts";
 import { enSetup } from "./en-setup.ts";
 import { enTeam } from "./en-team.ts";
@@ -1839,4 +1840,4 @@ export const en = {
 } as const;
 
 /** Every key the panel may show: these, and those of the packs loaded with their screens (messages.ts PACKS). */
-export type MessageKey = keyof typeof en | ComputerKey | ReceivedKey | SysUsageKey;
+export type MessageKey = keyof typeof en | ComputerKey | ReceivedKey | SysUsageKey | OnboardingKey;

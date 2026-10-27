@@ -4,7 +4,7 @@ import { Button, Icons, Input, SegmentedControl } from "@apx/ui";
 import { type FormEvent, type ReactNode, useEffect, useState } from "react";
 import type { SshPrompt } from "../apx-desktop.d.ts";
 import logo from "../assets/logo.png";
-import { type MessageKey, useT } from "../i18n/index.ts";
+import { type MessageKey, usePack, useT } from "../i18n/index.ts";
 import { useDesktopClass } from "../shell/desktop.ts";
 import { BuildVersion } from "./BuildVersion.tsx";
 import { ConnectTerminal, type TermLine } from "./ConnectTerminal.tsx";
@@ -58,6 +58,10 @@ const TERM_LINES = 400;
  * elsewhere (client). Shown only inside the desktop app, which answers through window.apxConnect.
  */
 export function ConnectScreen() {
+  return usePack("onboarding") ? <ConnectScreenBody /> : null;
+}
+
+function ConnectScreenBody() {
   const t = useT();
   const desktop = useDesktopClass();
   const [step, setStep] = useState<"start" | "server" | "client">("start");

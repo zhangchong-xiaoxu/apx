@@ -21,6 +21,11 @@ export function loadMessages(lang: Language): Promise<Messages> {
 
 /** Strings only one late screen shows: loaded with it (index.ts usePack), never with the first screen. */
 const PACKS = {
+  onboarding: {
+    en: () => import("./en-onboarding.ts").then((m) => m.enOnboarding),
+    es: () => import("./es-onboarding.ts").then((m) => m.esOnboarding),
+    zh: () => import("./zh-onboarding.ts").then((m) => m.zhOnboarding),
+  },
   computer: {
     en: () => import("./computer-en.ts").then((m) => m.enComputer),
     es: () => import("./computer-es.ts").then((m) => m.esComputer),
