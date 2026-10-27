@@ -96,6 +96,15 @@ for (const mode of ["restart", "spawn-error", "fatal"] as const) {
         } catch (error) {
           assert.equal((error as NodeJS.ErrnoException).code, "ESRCH");
         }
+        await waitFor(() => {
+          try {
+            process.kill(pid, 0);
+            return false;
+          } catch (error) {
+            assert.equal((error as NodeJS.ErrnoException).code, "ESRCH");
+            return true;
+          }
+        }, "supervisor test core exit");
       }
     }
   });
