@@ -18,6 +18,10 @@ implicit lifecycle control over the server; client restart/update does not updat
 startup holds an OS-released SQLite lock per canonical home, independent of port. Local service identities are
 home-specific; `APX_URL` does not redirect OS service commands. See [Desktop lifecycle](DESKTOP_LIFECYCLE.md).
 
+Windows 登录项通过用户 home 下的 `service-start.js`（Windows Script Host / JScript）隐藏启动原有
+terminal supervisor；旧的直接登录命令仍可停止、重启，重新安装服务才迁移入口。守护进程将自身启动、
+核心退出与重试、停止信号和异常类型同步记录到同一 `logs/core.log`；强制终止不保证留下退出记录。
+
 ## 2. How a call flows
 
 ```

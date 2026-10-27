@@ -8,6 +8,7 @@ import { BUNDLE } from "@apx/protocol";
 export const SYSTEMD_UNIT = "apx.service";
 export const LAUNCHD_LABEL = "dev.apx.core";
 export const WINDOWS_RUN_VALUE = "APXCore";
+export const WINDOWS_LAUNCHER_FILE = "service-start.js";
 export const NODE_FLAGS = ["--disable-warning=ExperimentalWarning"];
 
 /** A custom home must not restart or replace the default installation's service. */
@@ -91,8 +92,10 @@ const sdQuote = (s: string) => `"${s.replace(/\\/g, "\\\\").replace(/"/g, '\\"')
 /** Refuse an old fixed-name service that was installed for a different home. */
 export function serviceOwnsHome(text: string, platform: string, home: string): boolean {
   let configured: string | undefined;
-  if (platform === "win32") configured = /service run --home "([^"]+)"/.exec(text)?.[1];
-  else if (platform === "darwin") {
+  if (platform === "win32") {
+    const entry = /\sREG_SZ\s+([^\r\n]+)/.exec(text)?.[1] ?? text;
+    configured = /service run --home "([^"]+)"/.exec(windowsServiceCommand(entry))?.[1];
+  } else if (platform === "darwin") {
     configured = /<key>APX_HOME<\/key>\s*<string>([^<]*)<\/string>/.exec(text)?.[1];
     configured = configured?.replace(
       /&(amp|lt|gt|quot|apos);/g,
@@ -187,13 +190,14 @@ export function windowsStartScript(command: string): string {
     `$cls = Get-CimClass -ClassName Win32_ProcessStartup`,
     `; $startup = New-CimInstance -CimClass $cls -ClientOnly`,
     `; $startup.ShowWindow = [uint16]0`,
-    `; Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{ CommandLine = '${quote(command)}'; ProcessStartupInformation = $startup } | Out-Null`,
+    `; $created = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{ CommandLine = '${quote(command)}'; ProcessStartupInformation = $startup }`,
+    `; if ($created.ReturnValue -ne 0) { throw "Windows service start failed: $($created.ReturnValue)" }`,
   ].join(" ");
 }
 
 /** Stops only the registered supervisor and its direct core children, never a PID file or the caller's paths. */
 export function windowsStopScript(home: string, command: string): string {
-  const match = /"([^"]+)" ([^"]*) "([^"]+)" service run --home "([^"]+)""?$/.exec(command);
+  const match = /"([^"]+)" ([^"]*) "([^"]+)" service run --home "([^"]+)""?$/.exec(windowsServiceCommand(command));
   if (!match || match[2] !== NODE_FLAGS.join(" ") || !serviceOwnsHome(command, "win32", home))
     throw new Error("The Windows service command is not recognized for this home; no process was stopped.");
   const node = match[1] as string;
@@ -215,6 +219,30 @@ export function windowsStopScript(home: string, command: string): string {
     `; if (Get-Process -Id $ids -ErrorAction SilentlyContinue) { Write-Error 'APX processes are still running'; exit 1 } }`,
     `; exit 0`,
   ].join(" ");
+}
+
+/** WScript has no console; hiding a child cannot hide the console Windows creates for a Run entry itself. */
+export function windowsLoginCommand(home: string): string {
+  return `wscript.exe //E:JScript //B //Nologo "${path.join(home, WINDOWS_LAUNCHER_FILE)}"`;
+}
+
+export function windowsLauncherScript(command: string): string {
+  const literal = JSON.stringify(command).replace(
+    /[^\x20-\x7e]/g,
+    (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`,
+  );
+  return `new ActiveXObject("WScript.Shell").Run(${literal}, 0, false);\n`;
+}
+
+/** Resolve only our generated launcher; legacy direct entries remain controllable without a reinstall. */
+export function windowsServiceCommand(entry: string): string {
+  if (!entry.startsWith("wscript.exe ")) return entry;
+  const file = /^wscript\.exe \/\/E:JScript \/\/B \/\/Nologo "([^"]+)"$/.exec(entry)?.[1];
+  if (!file) throw new Error("The Windows service launcher entry is not recognized.");
+  const script = fs.readFileSync(file, "utf8");
+  const literal = /^new ActiveXObject\("WScript\.Shell"\)\.Run\(("(?:[^"\\]|\\.)*"), 0, false\);\n$/.exec(script)?.[1];
+  if (!literal) throw new Error("The Windows service launcher contents are not recognized.");
+  return JSON.parse(literal) as string;
 }
 
 /**

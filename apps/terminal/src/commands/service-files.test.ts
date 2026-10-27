@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { test } from "node:test";
+import { tempDir } from "../../../core/src/testkit/platform.ts";
 import {
   adoptBundleApp,
   appRoot,
@@ -13,8 +14,11 @@ import {
   serviceNames,
   serviceOwnsHome,
   systemdUnit,
+  windowsLauncherScript,
+  windowsLoginCommand,
   windowsProcessPattern,
   windowsRunCommand,
+  windowsServiceCommand,
 } from "./service-files.ts";
 
 const spec = {
@@ -78,6 +82,30 @@ test("the Windows login entry runs the terminal's supervisor, through cmd only f
     windowsRunCommand({ ...o, electron: false, env: { APX_RELEASES: "http://192.168.0.10:7480" } }),
     /^cmd \/d \/c "set APX_RELEASES=http:\/\/192.168.0.10:7480&& "C:\\Node\\node.exe" .* service run --home .*"$/,
   );
+});
+
+test("the Windows login launcher is console-free and preserves the command and home authority", async () => {
+  await using temp = tempDir("apx-login-");
+  const dir = temp.path;
+  const command = windowsRunCommand({
+    node: "C:\\Program Files\\Node\\node.exe",
+    terminal: "C:\\work\\apps\\terminal\\src\\main.ts",
+    home: dir,
+    electron: true,
+    env: { APX_PORT: "7550", APX_RELEASES: "https://updates.example.com/路径" },
+  });
+  fs.writeFileSync(path.join(dir, "service-start.js"), windowsLauncherScript(command));
+  const entry = windowsLoginCommand(dir);
+  assert.match(entry, /^wscript\.exe \/\/E:JScript \/\/B \/\/Nologo "/);
+  assert.equal(windowsServiceCommand(entry), command);
+  assert.equal(serviceOwnsHome(entry, "win32", dir), true);
+  assert.equal(serviceOwnsHome(`HKEY_CURRENT_USER\\Run\n    APXCore    REG_SZ    ${entry}\n`, "win32", dir), true);
+  assert.equal(serviceOwnsHome(entry, "win32", `${dir}-other`), false);
+  assert.equal(windowsServiceCommand(command), command, "legacy login entries still work");
+  assert.match(windowsLauncherScript(command), /\\u[0-9a-f]{4}/);
+  assert.throws(() => windowsServiceCommand('wscript.exe "unexpected.js"'), /launcher/);
+  fs.writeFileSync(path.join(dir, "service-start.js"), "unexpected contents");
+  assert.throws(() => windowsServiceCommand(entry), /launcher/);
 });
 
 test("a bundle install runs through current, and its terminal finds the install it lives in", () => {
