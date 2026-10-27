@@ -9,13 +9,13 @@ import { test } from "node:test";
 import { promisify } from "node:util";
 import { createLog } from "./log.ts";
 import { panelEntry } from "./server-wiring.ts";
-import { removeDir } from "./testkit/platform.ts";
+import { removeDir, tempDir } from "./testkit/platform.ts";
 import { createUpdates, RESTART_CODE, type Runner, restartAfterClose, run } from "./updates.ts";
 import { runningVersion } from "./updates-release.ts";
 
 const log = createLog("test", true);
 const checkout = () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "apx-upd-"));
+  const root = tempDir("apx-upd-").path;
   fs.mkdirSync(path.join(root, ".git"));
   return root;
 };
@@ -53,8 +53,15 @@ test("outside a checkout there is nothing to update, and an update says why", as
 
 test("a check tells how far behind origin/master the checkout is and what changed", async () => {
   const root = checkout();
-  const u = createUpdates({ root, log, enabled: true, supervised: false, run: runner() });
+  const run = runner();
+  const u = createUpdates({ root, log, enabled: true, supervised: false, run });
   const s = await u.check();
+  assert.deepEqual(run.calls, [
+    "git fetch --quiet origin master",
+    "git rev-list --count HEAD..origin/master",
+    "git rev-parse --short=12 origin/master",
+    "git log --format=%an%x00%s -n8 HEAD..origin/master",
+  ]);
   assert.equal(s.behind, 3);
   assert.equal(s.latest, "abc123def456");
   assert.deepEqual(s.changes, ["feat: whatsapp", "【Chong】fix: dialogs", "fix: cards"], "the fork's own are marked");
@@ -92,8 +99,8 @@ test("a pull that cannot fast-forward stops the update before installing anythin
   await removeDir(root);
 });
 
-test("the served panel is known by its entry file, read again when the build changes", () => {
-  const dist = fs.mkdtempSync(path.join(os.tmpdir(), "apx-dist-"));
+test("the served panel is known by its entry file, read again when the build changes", async () => {
+  const dist = tempDir("apx-dist-").path;
   const write = (entry: string, at: number) => {
     fs.writeFileSync(path.join(dist, "index.html"), `<script type="module" src="/assets/${entry}"></script>`);
     fs.utimesSync(path.join(dist, "index.html"), at, at);
@@ -103,19 +110,19 @@ test("the served panel is known by its entry file, read again when the build cha
   write("index-BBB222.js", 2000);
   assert.equal(panelEntry(dist), "index-BBB222.js");
   assert.equal(panelEntry(undefined), undefined);
-  fs.rmSync(dist, { recursive: true });
+  await removeDir(dist);
 });
 
 /** A bundle install (APX_APP) at 2.0.3 and a feed that serves 2.1.0 for linux-x64, the way GitHub would. */
 async function releaseFeed(o: { corrupt?: boolean } = {}) {
-  const app = fs.mkdtempSync(path.join(os.tmpdir(), "apx-upd-app-"));
+  const app = tempDir("apx-upd-app-").path;
   const old = path.join(app, "versions", "2.0.3");
   fs.mkdirSync(path.join(old, "node", "bin"), { recursive: true });
   fs.writeFileSync(path.join(old, "node", "bin", "node"), "old");
   fs.mkdirSync(path.join(app, "versions", "1.9.0"));
   fs.symlinkSync(path.join("versions", "2.0.3"), path.join(app, "current"));
 
-  const src = fs.mkdtempSync(path.join(os.tmpdir(), "apx-upd-src-"));
+  const src = tempDir("apx-upd-src-").path;
   fs.mkdirSync(path.join(src, "apx", "node", "bin"), { recursive: true });
   fs.writeFileSync(path.join(src, "apx", "node", "bin", "node"), "new");
   const name = "apx-core-2.1.0-linux-x64.tar.gz";
@@ -156,10 +163,10 @@ async function releaseFeed(o: { corrupt?: boolean } = {}) {
       return { code: 1, out: String(err) };
     }
   };
-  const done = () => {
-    server.close();
-    fs.rmSync(app, { recursive: true, force: true });
-    fs.rmSync(src, { recursive: true, force: true });
+  const done = async () => {
+    await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
+    await removeDir(app);
+    await removeDir(src);
   };
   const applyInProcess = async (root: string, env = process.env) => {
     const script = `
@@ -219,7 +226,7 @@ test("a bundle install finds the newer release, installs it beside the running o
   );
   await new Promise((resolve) => setTimeout(resolve, 600));
   assert.equal(restarted, true);
-  f.done();
+  await f.done();
 });
 
 test("a bundle that does not match its .sha256 is refused and what runs stays as it was", async () => {
@@ -241,7 +248,7 @@ test("a bundle that does not match its .sha256 is refused and what runs stays as
   assert.match(r.log, /does not match its \.sha256/);
   assert.equal(fs.readFileSync(path.join(f.app, "current", "node", "bin", "node"), "utf8"), "old");
   assert.deepEqual(fs.readdirSync(path.join(f.app, "versions")).sort(), ["1.9.0", "2.0.3"]);
-  f.done();
+  await f.done();
 });
 
 test("a release update runs even when the running bundle's root no longer exists", async () => {
@@ -251,7 +258,7 @@ test("a release update runs even when the running bundle's root no longer exists
     assert.equal(result.ok, true, result.log);
     assert.equal(fs.readFileSync(path.join(f.app, "current", "node", "bin", "node"), "utf8"), "new");
   } finally {
-    f.done();
+    await f.done();
   }
 });
 
@@ -279,7 +286,7 @@ test("an update never deletes the version a core that did not restart still runs
     assert.equal(fs.readFileSync(path.join(f.app, "current", "node", "bin", "node"), "utf8"), "new");
     assert.deepEqual(fs.readdirSync(path.join(f.app, "versions")).sort(), ["1.9.0", "2.0.3", "2.1.0"]);
   } finally {
-    f.done();
+    await f.done();
   }
 });
 
@@ -291,7 +298,7 @@ if (process.platform === "darwin") {
       assert.equal(result.ok, true, result.log);
       assert.equal(fs.readFileSync(path.join(f.app, "current", "node", "bin", "node"), "utf8"), "new");
     } finally {
-      f.done();
+      await f.done();
     }
   });
 }
@@ -325,7 +332,7 @@ test("failed extraction preserves the installed versions and never requests a re
     );
     await new Promise((resolve) => setTimeout(resolve, 600));
   } finally {
-    f.done();
+    await f.done();
   }
 });
 
@@ -365,7 +372,7 @@ test("the core the desktop app carries says a newer release is out, and leaves i
   const r = await u.apply();
   assert.equal(r.ok, false);
   assert.match(r.log, /desktop app/);
-  f.done();
+  await f.done();
 });
 
 test("a restart after an update exits even when closing the core hangs", async () => {

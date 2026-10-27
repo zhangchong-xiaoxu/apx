@@ -9,6 +9,7 @@ import type { TailscaleRun } from "../access.ts";
 import type { AdapterFactory } from "../channels/types.ts";
 import { type ProviderConfig, testConfig } from "../config.ts";
 import type { DesktopOps } from "../desktop.ts";
+import type { ComputerConfig } from "../environments/computer.ts";
 import type { Harness } from "../harness/index.ts";
 import type { IMessageOps } from "../imessage.ts";
 import type { Llm, LlmRequest } from "../providers/llm.ts";
@@ -81,6 +82,7 @@ export const callTool = (id: string, name: string, args: object): { message: Ass
 });
 
 export async function startCore(opts: {
+  computer?: ComputerConfig;
   llm: Llm;
   home?: string;
   /** Known port for browser fixtures whose origin must be allowed before the core starts. */
@@ -94,12 +96,17 @@ export async function startCore(opts: {
   channelAdapters?: Record<string, AdapterFactory>;
   channelRetryMs?: readonly number[];
   roomBurstMs?: number;
+  followUpTimers?: RunTimers;
   suggestBurstMs?: number;
   inputWaits?: InputWaits;
   engineIdleMs?: number;
   turnIdleMs?: number;
   a2aCapMs?: number;
   runTimers?: RunTimers;
+  /** Whether the Mac slept since a moment; never, unless a test says so. */
+  sleptSince?: (since: number) => boolean;
+  /** How the core holds the Mac awake; by default nothing is spawned. */
+  keepAwake?: (cmd: string, args: string[]) => { kill(): boolean; once(event: "exit", listener: () => void): unknown };
   desktop?: DesktopOps;
   /** Messages on a Mac; none by default, so a test never reads the machine's own. */
   imessage?: IMessageOps | null;
@@ -141,6 +148,16 @@ export async function startCore(opts: {
     }),
     {
       quiet: true,
+      // A fixed host, so limits and the free-memory check do not depend on the machine running the tests.
+      ...(opts.computer
+        ? {
+            computer: {
+              host: { memoryBytes: 16 * 1024 ** 3, cpus: 8 },
+              freeMemory: async () => 12 * 1024 ** 3,
+              ...opts.computer,
+            },
+          }
+        : {}),
       ...(opts.asanaFetch ? { asanaFetch: opts.asanaFetch } : {}),
       integrationFetch: opts.integrationFetch ?? (async () => new Response("{}", { status: 200 })),
       llm: opts.llm,
@@ -149,12 +166,15 @@ export async function startCore(opts: {
       ...(opts.channelAdapters ? { channelAdapters: opts.channelAdapters } : {}),
       ...(opts.channelRetryMs ? { channelRetryMs: opts.channelRetryMs } : {}),
       ...(opts.roomBurstMs !== undefined ? { roomBurstMs: opts.roomBurstMs } : {}),
+      ...(opts.followUpTimers ? { followUpTimers: opts.followUpTimers } : {}),
       ...(opts.suggestBurstMs !== undefined ? { suggestBurstMs: opts.suggestBurstMs } : {}),
       ...(opts.inputWaits ? { inputWaits: opts.inputWaits } : {}),
       ...(opts.engineIdleMs ? { engineIdleMs: opts.engineIdleMs } : {}),
       ...(opts.turnIdleMs ? { turnIdleMs: opts.turnIdleMs } : {}),
       ...(opts.a2aCapMs ? { a2aCapMs: opts.a2aCapMs } : {}),
       ...(opts.runTimers ? { runTimers: opts.runTimers } : {}),
+      sleptSince: opts.sleptSince ?? (() => false),
+      keepAwake: opts.keepAwake ?? (() => ({ kill: () => true, once: () => undefined })),
       ...(opts.desktop ? { desktop: opts.desktop } : {}),
       imessage: opts.imessage ?? null,
       tailscale: opts.tailscale ?? (async () => ({ ok: false, out: "not connected" })),
@@ -196,6 +216,10 @@ export async function startCore(opts: {
 }
 
 /** The first input a run in `thread` waits on (a confirmation, a question); fails after `ms` (× TEST_TIME_SCALE). */
+/** A chat of Roby's the computer serves: Home stays on the Mac (DECISIONS.md#d-154). */
+export const computerChat = async (env: { client: ApxClient }): Promise<string> =>
+  (await env.client.call("threads.create", { kind: "loose", agent_id: "roby" })).id;
+
 export const pendingInput = (client: ApxClient, thread: string, ms = 10_000): Promise<PendingInput> =>
   waitFor(async () => (await client.call("runs.pending", { thread })).inputs[0], `an input in ${thread}`, { ms });
 

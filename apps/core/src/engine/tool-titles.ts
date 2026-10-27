@@ -70,6 +70,7 @@ export const SPANISH_TITLES: Record<string, (a: Args) => string> = {
         ? "Cambió los límites de los agentes"
         : "Revisó los límites de los agentes",
   contact_list: () => "Revisó los contactos",
+  sticker_list: () => "Revisó los stickers",
   apx_settings: (a) => {
     const { act, area } = settingAct(a);
     const what = SETTING_AREA[area] ?? "la configuración";
@@ -199,6 +200,7 @@ export const CHINESE_TITLES: Record<string, (a: Args) => string> = {
         ? "修改了智能体的限制"
         : "查看了智能体的限制",
   contact_list: () => "查看了联系人",
+  sticker_list: () => "查看了贴纸",
   apx_settings: (a) => {
     const { act, area } = settingAct(a);
     const what = ZH_SETTING_AREA[area] ?? "设置";

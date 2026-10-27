@@ -32,7 +32,8 @@ export const APP_ONLY =
 export const folderBinding = (folders: string[], write = false) =>
   `${write ? "write-folders" : "folders"}:${folders.join("\n")}`;
 
-const partOf = (r: InputRecord): Part => ({
+/** A stored question or confirmation as the chat shows it. */
+export const inputPartOf = (r: InputRecord): Extract<Part, { type: "input" }> => ({
   type: "input",
   input_id: r.id,
   kind: r.kind,
@@ -71,7 +72,7 @@ export function createInputs(deps: {
     if (!msg) return;
     store.messages.update({
       ...msg,
-      parts: msg.parts.map((p) => (p.type === "input" && p.input_id === r.id ? partOf(r) : p)),
+      parts: msg.parts.map((p) => (p.type === "input" && p.input_id === r.id ? inputPartOf(r) : p)),
     });
   }
 
@@ -201,7 +202,8 @@ export function createInputs(deps: {
         waitMs: o.stays ? OPEN_INPUT_MS : waitMs,
         app_only: o.appOnly,
       });
-      const show = (r: InputRecord) => o.display.upsert((p) => p.type === "input" && p.input_id === r.id, partOf(r));
+      const show = (r: InputRecord) =>
+        o.display.upsert((p) => p.type === "input" && p.input_id === r.id, inputPartOf(r));
       show(rec);
       store.runs.setState(o.run, "input-required");
       store.threads.patch(o.run.thread_id, { state: "input-required" });
@@ -245,7 +247,11 @@ export function createInputs(deps: {
       if (rec.state === "pending" && rec.expires_at <= new Date().toISOString()) store.inputs.settle(id, "expired");
       const cur = store.inputs.get(id) as InputRecord;
       if (cur.state !== "pending") throw conflict(`input ${id} is already ${cur.state}`);
-      const scope = a.scope ?? "once";
+      // A card with no "only this time" (a permission such as the computer's) is approved for its narrowest scope.
+      const scope =
+        a.scope ??
+        (rec.approval_scopes && !rec.approval_scopes.includes("once") ? rec.approval_scopes[0] : "once") ??
+        "once";
       if (a.scope && (rec.kind !== "confirm" || a.decision !== "approve"))
         throw badRequest("approval scope requires approving a confirmation");
       if (scope !== "once" && !rec.approval_scopes?.includes(scope))
@@ -328,6 +334,18 @@ export function createInputs(deps: {
       };
       for (const r of store.inputs.overdue()) expire(r.id);
       for (const r of store.inputs.pending()) watch(r);
+    },
+
+    /** The owner stops a chat no turn runs in: what it still asked them closes, so it stops waiting; how many. */
+    close(threadId: string): number {
+      let n = 0;
+      for (const r of store.inputs.pending(threadId)) {
+        const settled = store.inputs.settle(r.id, "expired");
+        if (!settled) continue;
+        settleCard(settled);
+        n++;
+      }
+      return n;
     },
 
     pending: (thread?: string) => store.inputs.pending(thread).map(publicInput),

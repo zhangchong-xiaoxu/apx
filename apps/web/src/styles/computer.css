@@ -1,0 +1,447 @@
+.computer {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  background: var(--apx-bg);
+}
+.computer__toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+.computer__status {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #94a3b8;
+}
+.computer__status.is-on {
+  background: #34d399;
+}
+.computer__badge {
+  color: var(--apx-fg-muted);
+  margin-right: auto;
+  font-size: 10px;
+}
+.computer__desktop {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-height: 120px;
+  overflow: hidden;
+}
+.computer__desktop[hidden] {
+  display: none;
+}
+.computer__screen {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  background: var(--apx-bg);
+}
+.computer__locked {
+  position: absolute;
+  inset: 0;
+  cursor: not-allowed;
+}
+.computer__controlbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--apx-border);
+  font-size: 11px;
+  color: var(--apx-fg-muted);
+}
+.computer__held {
+  margin-left: auto;
+}
+.computer__controlbar > span {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.computer__setup {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 32px;
+  text-align: center;
+}
+.computer__setup p {
+  max-width: 420px;
+  font-size: 13px;
+  color: var(--apx-fg-muted);
+  line-height: 1.6;
+  margin: 0;
+}
+.computer__settings {
+  width: 100%;
+  max-width: 420px;
+  text-align: left;
+}
+.computer__settings p {
+  margin-top: 8px;
+}
+.computer__setup small {
+  max-width: 420px;
+  color: var(--apx-fg-muted);
+  font-size: 11px;
+}
+.computer__error {
+  padding: 10px 14px;
+  color: #dc2626;
+  font-size: 12px;
+}
+.computer__error > .computer__button {
+  display: block;
+  margin-top: 8px;
+}
+.computer__console {
+  position: relative;
+  display: flex;
+  flex: 0 0 auto;
+  /* CONSOLE_MIN_PX: the title, some output and the command box at its tallest stay in view. */
+  min-height: 220px;
+  max-height: 70%;
+  flex-direction: column;
+  border-top: 1px solid var(--apx-border);
+  background: var(--apx-bg);
+}
+.computer__console.is-collapsed {
+  min-height: 42px;
+  height: 42px;
+}
+.computer__console.is-maximized {
+  flex: 1;
+  max-height: none;
+}
+.computer__resize {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  position: absolute;
+  top: -4px;
+  left: 0;
+  right: 0;
+  height: 8px;
+  cursor: ns-resize;
+  touch-action: none;
+  z-index: 1;
+}
+.computer__resize::after {
+  content: "";
+  display: block;
+  width: 44px;
+  height: 3px;
+  margin: 2px auto;
+  border-radius: 4px;
+  background: var(--apx-border);
+}
+.computer__resize:hover::after,
+.computer__resize:focus-visible::after {
+  background: #10b981;
+}
+.computer__console-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 0 14px;
+  font-size: 12px;
+}
+.computer__console-title > svg {
+  color: #10b981;
+}
+.computer__console-title code {
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--apx-fg-muted);
+}
+.computer__console form {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  margin: 0 12px 12px;
+  padding: 4px 4px 4px 10px;
+  border: 1px solid var(--apx-border);
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+.computer__prompt {
+  align-self: center;
+  color: #10b981;
+  font-family: monospace;
+  font-size: 12px;
+}
+.computer__console form:focus-within {
+  border-color: #10b981;
+}
+.computer__console textarea {
+  display: block;
+  flex: 1;
+  min-width: 0;
+  box-sizing: border-box;
+  /* One line; the panel sets its height to its text, up to COMMAND_MAX_PX. */
+  height: 28px;
+  min-height: 28px;
+  max-height: 96px;
+  resize: none;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: inherit;
+  padding: 5px 2px;
+  font-family: monospace;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.computer__console textarea:placeholder-shown {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.computer__console form button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.computer__button {
+  border: 1px solid var(--apx-border);
+  background: transparent;
+  color: inherit;
+  border-radius: 6px;
+  padding: 6px 9px;
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.computer__button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.computer__button.is-primary {
+  color: #059669;
+  border-color: #05966966;
+  background: #05966912;
+}
+.computer__output {
+  flex: 1;
+  /* A few lines always show: the pane's least height leaves room for them. */
+  min-height: 48px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: monospace;
+  font-size: 11px;
+  line-height: 1.6;
+  padding: 6px 16px 12px;
+  margin: 0;
+  color: var(--apx-fg-muted);
+}
+.computers__wall {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 14px;
+  padding: 0 24px 24px;
+}
+.computers__wall[data-count="1"] {
+  grid-template-columns: minmax(280px, 900px);
+}
+.computers__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 24px;
+  font-size: var(--apx-text-sm);
+  color: var(--apx-fg-muted);
+}
+.computers__tile {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--apx-border);
+  border-radius: var(--apx-radius-lg);
+  background: var(--apx-surface);
+}
+.computers__tile:hover {
+  border-color: var(--apx-border-strong);
+}
+.computers__thumb {
+  position: relative;
+  display: block;
+  padding: 0;
+  border: 0;
+  aspect-ratio: 16 / 10;
+  overflow: hidden;
+  border-radius: var(--apx-radius-md);
+  background: var(--apx-fill-strong);
+  cursor: pointer;
+}
+.computers__thumb.is-off {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px dashed var(--apx-border);
+  background: transparent;
+  color: var(--apx-fg-subtle);
+  font-size: var(--apx-text-sm);
+  cursor: default;
+}
+.computers__thumb .computer__screen {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.computers__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+.computers__foot .computers__holder {
+  flex: 1;
+}
+.computers__actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+}
+.computers__full {
+  margin: 0;
+  font-size: var(--apx-text-xs);
+  color: var(--apx-fg-muted);
+}
+.computers__holder {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: 12px;
+}
+.computers__holder > div {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.computers__holder > div span {
+  color: var(--apx-fg-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.computers__state {
+  margin-left: 4px;
+  flex: none;
+  padding: 2px 8px;
+  border-radius: var(--apx-radius-pill);
+  background: var(--apx-fill);
+  color: var(--apx-fg-muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.computers__state.is-human {
+  color: var(--apx-fg);
+  font-weight: 600;
+}
+.computers__state.is-idle {
+  color: var(--apx-fg-subtle);
+}
+.computers__large {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  padding: 0 24px 24px;
+}
+.computers__large .computer__desktop {
+  flex: 1;
+  min-height: 360px;
+}
+.computers__large .computer__controlbar > .computers__holder {
+  flex: 1;
+}
+.computers__body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  gap: 12px;
+}
+.computers__main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+.computers__chat {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  width: 360px;
+  min-height: 0;
+  margin-top: 8px;
+  border: 1px solid var(--apx-border);
+  border-radius: var(--apx-radius-lg);
+  background: var(--apx-surface);
+  overflow: hidden;
+}
+.computers__chat > .chat {
+  flex: 1;
+  min-height: 0;
+}
+.computers__chathead {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px 6px 12px;
+  border-bottom: 1px solid var(--apx-border);
+  font-size: var(--apx-text-sm);
+  font-weight: 600;
+}
+.computers__chathead > span {
+  flex: 1;
+}
+
+/* The chip a chat shows while the computer its agent started comes up. */
+.chat__computer {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  align-self: center;
+  gap: 6px;
+  margin: 0 0 6px;
+  padding: 3px 10px;
+  border-radius: var(--apx-radius-pill);
+  background: var(--apx-fill);
+  color: var(--apx-fg-muted);
+  font-size: var(--apx-text-xs);
+}
+.chat__computerdot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--apx-accent, #3b82f6);
+  animation: chat-computer-pulse 1.2s ease-in-out infinite;
+}
+@keyframes chat-computer-pulse {
+  50% {
+    opacity: 0.3;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .chat__computerdot {
+    animation: none;
+  }
+}

@@ -17,6 +17,10 @@ export type NewsFacts = {
   channels: number;
   /** Catalog integrations the owner connected (GitHub, Notion…). */
   integrations: number;
+  /** This core can run the isolated Linux computer (a Mac with Apple Silicon) and the owner has a project to try there. */
+  computer: boolean;
+  /** This core runs on a Mac and the owner has work there (a project). */
+  mac: boolean;
 };
 
 export type NewsAction = {
@@ -256,6 +260,50 @@ export const NEWS: readonly NewsEntry[] = [
       },
     ],
   },
+  {
+    id: "linux-computer",
+    since: "2.11.0",
+    title: "A Linux computer your agents share",
+    applies: (f) => f.computer,
+    text:
+      "Agents can now work on a Linux computer they share, a VM apart from the owner's Mac with no way into the Mac " +
+      "or the local network. Each agent gets its own user, files and screen with a desktop and browser. It is off " +
+      "for every agent until the owner allows one: in the agent's card or settings, from the card the agent shows " +
+      "when it asks, or by asking the super-agent. An allowed agent starts it itself; it does not start without enough free memory, and APX shuts it down " +
+      "when the Mac runs short or nobody uses it, keeping its files. The new Computers view shows every allowed agent's " +
+      "screen at once, and the owner can turn any of them on or off from there; memory, CPUs and disk are set in the Computer panel.",
+    actions: [
+      {
+        label: { en: "What could you do there?", es: "¿Qué harías ahí?" },
+        prompt:
+          "Tell me in a few lines what you could do for me on an isolated Linux computer that you cannot do here, " +
+          "and how much memory it would take from this Mac. Do not start it unless I say so.",
+      },
+      {
+        label: { en: "Turn it on for an agent", es: "Activarla para un agente" },
+        prompt:
+          "Tell me which of my agents may use the isolated Linux computer now, and offer to turn it on for the one " +
+          "I pick, with my OK on the card.",
+      },
+    ],
+  },
+  {
+    id: "mac-awake",
+    since: "2.11.0",
+    title: "The Mac stays awake while agents work",
+    applies: (f) => f.mac,
+    text:
+      "While an agent works on a turn, a command runs or the Linux computer starts, the owner's Mac no longer goes " +
+      "to sleep on its own; it may sleep again as soon as nothing runs, and the screen can still turn off. If the " +
+      "Mac sleeps anyway (the lid closed), work it interrupted gets another chance instead of being marked stuck. " +
+      "The owner turns it off in Settings, Desktop.",
+    actions: [
+      {
+        label: { en: "When does it apply?", es: "¿Cuándo se aplica?" },
+        prompt: "Tell me in two lines when APX keeps my Mac awake now and how I turn that off if I prefer it to sleep.",
+      },
+    ],
+  },
 ];
 
 /** The catalog integrations among the owner's global MCP servers. */
@@ -283,6 +331,8 @@ export const newsFacts = (store: Store): NewsFacts => ({
   contacts: store.persons.list().some((p) => p.role !== "owner" && p.role !== "blocked" && p.addresses.length > 0),
   channels: store.settings.read("channels").length,
   integrations: connectedIntegrations(store),
+  computer: process.platform === "darwin" && process.arch === "arm64" && store.projects.list().length > 0,
+  mac: process.platform === "darwin" && store.projects.list().length > 0,
 });
 
 /** The action a channel button stands for. */

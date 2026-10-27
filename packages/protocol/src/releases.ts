@@ -7,6 +7,8 @@
  * Fork: the owner's own fork publishes the releases this APX updates from; never the upstream repo.
  */
 export const RELEASE_FEED: string | undefined = "zhangchong-xiaoxu/apx";
+export const RELEASE_REPO_URL = `https://github.com/${RELEASE_FEED}`;
+export const INSTALL_SCRIPT_URL = `${RELEASE_REPO_URL}/releases/latest/download/install.sh`;
 export const RELEASE_CHECK_EVERY_MS = 6 * 3600_000;
 
 export type ReleaseAsset = { name: string; url: string };

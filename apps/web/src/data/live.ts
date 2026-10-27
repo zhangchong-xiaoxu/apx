@@ -221,5 +221,8 @@ function apply(ev: CoreEvent): void {
       // The core checks a node's tabs before pushing them.
       data.set({ tabs: ev.tabs });
       return;
+    case "computer.progress":
+      data.set((s) => ({ computerProgress: { ...s.computerProgress, [ev.thread_id]: ev.stage } }));
+      return;
   }
 }

@@ -1,4 +1,5 @@
 import "../styles/wizard.css";
+import { INSTALL_SCRIPT_URL } from "@apx/protocol/releases";
 import { Button, Icons, Input, SegmentedControl } from "@apx/ui";
 import { type FormEvent, type ReactNode, useEffect, useState } from "react";
 import type { SshPrompt } from "../apx-desktop.d.ts";
@@ -20,7 +21,7 @@ type Answer =
 /** How long the intro holds the hero alone before the question unrolls under it. */
 const INTRO_MS = 3400;
 /** What puts the APX daemon on a server that has none (install.sh, attached to every release). */
-const INSTALL = "curl -fsSL https://agentprojectcontext.github.io/apx/v2/install.sh | bash\napx setup --headless";
+const INSTALL = `curl -fsSL ${INSTALL_SCRIPT_URL} | bash\napx setup --headless`;
 
 const ACCESS: Array<{ id: Access; icon: typeof Icons.Lock; title: MessageKey; body: MessageKey }> = [
   { id: "none", icon: Icons.Lock, title: "connect.access.none", body: "connect.access.noneBody" },

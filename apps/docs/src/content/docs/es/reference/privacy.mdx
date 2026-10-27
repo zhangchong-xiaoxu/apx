@@ -1,16 +1,17 @@
 ---
 title: Privacidad y telemetría
-description: Qué le cuenta APX al proyecto APX sobre tu instalación, qué manda solo si decís que sí, qué no manda nunca y cómo apagarlo todo.
+description: Este fork desactiva la telemetría por defecto. Qué recibe un destino configurado explícitamente y cómo apagarla.
 sidebar:
   order: 4
 ---
 
 import { Aside } from "@astrojs/starlight/components";
 
-APX corre en tu computadora y guarda ahí tus chats, agentes, archivos y claves. Para saber cuánta gente lo instala,
-termina el setup y lo sigue usando, le cuenta un poco de tu instalación al proyecto APX. Esta página lo lista todo.
+APX corre en tu computadora y guarda ahí tus chats, agentes, archivos y claves. Este fork no manda telemetría por
+defecto. Solo un destino explícito en `APX_TELEMETRY` habilita los reportes. Las secciones siguientes describen lo que
+recibe ese destino.
 
-## Toda instalación: los pasos que recorre
+## Con un destino configurado: los pasos de instalación
 
 Con un id al azar hecho solo para esto (no es tu id de home, ni tu nombre, ni nada de tu computadora), APX manda cada
 uno de estos una vez, cuando pasa:
@@ -49,8 +50,10 @@ servicio que recibe la ve para responder, como en cualquier pedido web, y APX no
 
 ## Adónde va
 
-A una base Google Cloud Firestore del proyecto APX (`apx-agents`, en Estados Unidos), escrita sin cuenta. Sus reglas
-aceptan solo las formas de arriba, ponen cada hora en el servidor y no dejan que nadie de afuera lea nada.
+No hay un servicio receptor por defecto. `APX_TELEMETRY=https://example.com/telemetry` manda JSON a ese endpoint;
+`APX_TELEMETRY=firestore:your-project` escribe en el proyecto Google Cloud Firestore elegido mediante su API REST.
+El operador del servicio controla su ubicación, sus reglas de acceso y la retención. Este fork no configura ni
+despliega el proyecto de telemetría del upstream.
 
 ## Apagarla
 
@@ -59,6 +62,6 @@ Cualquiera de estas frena todo, incluidos los pasos de la instalación: `APX_TEL
 `core.env`, `DO_NOT_TRACK=1` ([Console Do Not Track](https://consoledonottrack.com)), o una variable `CI`.
 </Aside>
 
-Para empezar de nuevo con otro id al azar, borrá `telemetry-id` en tu home de APX (`~/.apx/v2`). Para que se borren
-los registros de una instalación, abrí un issue en [GitHub](https://github.com/agentprojectcontext/apx/issues) con el
-id de telemetría que muestra Configuración › Avanzado.
+Para empezar de nuevo con otro id al azar, borrá `telemetry-id` en tu home de APX (`~/.apx/v2`). Si configuraste un
+destino explícito, contactá a su operador para borrar los registros, con el id de telemetría que muestra
+Configuración › Avanzado.

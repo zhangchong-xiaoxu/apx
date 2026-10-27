@@ -26,7 +26,7 @@ export type Release = { version: string; previous?: string; changes: Change[] };
 export type ReleaseNotes = {
   /** The release this APX is ("2.3.33"). */
   version: string;
-  /** The branch it was built from ("release/v2"). */
+  /** The branch it was built from ("master"). */
   branch?: string;
   /** A checkout's folder, where `git log` reads the commits; none for a packaged APX. */
   repo_dir?: string;
@@ -95,11 +95,11 @@ function branchOf(cwd: string): string | undefined {
   try {
     const head = git(cwd, "rev-parse", "--abbrev-ref", "HEAD");
     if (head && head !== "HEAD") return head;
-    const holding = git(cwd, "branch", "-r", "--contains", "HEAD", "--format=%(refname:short)")
+    const holding = git(cwd, "for-each-ref", "--contains=HEAD", "--format=%(refname:short)", "refs/remotes/origin/")
       .split("\n")
       .map((b) => b.replace(/^origin\//, ""))
       .filter((b) => b && b !== "origin" && b !== "HEAD");
-    return holding.includes("main") ? "main" : holding[0];
+    return holding.includes("master") ? "master" : holding[0];
   } catch {
     return undefined;
   }

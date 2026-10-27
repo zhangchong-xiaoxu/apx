@@ -90,7 +90,10 @@ test("install.sh's launcher is left alone; an AppImage points at the install lin
   const b = world("linux");
   const res = await takeOverV1({ ...b.deps, terminal: { ...b.deps.terminal, appImage: true } });
   assert.equal(res.ok, false);
-  assert.match(res.detail, /install\.sh \| bash/);
+  assert.equal(
+    res.detail,
+    "APX v1's daemon is off and will not start at login. v1's apx is gone. for the apx command, run: curl -fsSL https://github.com/zhangchong-xiaoxu/apx/releases/latest/download/install.sh | bash",
+  );
 });
 
 test("v1 answers only when its health check does", async () => {

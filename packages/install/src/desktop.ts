@@ -92,7 +92,7 @@ export function createDesktopInstaller(opts: DesktopInstallOptions) {
         signal.throwIfAborted();
         change({ phase: "installing" });
         app = await installDesktopFile(
-          { platform: opts.platform, userHome: opts.userHome, env: launchEnv(env), run, found },
+          { platform: opts.platform, userHome: opts.userHome, env: launchEnv(env, opts.feed), run, found },
           file,
           work,
           signal,
@@ -109,7 +109,7 @@ export function createDesktopInstaller(opts: DesktopInstallOptions) {
           : target
             ? ["--apx-adopt-local"]
             : [],
-        { signal, detached: opts.platform !== "darwin", env: launchEnv(env) },
+        { signal, detached: opts.platform !== "darwin", env: launchEnv(env, opts.feed) },
       );
       change({ phase: "ready" });
     } catch (error) {
@@ -157,14 +157,15 @@ export function createDesktopInstaller(opts: DesktopInstallOptions) {
 }
 
 /** A service's runtime settings must not redirect the desktop or make Electron run as Node. */
-function launchEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
-  return Object.fromEntries(
+function launchEnv(env: NodeJS.ProcessEnv, feed: string): NodeJS.ProcessEnv {
+  const clean = Object.fromEntries(
     Object.entries(env).filter(
       ([key]) =>
         (!key.startsWith("APX_") || key === "APX_DESKTOP_DATA" || key === "APX_RELEASES") &&
         key !== "ELECTRON_RUN_AS_NODE",
     ),
   );
+  return { ...clean, APX_RELEASES: env.APX_RELEASES || feed || RELEASE_FEED || "off" };
 }
 
 export type DesktopInstaller = ReturnType<typeof createDesktopInstaller>;

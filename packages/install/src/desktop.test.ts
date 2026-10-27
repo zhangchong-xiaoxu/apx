@@ -6,6 +6,7 @@ import { createServer } from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
+import { RELEASE_FEED } from "@apx/protocol";
 import { createDesktopInstaller, type DesktopInstallOptions } from "./desktop.ts";
 import { desktopDataDir, hasDesktop } from "./paths.ts";
 import type { ProcessRunner } from "./process.ts";
@@ -108,6 +109,7 @@ test("missing desktop downloads once, reports bytes, installs, and opens the sel
     assert.equal(f.calls[0]?.env.APX_TOKEN, undefined);
     assert.equal(f.calls[0]?.env.APX_URL, undefined);
     assert.equal(f.calls[0]?.env.ELECTRON_RUN_AS_NODE, undefined);
+    assert.equal(f.calls[0]?.env.APX_RELEASES, "https://releases.example");
   } finally {
     await f.close();
   }
@@ -125,6 +127,36 @@ test("an existing app is preserved and opened without network or a second instal
     assert.equal(f.calls[0]?.command, f.app);
   } finally {
     await f.close();
+  }
+});
+
+test("existing desktops adopt the resolved feed without downloads and preserve explicit launch overrides", async () => {
+  for (const platform of ["win32", "darwin", "linux"]) {
+    for (const { feed, explicit, expected } of [
+      { feed: "", explicit: undefined, expected: RELEASE_FEED },
+      { feed: RELEASE_FEED ?? "", explicit: undefined, expected: RELEASE_FEED },
+      { feed: "acme/apx", explicit: undefined, expected: "acme/apx" },
+      { feed: "off", explicit: undefined, expected: "off" },
+      { feed: "acme/apx", explicit: "northwind/apx", expected: "northwind/apx" },
+      { feed: "acme/apx", explicit: "off", expected: "off" },
+      { feed: "acme/apx", explicit: "", expected: "acme/apx" },
+      { feed: "off", explicit: "", expected: "off" },
+    ]) {
+      const env: NodeJS.ProcessEnv = { DISPLAY: ":1" };
+      if (explicit !== undefined) env.APX_RELEASES = explicit;
+      const f = fixture({ platform, feed, env });
+      try {
+        fs.mkdirSync(path.dirname(f.app));
+        fs.writeFileSync(f.app, "existing");
+        f.installer.start();
+        assert.equal((await f.installer.wait()).phase, "ready");
+        assert.equal(f.calls.at(-1)?.env.APX_RELEASES, expected, `${platform}: ${feed}, ${explicit}`);
+        assert.equal(f.requests.length, 0);
+        assert.equal(fs.readFileSync(f.app, "utf8"), "existing");
+      } finally {
+        await f.close();
+      }
+    }
   }
 });
 
@@ -460,8 +492,8 @@ test("macOS installs the verified zip into the user Applications folder, without
         ? new Response(createHash("sha256").update("zip").digest("hex"))
         : new Response("zip");
     },
-    run: async (command, args) => {
-      f.calls.push({ command, args, env: {} });
+    run: async (command, args, options) => {
+      f.calls.push({ command, args, env: options.env });
       if (args[0] === "-x") {
         const executable = path.join(args[3] as string, "APX.app/Contents/MacOS/APX");
         fs.mkdirSync(path.dirname(executable), { recursive: true });
@@ -474,6 +506,7 @@ test("macOS installs the verified zip into the user Applications folder, without
     assert.equal((await f.installer.wait()).phase, "ready");
     assert.equal(fs.readFileSync(path.join(f.home, "Applications/APX.app/Contents/MacOS/APX"), "utf8"), "app");
     assert.deepEqual(f.calls.at(-1)?.args, ["-a", path.join(f.home, "Applications/APX.app")]);
+    for (const call of f.calls) assert.equal(call.env.APX_RELEASES, "https://releases.example");
     assert.ok(!f.calls.some((c) => c.command.includes("xattr")));
   } finally {
     await f.close();
@@ -500,8 +533,8 @@ test("Windows waits for its installer before launching the installed executable"
         ? new Response(createHash("sha256").update("exe").digest("hex"))
         : new Response("exe");
     },
-    run: async (command, args) => {
-      f.calls.push({ command, args, env: {} });
+    run: async (command, args, options) => {
+      f.calls.push({ command, args, env: options.env });
       if (args.includes("/S")) {
         fs.mkdirSync(path.dirname(f.app));
         fs.writeFileSync(f.app, "installed");
@@ -513,6 +546,7 @@ test("Windows waits for its installer before launching the installed executable"
     assert.equal((await f.installer.wait()).phase, "ready");
     assert.deepEqual(f.calls[0]?.args, ["/S"]);
     assert.equal(f.calls[1]?.command, f.app);
+    for (const call of f.calls) assert.equal(call.env.APX_RELEASES, "https://releases.example");
   } finally {
     await f.close();
   }

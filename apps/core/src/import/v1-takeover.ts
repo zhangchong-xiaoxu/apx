@@ -2,6 +2,7 @@
 // answer the same bots), v1's `apx` goes, and `apx` runs this APX. v1's files in ~/.apx stay, to import them.
 import fs from "node:fs";
 import path from "node:path";
+import { INSTALL_SCRIPT_URL } from "@apx/protocol";
 
 /** The global npm package v1's `apx` comes from. */
 export const V1_PACKAGE = "@agentprojectcontext/apx";
@@ -90,7 +91,7 @@ async function linkV2(d: TakeoverDeps): Promise<{ ok: boolean; detail: string }>
   if (t.appImage)
     return {
       ok: false,
-      detail: "for the apx command, run: curl -fsSL https://agentprojectcontext.github.io/apx/v2/install.sh | bash",
+      detail: `for the apx command, run: curl -fsSL ${INSTALL_SCRIPT_URL} | bash`,
     };
   const node = t.electron ? "ELECTRON_RUN_AS_NODE=1 " : "";
   if (d.platform === "win32") {

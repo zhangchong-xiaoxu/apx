@@ -41,10 +41,12 @@ import { coreLogSink } from "./core-log.ts";
 import { openDb } from "./db/db.ts";
 import { type DesktopOps, systemDesktop } from "./desktop.ts";
 import { cleanUpCapturedNotes } from "./domain/memory-capture-cleanup.ts";
+import { TERMINAL } from "./domain/runs.ts";
 import { seed } from "./domain/seed.ts";
 import { createStore } from "./domain/store.ts";
 import { announceRelease } from "./domain/whats-new.ts";
 import { createAttention } from "./engine/attention.ts";
+import { keepAwake, sleepWatch } from "./engine/awake.ts";
 import { createEngine, type RunTimers } from "./engine/engine.ts";
 import type { InputWaits } from "./engine/inputs.ts";
 import { createMemoryIndex } from "./engine/memory-index.ts";
@@ -58,6 +60,9 @@ import { afterWorkTurn } from "./engine/task-work.ts";
 import { wakeAfterCommand } from "./engine/terminal-wake.ts";
 import type { ToolCall } from "./engine/turn.ts";
 import { createUpkeep } from "./engine/upkeep.ts";
+import { type ComputerConfig, createComputer } from "./environments/computer.ts";
+import { managedVmConfig } from "./environments/managed.ts";
+import { computerWatchdog } from "./environments/watchdog.ts";
 import { errorMessage } from "./errors.ts";
 import { thisRunner, writeApxCommand } from "./harness/apx-command.ts";
 import type { CliStatus } from "./harness/detect.ts";
@@ -119,6 +124,7 @@ import { imessageTools } from "./tools/imessage.ts";
 import type { Tool } from "./tools/types.ts";
 import { listenHooks } from "./transport/hooks.ts";
 import { createUpdates, type Runner } from "./updates.ts";
+import { createUsage, type UsageOptions } from "./usage.ts";
 import { createWebhooks, type NgrokStart } from "./webhooks.ts";
 
 /** `apx mcp --run` (token in APX_RUN_TOKEN): how an external harness (Codex) reaches the tools of its run. */
@@ -126,6 +132,7 @@ const TERMINAL_MAIN = path.resolve(import.meta.dirname, "../../terminal/src/main
 
 /** What tests swap: the model, harnesses, extra tools, channel adapters and the scheduler's clock. */
 export type CoreOptions = {
+  computer?: ComputerConfig;
   /** Asana transport; tests record REST requests without contacting an account. */
   asanaFetch?: typeof fetch;
   /** What asks an integration's remote server whether it takes the owner's account; tests pass a fake. */
@@ -144,6 +151,8 @@ export type CoreOptions = {
   channelRetryMs?: readonly number[];
   /** How long a room waits for one person's quick messages to settle (tests shorten it). */
   roomBurstMs?: number;
+  /** When a question waiting in the app follows the owner to their channel (tests move it). */
+  followUpTimers?: RunTimers;
   /** How long a supervised contact's quick messages may keep coming before their draft (tests shorten it). */
   suggestBurstMs?: number;
   /** How long a turn waits for the owner's answer before it ends and the input stays open (tests shorten it). */
@@ -155,6 +164,10 @@ export type CoreOptions = {
   /** The most a delegated run may work in all (tests shorten it). */
   a2aCapMs?: number;
   runTimers?: RunTimers;
+  /** Whether the Mac slept since a moment (tests decide); by default the core watches its own timers. */
+  sleptSince?: (since: number) => boolean;
+  /** How the core holds the Mac awake (tests count it); by default `caffeinate` on macOS. */
+  keepAwake?: Parameters<typeof keepAwake>[0]["spawn"];
   /** The scheduler's clock; tests move it to make routines due. */
   clock?: () => Date;
   /** How long a finished turn's chat may stay unread before the tray notices it (tests shorten it). */
@@ -172,6 +185,8 @@ export type CoreOptions = {
   restart?: () => void;
   /** What each release changed, instead of this APX's own (release-notes.ts); tests stand in a release. */
   releases?: ReleaseSource;
+  /** The Linux VM's memory and disk for system.usage; none until a VM is set up. */
+  vmUsage?: UsageOptions["vm"];
 };
 
 export async function createCore(config: CoreConfig, opts: CoreOptions = {}) {
@@ -284,6 +299,27 @@ export async function createCore(config: CoreConfig, opts: CoreOptions = {}) {
     fetch: opts.asanaFetch,
     offIn: (project) => !integrationsOff.takesGlobals(project) || integrationsOff.offIn(project).includes("asana"),
   });
+  const vm = createComputer(
+    store,
+    opts.computer && !opts.computer.managed ? opts.computer : managedVmConfig(store, config.home, opts.computer),
+  );
+  // A screen is held for one run: once the run is over, the screen is free for another agent.
+  bus.on((e) => {
+    if (e.type === "run.updated" && TERMINAL.has(e.run.state)) {
+      vm.release(e.run.id);
+      if (e.run.state === "canceled") vm.forgetWait(e.run.thread_id);
+      else vm.afterTurn(e.run.thread_id, e.run.agent_id);
+    }
+  });
+  const watchdog = computerWatchdog({
+    store,
+    vm,
+    freeMemory: vm.freeMemory,
+    cancel: (thread) => {
+      engine.cancel(thread);
+    },
+    onError: (err) => log.warn({ err }, "computer watchdog check failed"),
+  });
   // APX's own profiles, then the ones the owner installed (theirs win an id).
   const profileRoots: ProfileRoot[] = [
     { source: "apx", dir: path.resolve(import.meta.dirname, "../../../examples/profiles") },
@@ -301,6 +337,7 @@ export async function createCore(config: CoreConfig, opts: CoreOptions = {}) {
     [...imessageTools(imessage), ...googleTools(google), ...asanaTools(asana, store), ...(opts.extraTools ?? [])],
     config.runtimeSkills.homes,
     { profiles: profileRoots, templates: templateRoots },
+    vm,
   );
   // Tools reach the core through the router like any client, as the agent (owner-only methods refuse them).
   // The router exists only after the engine, hence the late binding.
@@ -411,6 +448,7 @@ export async function createCore(config: CoreConfig, opts: CoreOptions = {}) {
     draft: createDrafter({ store, llm, fallbackModels: upkeep.auxModels }).draft,
     ...(opts.clock ? { now: opts.clock } : {}),
     ...(opts.roomBurstMs !== undefined ? { roomBurstMs: opts.roomBurstMs } : {}),
+    ...(opts.followUpTimers ? { followUpTimers: opts.followUpTimers } : {}),
     ...(opts.suggestBurstMs !== undefined ? { suggestBurstMs: opts.suggestBurstMs } : {}),
     pushOwner: (deviceId, text) => {
       const target = store.devices.pushTarget(deviceId);
@@ -426,7 +464,10 @@ export async function createCore(config: CoreConfig, opts: CoreOptions = {}) {
     notifyOwner: (body, threadId) => channels.notifyOwner(body, "notice", threadId),
     log,
   });
+  const sleep = opts.sleptSince ? undefined : sleepWatch(opts.runTimers);
   const engine = createEngine({
+    sleptSince: opts.sleptSince ?? ((since) => sleep?.sleptSince(since) ?? false),
+    vm,
     store,
     harnesses,
     tools,
@@ -465,6 +506,33 @@ export async function createCore(config: CoreConfig, opts: CoreOptions = {}) {
       afterWorkTurn(store, engine.admit, run);
     },
   });
+  // The Mac stays awake while APX works for the owner: a turn, a command, or a computer coming up (engine/awake.ts).
+  const awake = keepAwake({
+    busy: () =>
+      store.runs.interrupted().some((r) => r.state === "working") || store.jobs.running().length > 0 || vm.starting(),
+    enabled: () => store.settings.read("desktop").keep_awake,
+    // A test's stand-in for caffeinate holds on any system, so the wiring is tested off macOS too.
+    ...(opts.keepAwake ? { spawn: opts.keepAwake, platform: "darwin" as const } : {}),
+  });
+  bus.on((e) => {
+    if (e.type === "run.updated" || e.type === "job.updated" || e.type === "computer.progress") awake.update();
+  });
+  // A computer's start and end come with no event of their own here: looked at now and then too.
+  const awakeTick = setInterval(() => awake.update(), 30_000);
+  awakeTick.unref();
+  // The agent that started the computer and ended its turn hears once it is up, or why not (environments/ready.ts).
+  vm.onReady(
+    (e) => {
+      engine.admit({
+        thread_id: e.thread,
+        agent_id: e.agent,
+        trigger: "system",
+        origin: { kind: "computer_ready", ready: e.ready, ...(e.error ? { error: e.error } : {}) },
+        text: "",
+      });
+    },
+    (thread, stage) => bus.emit({ type: "computer.progress", thread_id: thread, stage }),
+  );
   const scheduler = officeScheduler({
     store,
     admit: (a) => engine.admit(a),
@@ -512,6 +580,7 @@ export async function createCore(config: CoreConfig, opts: CoreOptions = {}) {
 
   const dispatch = createRouter(
     coreHandlers({
+      vm,
       internal,
       permissions,
       addresses: () => reachableAt(config.host, listening, config.publicUrl),
@@ -569,6 +638,7 @@ export async function createCore(config: CoreConfig, opts: CoreOptions = {}) {
       updates,
       telemetry,
       news,
+      usage: createUsage({ home: config.home, vm: opts.vmUsage ?? (() => vm.monitored()) }),
       panel: () => panelEntry(servedPanel(config)),
       profileRoots,
       templateRoots,
@@ -580,7 +650,7 @@ export async function createCore(config: CoreConfig, opts: CoreOptions = {}) {
   if (cleanup) log.info(cleanup, "captured memory cleanup: retired noisy automatic notes");
   memoryMaintenance.start();
 
-  const transport = await listen(config, { dispatch, store, log, identity, broker, bus });
+  const transport = await listen(config, { dispatch, store, log, identity, broker, bus, vm });
   listening = transport.port;
   // Agents' shells and harnesses reach this core with `apx`, whatever the owner's PATH holds.
   try {
@@ -629,7 +699,13 @@ export async function createCore(config: CoreConfig, opts: CoreOptions = {}) {
     channels,
     scheduler,
     telemetry,
+    computer: vm,
     async close() {
+      awake.close();
+      sleep?.close();
+      clearInterval(awakeTick);
+      await watchdog.stop();
+      await vm.close();
       await desktopInstaller.close();
       useApxCommand(undefined);
       idleTrim.stop();

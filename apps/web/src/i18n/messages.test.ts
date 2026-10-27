@@ -1,8 +1,22 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { en } from "./en.ts";
-import { es } from "./es.ts";
-import { zh } from "./zh.ts";
+import { enComputer } from "./computer-en.ts";
+import { esComputer } from "./computer-es.ts";
+import { en as enBase } from "./en.ts";
+import { es as esBase } from "./es.ts";
+import { enReceived } from "./received-en.ts";
+import { esReceived } from "./received-es.ts";
+import { enSysUsage } from "./sysusage-en.ts";
+import { esSysUsage } from "./sysusage-es.ts";
+import { zh as zhBase } from "./zh.ts";
+import { zhComputer } from "./zh-computer.ts";
+import { zhReceived } from "./zh-received.ts";
+import { zhSysUsage } from "./zh-sysusage.ts";
+
+// A pack's strings belong to the language as much as the main chunk's.
+const en = { ...enBase, ...enComputer, ...enReceived, ...enSysUsage };
+const es = { ...esBase, ...esComputer, ...esReceived, ...esSysUsage };
+const zh = { ...zhBase, ...zhComputer, ...zhReceived, ...zhSysUsage };
 
 // Each language is loaded alone, so a key it lacks would show as the bare key.
 for (const [language, translation] of Object.entries({ Spanish: es, Chinese: zh })) {

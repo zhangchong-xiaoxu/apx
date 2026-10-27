@@ -14,6 +14,9 @@ import { esTeam } from "./es-team.ts";
 import { esTelemetry } from "./es-telemetry.ts";
 
 export const es: Partial<Record<MessageKey, string>> = {
+  "panel.computer": "Computadora",
+  "panel.computer.hint": "Ver computadora Linux del agente",
+  "computer.screen": "Escritorio VM en vivo",
   "desktopInstall.title": "Usá APX como aplicación de escritorio",
   "desktopInstall.idle":
     "Instalá en esta computadora donde corre APX. Tus chats, agentes y configuración quedan listos para usar.",
@@ -41,6 +44,8 @@ export const es: Partial<Record<MessageKey, string>> = {
   ...esResources,
   ...esEngines,
   ...esTelemetry,
+  "sysUsage.title": "Consumo",
+  "sysUsage.button": "Consumo: {pct}% de la memoria en uso",
   // Palabras compartidas
   "common.agent": "Agente",
   "common.app": "App",
@@ -332,6 +337,7 @@ export const es: Partial<Record<MessageKey, string>> = {
   "nav.baseProject": "Proyecto base",
   "nav.externalSessions": "Sesiones externas",
   "nav.apps": "Apps",
+  "nav.computers": "Computadoras",
   "nav.resources": "Recursos",
   "account.you": "Vos",
   "account.menuOf": "Cuenta: {name}",
@@ -376,6 +382,11 @@ export const es: Partial<Record<MessageKey, string>> = {
   "running.tab.agents": "Agentes",
   "running.tab.background": "Segundo plano",
   "running.waitingForYou": "Te espera",
+  "running.stop": "Detener",
+  "running.stop.title": "¿Detener a {agent}?",
+  "running.stop.body": "Lo que está haciendo en «{title}» se corta ahora. Lo que ya hizo queda en el chat.",
+  "running.stop.waitingBody":
+    "Deja de esperar tu respuesta en «{title}» y lo que te preguntó se cierra. Lo que ya hizo queda en el chat.",
   "nav.moreProjects": "{n} más",
   "nav.moreSessions": "{n} sesiones externas más",
   "running.nothingNow": "Nada corriendo en segundo plano.",
@@ -1420,7 +1431,6 @@ export const es: Partial<Record<MessageKey, string>> = {
   "quick.backHome": "Volver a Home",
   "quick.openApp": "Abrir en la app",
   "config.desktop": "Escritorio",
-  "desktop.memory": "Uso de RAM",
   "desktop.memoryHint":
     "APX usa {total} ahora. Si pasa de 4 GB, te avisa qué proceso consume más. Las pestañas sin uso se cierran a los 30 minutos.",
   "desktop.memory.core": "Core (agentes, canales, datos)",
@@ -1442,6 +1452,9 @@ export const es: Partial<Record<MessageKey, string>> = {
   "desktop.clear": "Quitar",
   "desktop.login": "Abrir al iniciar la compu",
   "desktop.loginHint": "APX se abre al iniciar sesión.",
+  "desktop.awake": "Mantener la Mac despierta mientras trabajan los agentes",
+  "desktop.awakeHint":
+    "No se duerme durante un turno, un comando o una computadora que arranca; la pantalla igual puede apagarse.",
   "desktop.cu": "Uso de la computadora",
   "desktop.cu.switch": "Dejar que los agentes usen esta computadora",
   "desktop.cu.switchHint":

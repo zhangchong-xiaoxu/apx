@@ -1,4 +1,4 @@
-import { noticeZh } from "@apx/protocol";
+import { noticeZh } from "@apx/protocol/notices";
 import { en, type MessageKey } from "./en.ts";
 import { zhApp1 } from "./zh-app-1.ts";
 import { zhApp2 } from "./zh-app-2.ts";
@@ -75,7 +75,7 @@ export const zh: Partial<Record<MessageKey, string>> = {
     "如果你只使用桌面应用，请移除该服务并重新打开 APX。之后应用会运行自己的核心服务，版本始终与应用一致。",
   "update.reload": "新面板 · 重新加载",
   "update.title": "APX 有新版本",
-  "update.lead": "release/v2 上有此 APX 尚未包含的 {n} 项变更：",
+  "update.lead": "origin/master 上有此 APX 尚未包含的 {n} 项变更：",
   "update.leadRelease": "APX {v} 已发布。新增内容：",
   "update.leadByApp": "APX {v} 已发布。请在运行 APX 的电脑上通过 APX 应用更新。新增内容：",
   "update.leadApp": "APX {v} 已发布（当前应用为 {current}）。现已开始下载，重启 APX 后安装。",
@@ -151,6 +151,7 @@ export const zh: Partial<Record<MessageKey, string>> = {
   "nav.moreChannelsUnread": "还有 {n} 个渠道 · {unread} 条未读",
   "nav.channelsUnread": "渠道 · {unread} 条未读",
   "nav.channels": "渠道",
+  "nav.computers": "电脑",
   "nav.projects": "项目",
   "nav.newProject": "新建项目",
   "nav.baseProject": "基础项目",
@@ -532,6 +533,9 @@ export const zh: Partial<Record<MessageKey, string>> = {
   "super.where": "消息发送位置",
   "super.whereHint": "自动任务动态、待确认请求和提醒会发送到这里。若该渠道无法送达，则尝试下一个已识别你的渠道。",
   "panel.document": "文档",
+  "panel.computer": "电脑",
+  "panel.computer.hint": "查看智能体的 Linux 电脑",
+  "computer.screen": "实时虚拟机桌面",
   "panel.document.hint": "阅读此对话中的文档",
   "panel.browser": "浏览器",
   "panel.processes": "对话进程",
@@ -563,6 +567,12 @@ export const zh: Partial<Record<MessageKey, string>> = {
   "running.finished": "已完成（{n}）",
   "running.empty": "当前没有运行内容。",
   "running.backgroundEmpty": "委派、唤醒和自动任务会显示在这里；终端进程由 shell 工具添加。",
+  "running.stop": "停止",
+  "running.stop.title": "停止 {agent}？",
+  "running.stop.body": "“{title}”中正在进行的操作会立即停止，已完成的内容仍会保留在对话中。",
+  "running.stop.waitingBody": "“{title}”中等待你回复的操作会停止，相关请求也会关闭，已完成的内容仍会保留在对话中。",
+  "desktop.awake": "保持电脑唤醒",
+  "desktop.awakeHint": "在 APX 打开期间阻止电脑进入睡眠。",
   "processes.active": "活动（{n}）",
   "processes.done": "已完成（{n}）",
   "processes.empty": "此对话尚无子智能体",

@@ -2,7 +2,7 @@ import type { Part } from "@apx/protocol";
 import { ActionGroup, Button, Icons } from "@apx/ui";
 import { Suspense } from "react";
 import { isKey, useT } from "../../i18n/index.ts";
-import { DelegationActions, GoOn } from "../../lazy.ts";
+import { ComputerNotice, DelegationActions, GoOn } from "../../lazy.ts";
 import { appPlace } from "../appLinks.ts";
 
 type NoticeData = Extract<Part, { type: "notice" }>;
@@ -14,6 +14,13 @@ type NoticeData = Extract<Part, { type: "notice" }>;
  */
 export function NoticePart({ part }: { part: NoticeData }) {
   const t = useT();
+  // The computer's notices say themselves with its own strings, loaded with them.
+  if (part.code.startsWith("computer."))
+    return (
+      <Suspense fallback={null}>
+        <ComputerNotice part={part} />
+      </Suspense>
+    );
   // A `variant` picks one wording of the code (`notice.<code>.<variant>`).
   const key = `notice.${part.code}${part.vars?.variant ? `.${part.vars.variant}` : ""}`;
   // The core's English text carries details (e.g. the error); the translation is used when it is the plain case.

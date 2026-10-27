@@ -8,7 +8,7 @@ import { retryNow } from "../data/live.ts";
 import { isNewChat, useNewChat } from "../data/newChat.ts";
 import { useData } from "../data/state.ts";
 import { useT } from "../i18n/index.ts";
-import { ContactChat, ScreenLive } from "../lazy.ts";
+import { ComputerProgress, ContactChat, ScreenLive } from "../lazy.ts";
 import { go, useNav } from "../shell/nav.ts";
 import { ChatHeader } from "./ChatHeader.tsx";
 import { ChatComposer } from "./composer/ChatComposer.tsx";
@@ -21,13 +21,17 @@ export function ChatView({
   wideHeader,
   compact = false,
   via,
+  threadId: shownThread,
 }: {
+  /** The chat to show, where the nav's is not the one (a side chat beside another view). */
+  threadId?: string;
   wideHeader: boolean;
   compact?: boolean;
   via?: { channel: string; label: string };
 }) {
   const t = useT();
-  const threadId = useNav((s) => s.threadId);
+  const navThread = useNav((s) => s.threadId);
+  const threadId = shownThread ?? navThread;
   const ready = useData((s) => s.ready);
   const stored = useData((s) => (threadId ? s.threads[threadId] : undefined));
   // A new chat is shown from here alone until its first message makes it in the core.
@@ -35,6 +39,7 @@ export function ChatView({
   const thread = stored ?? fresh;
   const load = useData((s) => (threadId ? s.threadLoad[threadId] : undefined));
   const agents = useData((s) => s.agents);
+  const computerStage = useData((s) => (threadId ? s.computerProgress[threadId] : undefined));
   const former = useData((s) => s.former);
   const visible = usePageVisible();
   const offline = useData((s) => s.connection === "offline");
@@ -129,7 +134,14 @@ export function ChatView({
           {t("chat.readOnly")}
         </div>
       ) : (
-        <ChatComposer key={thread.id} thread={thread} agent={agent} />
+        <>
+          {computerStage && computerStage !== "failed" && (
+            <Suspense fallback={null}>
+              <ComputerProgress stage={computerStage} thread={thread.id} />
+            </Suspense>
+          )}
+          <ChatComposer key={thread.id} thread={thread} agent={agent} />
+        </>
       )}
       {COMPUTER && (
         <Suspense fallback={null}>

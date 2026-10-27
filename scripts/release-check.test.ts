@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { check, isReleaseTag, parseArgs, type VerifyRun, verdict } from "./release-check.ts";
+import { check, isReleaseTag, parseArgs, RELEASE_BRANCH, type VerifyRun, verdict } from "./release-check.ts";
 
 const SHA = "a".repeat(40);
 const run = (over: Partial<VerifyRun> = {}): VerifyRun => ({
@@ -26,7 +26,8 @@ test("only a commit whose newest verify run passed is verified", () => {
 });
 
 test("arguments: a ref, --wait, --tag v2.x.y and --repo", () => {
-  assert.deepEqual(parseArgs([]), { ref: "HEAD", wait: false, tag: undefined, repo: "agentprojectcontext/apx" });
+  assert.deepEqual(parseArgs([]), { ref: "HEAD", wait: false, tag: undefined, repo: "zhangchong-xiaoxu/apx" });
+  assert.equal(RELEASE_BRANCH, "master");
   assert.deepEqual(parseArgs(["--tag", "v2.10.0", "main", "--wait", "--repo", "acme/apx"]), {
     ref: "main",
     wait: true,
@@ -61,8 +62,11 @@ test("an unverified commit is never tagged, and a verified one is tagged and pus
     1,
   );
   assert.ok(!failed.calls.some((c) => c.startsWith("git tag") || c.startsWith("git push")));
-  // The run asked for is the commit's own on release/v2.
-  assert.ok(failed.calls.some((c) => c.includes(`--branch release/v2 --commit ${SHA}`)));
+  assert.ok(
+    failed.calls.includes(
+      `gh run list -R zhangchong-xiaoxu/apx --workflow verify.yml --branch master --commit ${SHA} --limit 20 --json databaseId,status,conclusion,url,headSha`,
+    ),
+  );
 
   const passed = fake([[run()]]);
   assert.equal(

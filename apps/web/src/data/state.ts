@@ -14,6 +14,7 @@ import type {
   Thread,
 } from "@apx/protocol";
 import { useMemo } from "react";
+import { type Computers, NO_COMPUTERS } from "../computers/summary.ts";
 import { createStore, useSlice } from "./createStore.ts";
 
 export type Connection = "connecting" | "online" | "offline";
@@ -46,6 +47,12 @@ export type DataState = {
   /** What each open surface remembers (APX.state), kept live by surface.state events. */
   surfaceStates: Record<string, SurfaceState>;
   tabs: TabInfo[];
+  /** The chats on the shared computer, including browser messages saved before guest tags existed. */
+  vmThreads: string[];
+  /** The Computers view shows once the owner allowed an agent the computer, on a host that can run it (D-152). */
+  computers: Computers;
+  /** Chats waiting on the computer their agent started, and how far it got (cleared a moment after it is ready). */
+  computerProgress: Record<string, "creating" | "loading" | "ready" | "failed">;
   /** Agent engines (native / Claude Code / Codex): installed → logged in → default. */
   engines: EngineStatus[];
   enginesLoad: EnginesLoad;
@@ -72,6 +79,9 @@ export const data = createStore<DataState>({
   surfaceDocs: {},
   surfaceStates: {},
   tabs: [],
+  vmThreads: [],
+  computers: NO_COMPUTERS,
+  computerProgress: {},
   engines: [],
   enginesLoad: "idle",
   health: undefined,

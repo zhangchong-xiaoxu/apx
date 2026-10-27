@@ -119,6 +119,8 @@ with a reason in the commit body.
 The quality gate also rejects `t.skip()`, aliased test controls, conditional skip options, `only`, `fixme`,
 literal-only assertions and empty callbacks. It parses TypeScript rather than matching comments or fixtures.
 Promise assertions must be awaited or returned, including Jest's chained `.resolves` and `.rejects` matchers.
+Browser coverage inventories repository source, not compiler-owned helpers. Coverage builds record each chunk's actual module IDs. Only a chunk containing exactly Rolldown's runtime module, or a module-free compiler facade whose parsed statements contain only static imports and re-exports, is excluded from the browser inventory; filenames alone never identify it. Mixed, application, executable and unknown chunks retain their counters and must have source maps. Missing or invalid provenance keeps every chunk, so the mapping gate still fails closed.
+
 `typescript-parser` pins the TypeScript 5 parser for this lint and coverage inventory: the TypeScript 7 compiler
 used by the workspace does not expose that parser through its default export.
 
@@ -218,7 +220,7 @@ file (`App`, `main`, `shell/`, `inbox/`, `chat/`) that imports one of its module
 `e2e/specs/89-first-load.spec.ts` checks what opening the inbox fetches, its own late parts included.
 
 ## CI
-`.github/workflows/verify.yml` runs on every push to `release/v2` and every pull request. Every job starts from
+`.github/workflows/verify.yml` runs on every push to `main` and every pull request. Every job starts from
 `.github/actions/setup` (Node, `pnpm install`, and when the job needs them Playwright's Chromium and `apps/mobile`'s
 own install, both cached: the browser by Playwright's version, the mobile `node_modules` by its lockfile). The jobs
 start together:
@@ -243,7 +245,7 @@ the job stays green; failing again, the job is red ([D-145](DECISIONS.md#d-145))
 `.github/workflows/windows.yml` runs the same Windows parts on every push to `feat/**` and `fix/**` (or by hand),
 so Windows sees a branch before it merges.
 
-Tags: release tags build installers, and publication waits for the verify run of the exact commit on `release/v2`,
+Tags: release tags build installers, and publication waits for the verify run of the exact commit on `main`,
 without running the suites again. Tag only a commit that run already passed: `pnpm release:check --tag v2.x.y`
 ([RELEASE.md](RELEASE.md#tagging-a-release), AGENTS.md rule 28).
 

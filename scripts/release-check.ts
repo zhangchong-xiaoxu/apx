@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Only a verified commit is tagged (AGENTS.md rule 28): before a v2.x.y tag, the commit's verify run on release/v2
+// Only a verified commit is tagged (AGENTS.md rule 28): before a v2.x.y tag, the commit's verify run on master
 // must have passed. release.yml's publish job checks the same run again, as a second guard.
 //   node scripts/release-check.ts [ref]            # HEAD by default; exits 1 unless that commit is verified
 //   node scripts/release-check.ts [ref] --wait     # a run still going is watched until it ends
@@ -8,9 +8,9 @@ import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const RELEASE_BRANCH = "release/v2";
+export const RELEASE_BRANCH = "master";
 export const VERIFY_WORKFLOW = "verify.yml";
-const DEFAULT_REPO = "agentprojectcontext/apx";
+const DEFAULT_REPO = "zhangchong-xiaoxu/apx";
 
 export type VerifyRun = { databaseId: number; status: string; conclusion: string; url: string; headSha: string };
 export type Verdict = { verified: true; run: VerifyRun } | { verified: false; pending?: VerifyRun; reason: string };

@@ -1,4 +1,4 @@
-// The corner cards: a newer release, the Discord and a star on GitHub, one at a time, each said once per device (the
+// The corner cards: a newer release and a star on GitHub, one at a time, each said once per device (the
 // update card again each time APX opens, until it is updated). The core's update answer is stood in for (the sandbox never asks the release feed).
 import type { Route } from "@playwright/test";
 import { expect, open, test } from "./kit.ts";
@@ -9,26 +9,30 @@ test.afterEach(async ({ page }) => {
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });
 
-test("one card at a time: closing one brings the next, and closed stays closed", async ({ page }) => {
+test("closing the fork invitation persists without promoting an upstream community", async ({ page }) => {
   await open(page);
   const corner = page.getByRole("complementary", { name: "Novedades e invitaciones" });
-  await expect(corner.getByText("Sumate a la comunidad")).toBeVisible();
-  // The star card waits behind, out of reach.
-  await expect(corner.getByRole("button", { name: "Dar una estrella" })).not.toBeInViewport({ ratio: 1 });
-
-  await corner.locator('[data-card="discord"]').getByRole("button", { name: "Cerrar" }).click();
+  await expect(corner.locator('[data-card="discord"]')).toHaveCount(0);
   await expect(corner.getByText("Sumate a la comunidad")).toBeHidden();
   await expect(corner.getByText("¿Te gusta APX?")).toBeVisible();
-
+  await corner.locator('[data-card="star"]').getByRole("button", { name: "Cerrar" }).click();
+  await expect(corner).toBeHidden();
   await page.reload();
-  await expect(corner.getByText("¿Te gusta APX?")).toBeVisible();
-  await expect(corner.getByText("Sumate a la comunidad")).toBeHidden();
+  await expect(page.getByRole("button", { name: "Inbox" })).toBeVisible();
+  await expect(corner).toBeHidden();
+});
 
+test("acting on the fork invitation opens its repository and dismisses the card", async ({ page }) => {
+  await open(page);
+  const corner = page.getByRole("complementary", { name: "Novedades e invitaciones" });
   // Acting on it is enough: the repo opens in a new tab and the card does not come back.
   const popup = page.waitForEvent("popup");
   await page.context().route("https://github.com/**", (route) => route.fulfill({ body: "ok" }));
   await corner.getByRole("button", { name: "Dar una estrella" }).click();
-  expect((await popup).url()).toContain("github.com/agentprojectcontext/apx");
+  expect((await popup).url()).toBe("https://github.com/zhangchong-xiaoxu/apx");
+  await expect(corner).toBeHidden();
+  await page.reload();
+  await expect(page.getByRole("button", { name: "Inbox" })).toBeVisible();
   await expect(corner).toBeHidden();
 });
 
@@ -56,7 +60,7 @@ test("a newer release goes first, opens the update dialog, and once closed comes
   // Closed, it leaves for now: the next card comes forward.
   await card.getByRole("button", { name: "Cerrar" }).click();
   await expect(card).toBeHidden();
-  await expect(page.getByText("Sumate a la comunidad")).toBeVisible();
+  await expect(page.getByText("¿Te gusta APX?")).toBeVisible();
   // An update left for later is said again the next time APX opens.
   await page.reload();
   await expect(card.getByText("Salió APX 9.1.0")).toBeVisible();
@@ -88,11 +92,14 @@ test("an install from before telemetry is asked once in the corner, and closing 
   const card = page.locator('[data-card="telemetry"]');
   await expect(card.getByText("Ayudá a mejorar APX")).toBeVisible();
   // It says where to read what is sent before anyone answers.
-  await expect(card.getByRole("link", { name: "Qué se envía" })).toHaveAttribute("href", /reference\/privacy/);
+  await expect(card.getByRole("link", { name: "Qué se envía" })).toHaveAttribute(
+    "href",
+    "https://github.com/zhangchong-xiaoxu/apx/blob/master/apps/docs/src/content/docs/reference/privacy.mdx",
+  );
   await card.getByRole("button", { name: "Cerrar" }).click();
   await expect(card).toBeHidden();
   expect(asked).toEqual([false]);
   await page.reload();
-  await expect(page.getByText("Sumate a la comunidad")).toBeVisible();
+  await expect(page.getByText("¿Te gusta APX?")).toBeVisible();
   await expect(card).toBeHidden();
 });

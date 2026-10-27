@@ -318,7 +318,7 @@ export function createExecutor(o: {
       card("error", "read-only thread");
       const why =
         tool.name === "shell"
-          ? "this command is not a plain read (see [workspace] in the turn's context for what runs)"
+          ? 'this command is not a plain read (see "Your folder" in your instructions for what runs)'
           : "only actions that read may run here";
       return { ok: false, text: `refused: this code thread is read-only; ${why}` };
     }
@@ -469,6 +469,29 @@ export function createExecutor(o: {
           signal,
         }),
       withdrawQuestion: (inputId) => o.inputs.withdraw(inputId, agent.id),
+      async requestGrant(prompt, approval) {
+        if (store.approvals.allows(approval, thread.id, agent.id)) return undefined;
+        const answer = await o.inputs.ask({
+          run,
+          agent,
+          display,
+          callId,
+          kind: "confirm",
+          prompt,
+          tool: name,
+          approval,
+          args: raw,
+          detail: describe(args),
+          external: o.external(),
+          stays: true,
+          signal,
+        });
+        signal.throwIfAborted();
+        const no = unanswered(answer);
+        if (!no) return undefined;
+        card("error", no.card);
+        return no.text;
+      },
     };
     // What the call was let use reaches the methods it calls (media.attach), never re-derived narrower there.
     const release = o.permissions.hold(run.id, callId, callThread);

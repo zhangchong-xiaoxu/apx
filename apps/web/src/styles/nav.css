@@ -70,6 +70,26 @@
 .running__row:hover {
   background: var(--apx-fill-hover);
 }
+/* A working agent's stop takes its time's place while the row is hovered. */
+.running__line {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+.running__stop {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  transform: translateY(-50%);
+  opacity: 0;
+}
+.running__line:hover .running__stop,
+.running__stop:focus-visible {
+  opacity: 1;
+}
+.running__line:hover .running__elapsed {
+  visibility: hidden;
+}
 .running__item {
   display: flex;
   flex: 1;
@@ -198,13 +218,14 @@
   border-right: 1px solid var(--apx-border);
   overflow: hidden;
 }
-/* Inbox, Tasks and Resources stay pinned on top, the account at the bottom; the middle scrolls. */
+/* Inbox, Tasks and Resources stay pinned on top, the account at the bottom; the middle scrolls between two fixed lines. */
 .sidebar__top {
   flex: none;
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: 10px 8px 4px;
+  padding: 10px 8px 8px;
+  border-bottom: 1px solid var(--apx-border);
 }
 .sidebar__scroll {
   flex: 1;
@@ -212,7 +233,7 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: 0 4px 12px 8px;
+  padding: 6px 4px 12px 8px;
   overflow-y: auto;
   overflow-x: hidden;
   scrollbar-gutter: stable;
@@ -261,7 +282,8 @@
     height 0.12s,
     top 0.12s;
 }
-.sidebar__grip + .sidebar__divider {
+.sidebar__grip + .sidebar__divider,
+.sidebar__scroll > .sidebar__divider:first-child {
   display: none;
 }
 /* The last section has no divider under it: its edge shows only while used. */
@@ -819,4 +841,45 @@
   .sidebar-navrow:not(.is-rail) > .apx-nav {
     padding-right: 36px;
   }
+}
+
+/* ── Usage gauge (topbar) ──────────────────────────────────────────────────── */
+.usage-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  height: 30px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--apx-control-radius);
+  background: transparent;
+  color: var(--apx-fg-muted);
+  font-size: var(--apx-text-xs);
+  font-variant-numeric: tabular-nums;
+}
+.usage-btn:hover {
+  background: var(--apx-fill-hover);
+  color: var(--apx-fg);
+}
+.usage-btn__gauge {
+  width: 22px;
+  height: 4px;
+  border-radius: var(--apx-radius-pill);
+  background: var(--apx-fill-strong);
+  overflow: hidden;
+}
+.usage-btn__gauge > span {
+  display: block;
+  height: 100%;
+  background: var(--apx-brand);
+}
+.usage-btn.is-warning .usage-btn__gauge > span {
+  background: var(--apx-warning);
+}
+.usage-btn.is-danger .usage-btn__gauge > span {
+  background: var(--apx-danger);
+}
+.usage-btn.is-danger {
+  color: var(--apx-danger-soft-fg);
 }
