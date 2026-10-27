@@ -36,6 +36,7 @@ import { startNodeLink } from "./node-link.ts";
 import { openedIn, openedQueue } from "./opened-files.ts";
 import { createQuick, type DesktopPrefs } from "./quick.ts";
 import { confirmQuit } from "./quit-confirm.ts";
+import { adoptionData, secondInstance } from "./second-instance.ts";
 import { createUpdateMenu } from "./update-menu.ts";
 import { createDesktopUpdater, type DesktopUpdate } from "./updater.ts";
 
@@ -61,7 +62,7 @@ const openedConnection = JSON.stringify(loadConnection(app.getPath("userData")))
 registerAppScheme();
 
 // One APX at a time: opening it again brings the running one forward.
-const single = app.requestSingleInstanceLock();
+const single = app.requestSingleInstanceLock(adoptionData(process.argv, process.env));
 if (!single) app.quit();
 
 // Files opened with APX (double-click, Open with, the Dock icon): macOS sends them even before the window exists.
@@ -128,23 +129,21 @@ app.whenReady().then(() => {
     win.hide();
   });
   app.on("activate", openMain);
-  app.on("second-instance", (_event, argv) => {
-    if (
-      argv.includes("--apx-adopt-local") &&
-      JSON.stringify(loadConnection(app.getPath("userData"))) !== openedConnection
-    ) {
-      quitting = true;
-      delete process.env.APX_HOME;
-      delete process.env.APX_PORT;
-      delete process.env.APX_URL;
-      delete process.env.APX_TOKEN;
-      app.relaunch();
-      app.quit();
-      return;
-    }
-    opened.add(openedIn(argv.slice(1)));
-    openMain();
-  });
+  app.on(
+    "second-instance",
+    secondInstance({
+      env: process.env,
+      openedConnection,
+      connection: () => JSON.stringify(loadConnection(app.getPath("userData"))),
+      relaunch: () => {
+        quitting = true;
+        app.relaunch();
+        app.quit();
+      },
+      openFiles: (argv) => opened.add(openedIn(argv.slice(1))),
+      focus: openMain,
+    }),
+  );
   // Every page (the panel, the quick chat, browser tabs) gets the edit menu on a right click.
   app.on("web-contents-created", (_e, contents) => {
     contents.on("context-menu", (_ev, params) => {

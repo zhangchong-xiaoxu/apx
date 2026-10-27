@@ -239,6 +239,25 @@
 .teamdetail__muted {
   color: var(--apx-fg-subtle);
 }
+.teamdetail__hinted {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.teamdetail__hint {
+  display: inline-flex;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  cursor: help;
+}
+.teamdetail__computer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
 .teamdetail__confirm {
   margin: 0;
   font-size: var(--apx-text-sm);
@@ -784,6 +803,9 @@
 .agentedit__hint {
   font-size: var(--apx-text-xs);
   color: var(--apx-fg-subtle);
+}
+.agentedit__hint.is-long {
+  color: var(--apx-warning-soft-fg);
 }
 .agentedit__prompt {
   display: flex;

@@ -70,6 +70,41 @@ test("update selection falls back to the newest compatible release and excludes 
   assert.equal(pickUpdate([release], "2.0.0", "freebsd", process.arch), undefined);
 });
 
+test("a packaged desktop defaults to the fork release feed", async (t) => {
+  const saved = process.env.APX_RELEASES;
+  delete process.env.APX_RELEASES;
+  t.after(() => {
+    if (saved === undefined) delete process.env.APX_RELEASES;
+    else process.env.APX_RELEASES = saved;
+  });
+  const requests: string[] = [];
+  t.mock.method(globalThis, "fetch", async (input: string | URL | Request) => {
+    requests.push(String(input));
+    return Response.json([]);
+  });
+  const h = harness();
+  assert.equal(h.updater.enabled, true);
+  assert.equal((await h.updater.check()).latest, undefined);
+  assert.deepEqual(requests, ["https://api.github.com/repos/zhangchong-xiaoxu/apx/releases?per_page=100"]);
+});
+
+test("an explicit off feed keeps a packaged desktop offline", async (t) => {
+  const saved = process.env.APX_RELEASES;
+  process.env.APX_RELEASES = "off";
+  t.after(() => {
+    if (saved === undefined) delete process.env.APX_RELEASES;
+    else process.env.APX_RELEASES = saved;
+  });
+  const fetch = t.mock.method(globalThis, "fetch", async () => {
+    throw new Error("Unexpected request");
+  });
+  const h = harness();
+  assert.equal(h.updater.enabled, false);
+  assert.equal((await h.updater.check()).latest, undefined);
+  assert.deepEqual(await h.updater.install(), { ok: false, error: "No newer APX for this computer." });
+  assert.equal(fetch.mock.callCount(), 0);
+});
+
 test("disabled updates stay offline and cannot claim an available installer", async (t) => {
   native.app.isPackaged = false;
   const h = harness();

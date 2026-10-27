@@ -1,17 +1,24 @@
 import { noticeEn } from "@apx/protocol/notices";
+import type { ComputerKey } from "./computer-en.ts";
 import { enChannels } from "./en-channels.ts";
 import { enChat } from "./en-chat.ts";
 import { enEngines } from "./en-engines.ts";
 import { enFiles } from "./en-files.ts";
 import { enHelper } from "./en-helper.ts";
 import { enOffice } from "./en-office.ts";
+import type { OnboardingKey } from "./en-onboarding.ts";
 import { enResources } from "./en-resources.ts";
 import { enSetup } from "./en-setup.ts";
 import { enTeam } from "./en-team.ts";
 import { enTelemetry } from "./en-telemetry.ts";
+import type { ReceivedKey } from "./received-en.ts";
+import type { SysUsageKey } from "./sysusage-en.ts";
 
 // UI strings, English: the source of truth. Every key lives here; `{name}` placeholders are filled by t().
 export const en = {
+  "panel.computer": "Computer",
+  "panel.computer.hint": "See the agent's Linux computer",
+  "computer.screen": "Live VM desktop",
   "desktopInstall.title": "Use APX as a desktop app",
   "desktopInstall.idle": "Install on this computer running APX. Your chats, agents and settings stay ready to use.",
   "desktopInstall.install": "Install and open",
@@ -38,6 +45,8 @@ export const en = {
   ...enResources,
   ...enEngines,
   ...enTelemetry,
+  "sysUsage.title": "Usage",
+  "sysUsage.button": "Usage: {pct}% of memory in use",
   // Shared words
   "common.agent": "Agent",
   "common.app": "App",
@@ -324,6 +333,7 @@ export const en = {
   "nav.baseProject": "Base project",
   "nav.externalSessions": "External sessions",
   "nav.apps": "Apps",
+  "nav.computers": "Computers",
   "nav.resources": "Resources",
   "account.you": "You",
   "account.menuOf": "Account: {name}",
@@ -367,6 +377,11 @@ export const en = {
   "running.tab.agents": "Agents",
   "running.tab.background": "Background",
   "running.waitingForYou": "Waiting for you",
+  "running.stop": "Stop",
+  "running.stop.title": "Stop {agent}?",
+  "running.stop.body": "What it is doing in “{title}” stops now. What it already did stays in the chat.",
+  "running.stop.waitingBody":
+    "It stops waiting for your answer in “{title}”, and what it asked you closes. What it already did stays in the chat.",
   "nav.moreProjects": "{n} more",
   "nav.moreSessions": "{n} more external sessions",
   "running.nothingNow": "Nothing running in the background.",
@@ -1408,7 +1423,6 @@ export const en = {
   "quick.backHome": "Back to Home",
   "quick.openApp": "Open in the app",
   "config.desktop": "Desktop",
-  "desktop.memory": "RAM usage",
   "desktop.memoryHint":
     "APX is using {total}. Above 4 GB it tells you which process uses the most. Idle tabs close after 30 minutes.",
   "desktop.memory.core": "Core (agents, channels, data)",
@@ -1430,6 +1444,9 @@ export const en = {
   "desktop.clear": "Remove",
   "desktop.login": "Start with the computer",
   "desktop.loginHint": "APX opens when you log in.",
+  "desktop.awake": "Keep the Mac awake while agents work",
+  "desktop.awakeHint":
+    "It does not sleep during a turn, a command or a computer starting; the screen may still turn off.",
   "desktop.cu": "Computer use",
   "desktop.cu.switch": "Let agents use this computer",
   "desktop.cu.switchHint":
@@ -1822,4 +1839,5 @@ export const en = {
   "rewind.confirm": "Remove and send",
 } as const;
 
-export type MessageKey = keyof typeof en;
+/** Every key the panel may show: these, and those of the packs loaded with their screens (messages.ts PACKS). */
+export type MessageKey = keyof typeof en | ComputerKey | ReceivedKey | SysUsageKey | OnboardingKey;

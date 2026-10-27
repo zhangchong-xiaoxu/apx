@@ -170,6 +170,8 @@ export const esTeam: Partial<Record<MessageKey, string>> = {
     "Qué hace sin preguntarte según el tipo de acción. Lo concedido en un chat pasa por encima.",
   "agentedit.page.granted": "Concedidos",
   "agentedit.page.grantedSub": "Lo que elegiste “Siempre” al aprobar en un chat. Corre sin preguntar.",
+  "agentedit.page.computer": "Computadora",
+  "agentedit.page.computerSub": "Si puede usar una computadora Linux aislada.",
   "agentedit.page.browser": "Navegador",
   "agentedit.page.browserSub": "Con qué perfil abre las webs.",
   "agentedit.page.profile": "Perfil",
@@ -202,6 +204,9 @@ export const esTeam: Partial<Record<MessageKey, string>> = {
   "agentedit.personalityHint": "Cómo se expresa, aparte de lo que hace. Va antes de sus instrucciones.",
   "agentedit.avatar": "Blobo (avatar)",
   "agentedit.promptSave": "⌘S guarda y sigue; ⇧⌘S guarda y cierra.",
+  "agentedit.promptSize": "{chars} caracteres, unos {tokens} tokens, que van en cada llamada al modelo.",
+  "agentedit.promptLong":
+    "{chars} caracteres, unos {tokens} tokens, que van en cada llamada al modelo: es largo. Lo que solo necesitan algunas tareas queda mejor en una skill o en el AGENTS.md del proyecto.",
   "agentedit.saveClose": "Guardar y cerrar",
   "agentedit.unknownTools": "Tools que APX no conoce",
   "agentedit.unknownToolsHint":

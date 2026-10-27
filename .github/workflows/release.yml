@@ -30,11 +30,9 @@ jobs:
       TAG: ${{ inputs.tag || github.ref_name }}
       GH_TOKEN: ${{ github.token }}
     steps:
-      # While v1 and v2 share the repo, v1 keeps GitHub's "Latest" (its npm users and links point there); v2 builds
-      # still reach v2 installs, which pick the newest v2.x.y themselves. APX_V2_LATEST=true once main is v2.
       - run: |
           gh release view "$TAG" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1 || gh release create "$TAG" -R "$GITHUB_REPOSITORY" \
-            --title "APX ${TAG#v}" --generate-notes --verify-tag --draft --latest="${{ vars.APX_V2_LATEST == 'true' }}"
+            --title "APX ${TAG#v}" --generate-notes --verify-tag --draft --latest=true
 
   installers:
     needs: open
@@ -55,8 +53,6 @@ jobs:
       TAG: ${{ inputs.tag || github.ref_name }}
       # No signing certificates yet: the builder must not look for one.
       CSC_IDENTITY_AUTO_DISCOVERY: "false"
-      # The panel says "Beta" beside its version until v2 is the repo's Latest.
-      APX_CHANNEL: ${{ vars.APX_V2_LATEST != 'true' && 'beta' || '' }}
     steps:
       # Every tag and branch: the build carries what each release changed and the branch it came from (stage.ts).
       - uses: actions/checkout@v4
@@ -187,4 +183,4 @@ jobs:
             exit 1
           fi
           gh run watch "$run" -R "$GITHUB_REPOSITORY" --exit-status --interval 30
-      - run: gh release edit "$TAG" -R "$GITHUB_REPOSITORY" --draft=false --latest="${{ vars.APX_V2_LATEST == 'true' }}"
+      - run: gh release edit "$TAG" -R "$GITHUB_REPOSITORY" --draft=false --latest=true

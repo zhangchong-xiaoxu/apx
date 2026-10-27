@@ -5,7 +5,7 @@ import { loadConfig } from "./config.ts";
 import { say, scriptedLlm, startCore } from "./engine/testkit.ts";
 import { createLog } from "./log.ts";
 import { createTelemetry } from "./telemetry.ts";
-import { firestoreWrite, TELEMETRY_SINK, type TelemetrySink } from "./telemetry-sink.ts";
+import { firestoreWrite, type TelemetrySink, telemetrySink } from "./telemetry-sink.ts";
 
 let env: Awaited<ReturnType<typeof startCore>>;
 const sent: TelemetryEvent[] = [];
@@ -152,9 +152,35 @@ test("telemetry is off unless APX_TELEMETRY names a sink, and DO_NOT_TRACK or CI
   assert.equal(loadConfig({ CI: "true" }, false).telemetry, undefined);
   assert.equal(loadConfig({ APX_TELEMETRY: "off" }, false).telemetry, undefined);
   assert.equal(loadConfig({ DO_NOT_TRACK: "0" }, false).telemetry, undefined);
-  assert.equal(loadConfig({ APX_TELEMETRY: TELEMETRY_SINK }, false).telemetry, TELEMETRY_SINK);
+  assert.equal(loadConfig({ APX_TELEMETRY: "firestore:acme-telemetry" }, false).telemetry, "firestore:acme-telemetry");
   assert.equal(loadConfig({ APX_TELEMETRY: "https://example.com/t", CI: "1" }, false).telemetry, undefined);
   assert.equal(loadConfig({ APX_TELEMETRY: "https://example.com/t" }, false).telemetry, "https://example.com/t");
+});
+
+test("explicit telemetry sinks deliver only to the configured project or endpoint", async () => {
+  const requests: { url: string; body: unknown }[] = [];
+  const send: typeof fetch = async (input, init) => {
+    requests.push({ url: String(input), body: JSON.parse(String(init?.body)) });
+    return new Response(null, { status: 200 });
+  };
+  const event: TelemetryEvent = {
+    kind: "stage",
+    install_id: "6f1c2b9e-1d2a-4c3b-8e4f-5a6b7c8d9e0f",
+    stage: "installed",
+    info: { version: "2.1.0", os: "linux", arch: "x64", channel: "app" },
+  };
+  for (const spec of ["firestore:acme-telemetry", "https://example.com/telemetry"]) {
+    const config = loadConfig({ APX_TELEMETRY: spec }, false);
+    assert.ok(config.telemetry);
+    await telemetrySink(config.telemetry, send)(event);
+  }
+  assert.deepEqual(requests, [
+    {
+      url: "https://firestore.googleapis.com/v1/projects/acme-telemetry/databases/(default)/documents:commit",
+      body: { writes: [firestoreWrite("acme-telemetry", event)] },
+    },
+    { url: "https://example.com/telemetry", body: event },
+  ]);
 });
 
 test("a fresh config sends no telemetry and updates only from the fork, never upstream", () => {

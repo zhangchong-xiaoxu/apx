@@ -1,16 +1,16 @@
 ---
 title: Privacy and telemetry
-description: What APX tells the APX project about your install, what it sends only if you say yes, what it never sends, and how to turn it all off.
+description: Telemetry is off by default in this fork. What an explicitly configured sink receives, and how to turn it off.
 sidebar:
   order: 4
 ---
 
 import { Aside } from "@astrojs/starlight/components";
 
-APX runs on your computer and keeps your chats, agents, files and keys there. To know how many people install it, get
-through the setup and keep using it, it tells the APX project a little about your install. This page lists all of it.
+APX runs on your computer and keeps your chats, agents, files and keys there. This fork sends no telemetry by default.
+Only an explicit `APX_TELEMETRY` sink enables reporting. The sections below describe what that configured sink receives.
 
-## Every install: the steps it goes through
+## With a configured sink: installation steps
 
 Under a random id made for this alone (it is not your home id, your name or anything about your computer), APX sends
 each of these once, when it happens:
@@ -48,9 +48,10 @@ it to answer the request, as any web request does, and APX does not store it).
 
 ## Where it goes
 
-To a Google Cloud Firestore database of the APX project (`apx-agents`, in the United States), written without an
-account. Its rules accept only the shapes above, stamp every time on the server and let no one outside the project
-read anything back.
+There is no default receiving service. `APX_TELEMETRY=https://example.com/telemetry` sends JSON to that endpoint;
+`APX_TELEMETRY=firestore:your-project` writes to the selected Google Cloud Firestore project through its REST API.
+The owner of that service controls its location, access rules and retention. This fork does not configure or deploy
+an upstream telemetry project.
 
 ## Turning it off
 
@@ -59,6 +60,5 @@ Any of these stops everything, including the install steps: `APX_TELEMETRY=off` 
 `core.env`, `DO_NOT_TRACK=1` ([Console Do Not Track](https://consoledonottrack.com)), or a `CI` variable.
 </Aside>
 
-To start over with a new random id, delete `telemetry-id` in your APX home (`~/.apx/v2`). To have an install's records
-removed, open an issue on [GitHub](https://github.com/agentprojectcontext/apx/issues) with the telemetry id shown in
-Settings › Advanced.
+To start over with a new random id, delete `telemetry-id` in your APX home (`~/.apx/v2`). If you explicitly configured
+a sink, contact its operator to remove any records, using the telemetry id shown in Settings › Advanced.

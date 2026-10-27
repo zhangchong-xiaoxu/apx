@@ -1,5 +1,6 @@
 import "../styles/corner.css";
-import { Button, ChannelIcon, IconButton, Icons, ProjectTile } from "@apx/ui";
+import { RELEASE_REPO_URL } from "@apx/protocol/releases";
+import { Button, IconButton, Icons, ProjectTile } from "@apx/ui";
 import type { CSSProperties, ReactNode } from "react";
 import { closeCard, useClosedCards } from "../data/cornerCards.ts";
 import { PRIVACY_URL, setUsage, useTelemetry } from "../data/telemetry.ts";
@@ -7,14 +8,8 @@ import { newerOf, openUpdate, restartApp, useUpdates } from "../data/updates.ts"
 import { useV1Running } from "../data/v1Running.ts";
 import { useT } from "../i18n/index.ts";
 
-const LINKS = {
-  discord: "https://discord.gg/vxdZuT5WuE",
-  // The public repo: where the releases and the docs live.
-  repo: "https://github.com/agentprojectcontext/apx",
-} as const;
-
 /**
- * A small deck: a newer APX, the Discord, a star on GitHub. Only the first that still applies shows; the next peeks
+ * A small deck: a newer APX and a star on GitHub. Only the first that still applies shows; the next peeks
  * out behind it and comes forward when it is closed. Each one is said once per device (the update card once per
  * version), never as a modal. At the foot of the sidebar; floating beside it when the sidebar is a rail, away from the
  * composer.
@@ -89,19 +84,6 @@ export function CornerCards({ floating = false }: { floating?: boolean }) {
         onClose={() => void setUsage(false)}
       />,
     );
-  if (!closed.discord)
-    cards.push(
-      <CornerCard
-        key="discord"
-        id="discord"
-        icon={<ProjectTile tone="neutral" size={24} icon={<ChannelIcon channel="discord" size={14} />} />}
-        title={t("community.title")}
-        description={t("community.desc")}
-        action={t("community.cta")}
-        onAction={() => window.open(LINKS.discord, "_blank", "noopener,noreferrer")}
-        onClose={() => closeCard({ discord: true })}
-      />,
-    );
   // Last on purpose: it asks for something instead of offering it.
   if (!closed.star)
     cards.push(
@@ -112,7 +94,7 @@ export function CornerCards({ floating = false }: { floating?: boolean }) {
         title={t("star.title")}
         description={t("star.desc")}
         action={t("star.cta")}
-        onAction={() => window.open(LINKS.repo, "_blank", "noopener,noreferrer")}
+        onAction={() => window.open(RELEASE_REPO_URL, "_blank", "noopener,noreferrer")}
         onClose={() => closeCard({ star: true })}
       />,
     );

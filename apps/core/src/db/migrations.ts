@@ -890,4 +890,21 @@ export const MIGRATIONS: readonly string[] = [
   ) AS r WHERE messages.id = r.message_id AND messages.via IS NULL;
   UPDATE messages SET via = o.channel FROM outbox AS o WHERE o.message_id = messages.id AND messages.via IS NULL;
   `,
+  // Home no longer goes on the computer (DECISIONS.md#d-154): a Home already on it comes back to the Mac.
+  `
+  UPDATE meta SET value = (
+    SELECT json_group_array(c.value) FROM json_each(meta.value) AS c
+    WHERE c.value NOT IN (SELECT id FROM threads WHERE kind = 'home')
+  ) WHERE key = 'setting:computer_chats' AND json_valid(value);
+  `,
+  // What the model received on a run's first call, for the owner to look at: the last runs only, each system prompt
+  // kept once (it is the same for every turn of a chat).
+  `
+  CREATE TABLE prompt_texts (hash TEXT PRIMARY KEY, text TEXT NOT NULL);
+  CREATE TABLE run_contexts (
+    run_id TEXT PRIMARY KEY REFERENCES runs(id) ON DELETE CASCADE,
+    seq INTEGER NOT NULL, system_hash TEXT NOT NULL, input TEXT NOT NULL, tools TEXT NOT NULL, sizes TEXT NOT NULL
+  );
+  CREATE INDEX run_contexts_seq ON run_contexts(seq);
+  `,
 ];

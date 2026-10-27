@@ -168,6 +168,8 @@ export const enTeam = {
     "What it does without asking you, by kind of action. What you granted in a chat goes over them.",
   "agentedit.page.granted": "Granted",
   "agentedit.page.grantedSub": "What you picked “Always” for when approving in a chat. It runs without asking.",
+  "agentedit.page.computer": "Computer",
+  "agentedit.page.computerSub": "Whether it may use an isolated Linux computer.",
   "agentedit.page.browser": "Browser",
   "agentedit.page.browserSub": "Which profile it opens web pages with.",
   "agentedit.page.profile": "Profile",
@@ -200,6 +202,9 @@ export const enTeam = {
   "agentedit.personalityHint": "How it comes across, apart from what it does. It goes before its instructions.",
   "agentedit.avatar": "Blobo (avatar)",
   "agentedit.promptSave": "⌘S saves and goes on; ⇧⌘S saves and closes.",
+  "agentedit.promptSize": "{chars} characters, about {tokens} tokens, sent on every model call.",
+  "agentedit.promptLong":
+    "{chars} characters, about {tokens} tokens, sent on every model call: long. Details only some tasks need fit better in a skill or the project's AGENTS.md.",
   "agentedit.saveClose": "Save and close",
   "agentedit.unknownTools": "Tools APX does not know",
   "agentedit.unknownToolsHint":

@@ -38,6 +38,7 @@ export const InstallArtifactDialog = lazy(() =>
   import("./surfaces/InstallArtifact.tsx").then((m) => ({ default: m.InstallArtifactDialog })),
 );
 export const LiveLayer = lazy(() => import("./surfaces/LiveLayer.tsx").then((m) => ({ default: m.LiveLayer })));
+export const WelcomeV2 = lazy(() => import("./shell/WelcomeV2.tsx").then((m) => ({ default: m.WelcomeV2 })));
 export const CornerCards = lazy(() => import("./shell/CornerCards.tsx").then((m) => ({ default: m.CornerCards })));
 export const CommandPalette = lazy(() =>
   import("./shell/CommandPalette.tsx").then((m) => ({ default: m.CommandPalette })),
@@ -50,6 +51,13 @@ export const WidgetChatHost = lazy(() =>
 );
 export const PhoneDialog = lazy(() => import("./shell/PhoneDialog.tsx").then((m) => ({ default: m.PhoneDialog })));
 export const TasksScreen = lazy(() => import("./tasks/TasksScreen.tsx").then((m) => ({ default: m.TasksScreen })));
+export const ComputersScreen = lazy(() =>
+  import("./computers/ComputersScreen.tsx").then((m) => ({ default: m.ComputersScreen })),
+);
+export const UsageDialog = lazy(() => import("./shell/UsagePanels.tsx").then((m) => ({ default: m.UsageDialog })));
+export const UsageSummary = lazy(() => import("./shell/UsagePanels.tsx").then((m) => ({ default: m.UsageSummary })));
+// The memory gauge shows a number only after its first read: loading it after the first screen moves nothing shown.
+export const UsageButton = lazy(() => import("./shell/UsageButton.tsx").then((m) => ({ default: m.UsageButton })));
 
 // The sidebar's extras: not needed for the first paint.
 export const AppsDock = lazy(() => import("./shell/AppsDock.tsx").then((m) => ({ default: m.AppsDock })));
@@ -70,6 +78,7 @@ export const ProjectSettings = lazy(() =>
 
 export const JobList = lazy(() => import("./shell/JobList.tsx").then((m) => ({ default: m.JobList })));
 
+export const CoreBehind = lazy(() => import("./shell/CoreBehind.tsx").then((m) => ({ default: m.CoreBehind })));
 export const UpdateDialog = lazy(() => import("./shell/UpdateDialog.tsx").then((m) => ({ default: m.UpdateDialog })));
 
 // The side panel's tabs load when first opened, not with the chat.
@@ -87,12 +96,21 @@ export const AgentPanel = lazy(() => import("./panel/AgentPanel.tsx").then((m) =
 export const DocumentPanel = lazy(() =>
   import("./panel/DocumentPanel.tsx").then((m) => ({ default: m.DocumentPanel })),
 );
+export const ComputerPanel = lazy(() =>
+  import("./panel/ComputerPanel.tsx").then((m) => ({ default: m.ComputerPanel })),
+);
 
 // xterm.js loads with the first terminal opened, not with the panel.
 export const TerminalView = lazy(() => import("./panel/TerminalView.tsx"));
 
 // Computer use shows only in the desktop app; a contact's chat brings the channel's conversation and card.
 export const ScreenLive = lazy(() => import("./chat/ScreenLive.tsx").then((m) => ({ default: m.ScreenLive })));
+export const ComputerNotice = lazy(() =>
+  import("./computers/ComputerNotice.tsx").then((m) => ({ default: m.ComputerNotice })),
+);
+export const ComputerProgress = lazy(() =>
+  import("./computers/ComputerProgress.tsx").then((m) => ({ default: m.ComputerProgress })),
+);
 export const ContactChat = lazy(() => import("./channels/ContactChat.tsx").then((m) => ({ default: m.ContactChat })));
 
 // Message parts load with the first message that has one, not with the chat.
@@ -115,6 +133,9 @@ export const DocumentActions = lazy(() =>
 
 // The run button and its terminal load the first time a chat shows a shell block.
 export const RunnableCode = lazy(() => import("./chat/RunnableCode.tsx").then((m) => ({ default: m.RunnableCode })));
+export const ReceivedDialog = lazy(() =>
+  import("./chat/ReceivedDialog.tsx").then((m) => ({ default: m.ReceivedDialog })),
+);
 
 // A model picker's list shows only once it opens (the composer has a picker).
 export const ModelList = lazy(() => import("./config/models/ModelList.tsx").then((m) => ({ default: m.ModelList })));

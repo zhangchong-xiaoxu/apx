@@ -9,6 +9,7 @@ import {
   AppScreen,
   ChannelScreen,
   CommandPalette,
+  ComputersScreen,
   ConfigModal,
   CornerCards,
   EngineSessions,
@@ -20,6 +21,8 @@ import {
   TaskPeek,
   TasksScreen,
   ThreadDialogs,
+  UsageDialog,
+  WelcomeV2,
   WidgetChatHost,
 } from "../lazy.ts";
 import { useAnyLive } from "../surfaces/liveAny.ts";
@@ -50,6 +53,7 @@ export function Shell() {
   const palette = useNav((s) => s.palette);
   const threadDialog = useThreadDialog() != null;
   const phone = useNav((s) => s.phone);
+  const usageDialog = useNav((s) => s.usageDialog);
   // A task opened from a chat floats over it; the Tasks screen shows its own beside the list.
   const peek = useNav((s) => s.peekTaskId != null && s.view !== "tasks");
   const widgetChat = useSlice(widgetChatOpen, (s) => s.threadId != null);
@@ -76,6 +80,8 @@ export function Shell() {
                 <TasksScreen />
               ) : view === "resources" ? (
                 <ResourcesScreen />
+              ) : view === "computers" ? (
+                <ComputersScreen />
               ) : view === "channel" ? (
                 <ChannelScreen />
               ) : view === "engine" ? (
@@ -110,6 +116,11 @@ export function Shell() {
           <PhoneDialog />
         </Suspense>
       )}
+      {usageDialog && (
+        <Suspense fallback={null}>
+          <UsageDialog />
+        </Suspense>
+      )}
       {widgetChat && (
         <Suspense fallback={null}>
           <WidgetChatHost />
@@ -121,6 +132,10 @@ export function Shell() {
         </Suspense>
       )}
       <UpdateDialogHost />
+      {/* It knows on its own whether it was seen: the first screen carries none of it. */}
+      <Suspense fallback={null}>
+        <WelcomeV2 />
+      </Suspense>
       {/* Over the foot of the list column: on a phone, or with the list hidden, it would cover the composer. */}
       {layout.rail && !layout.compact && layout.listW > 0 && (
         <Suspense fallback={null}>

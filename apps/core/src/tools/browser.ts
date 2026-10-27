@@ -37,7 +37,7 @@ const refArg = z
   .regex(/^e\d+$/)
   .describe("ref like e12, from the last snapshot");
 
-export function browserTools(store: Store, home: string): Tool[] {
+export function browserTools(store: Store, home: string, vm?: { hasThread(id: string): boolean }): Tool[] {
   /** The model looks at the tab itself: the tree alone misses images, charts and slides. */
   const look = async (ctx: ToolContext, tab: string) => {
     if (!ctx.see) return;
@@ -63,6 +63,7 @@ export function browserTools(store: Store, home: string): Tool[] {
     const t = tabs.find((x) => x.tab === tab);
     ctx.upsertPart((p) => p.type === "browser" && p.tab === tab, {
       type: "browser",
+      ...(vm?.hasThread(ctx.thread.id) ? { environment: "vm" as const } : {}),
       tab,
       url: t?.url ?? "",
       title: t?.title ?? "",
@@ -104,7 +105,7 @@ export function browserTools(store: Store, home: string): Tool[] {
       needsCap: BROWSER_CAP,
       name: "browser_open",
       description:
-        "Open a URL in your browser: in the tab this chat already uses (or `tab`), else a new one; `new_tab` for another beside it. The owner's embedded browser when the APX app is open (they can watch it), APX's own headless one otherwise (nobody sees it, nobody can log in for you). Returns the tab id. For reading or looking something up, web_read and web_search are faster; use the browser when a page needs JavaScript, clicks or forms, or when they failed. This is your browser for any site: not the owner's screen (screen_ tools, only when they ask for their computer) nor a browser an MCP server brings (another profile, logged out, the owner cannot see it). When a page fails, retry or browser_handoff; never switch.",
+        "Open a URL in your browser: in the tab this chat already uses (or `tab`), else a new one; `new_tab` for another beside it. The owner's embedded browser when the APX app is open (they can watch it), APX's own headless one otherwise (nobody sees it, nobody can log in for you). Returns the tab id. For reading or looking something up, web_read and web_search are faster; use the browser when a page needs JavaScript, clicks or forms, or when they failed. This is your browser for any site: not the owner's screen (screen_ tools, only when they ask for their computer) nor a browser an MCP server brings (another profile, logged out, the owner cannot see it). When a page fails, retry or browser_handoff; never switch. Then browser_snapshot gives refs for browser_click and browser_type (wait_s waits for the page); browser_text reads it.",
       args: z.object({
         url: z.string().describe("http(s) URL"),
         tab: tabArg.optional().describe("tab id to load it in"),

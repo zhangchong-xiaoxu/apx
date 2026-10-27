@@ -185,6 +185,7 @@ export type Admit = {
 export type AdmitFn = (a: Admit) => RunRecord;
 
 export function createEngine(deps: {
+  vm?: import("../environments/computer.ts").Computer | undefined;
   store: Store;
   harnesses: Harnesses;
   tools: Tool[];
@@ -216,6 +217,8 @@ export function createEngine(deps: {
   a2aCapMs?: number;
   /** Timer source for run deadlines, independent of transports and background work. */
   runTimers?: RunTimers;
+  /** Whether the Mac slept since a moment (engine/awake.ts): a turn it cut short gets one more window. */
+  sleptSince?: (since: number) => boolean;
   /** MCP servers' tools for a thread (its project's approved ones and the owner's). */
   mcpTools?: (thread: Thread) => Promise<Tool[]>;
   /** The MCP servers a thread may reach, by name, without starting them. */
@@ -359,9 +362,20 @@ export function createEngine(deps: {
     const ac = new AbortController();
     // A restart re-runs queued work with a fresh deadline: the clock starts when the run can actually work.
     const limit = runLimit(deps.store, run.thread_id, run.trigger, deps);
-    const clock = pausableClock(
+    const timers = deps.runTimers ?? wallRunTimers;
+    const begun = timers.now();
+    let forgiven = false;
+    const clock: Clock = pausableClock(
       limit,
-      (capped) =>
+      (capped) => {
+        // Timers do not run while the Mac sleeps and fire at once when it wakes: a turn that made no progress across
+        // a sleep is not stuck, it gets one more window (DECISIONS.md#d-153).
+        if (!capped && !forgiven && deps.sleptSince?.(begun)) {
+          forgiven = true;
+          log.info({ run: run.id }, "turn deadline reached across a sleep: one more window");
+          clock.touch();
+          return;
+        }
         ac.abort(
           new DeadlineExceeded(
             capped
@@ -370,7 +384,8 @@ export function createEngine(deps: {
                 ? `the engine sent nothing for ${timeSpan(limit.ms)} and was stopped`
                 : `the turn made no progress for ${timeSpan(limit.ms)} and was stopped`,
           ),
-        ),
+        );
+      },
       (at) => deps.store.runs.setDeadline(run.id, new Date(at).toISOString()),
       deps.runTimers,
     );
@@ -458,6 +473,8 @@ export function createEngine(deps: {
     }
     n += stopRunning(threadId);
     for (const child of store.threads.children(threadId)) n += cancel(child);
+    // A chat left waiting on the owner with no turn running (an open question, a restart) still stops.
+    if (!busy.has(threadId)) n += inputs.close(threadId);
     if (n && !busy.has(threadId)) store.threads.patch(threadId, { state: "canceled" });
     return n;
   }

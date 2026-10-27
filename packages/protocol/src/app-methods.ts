@@ -51,6 +51,7 @@ import {
   RoomMode,
   RouterConfig,
   Run,
+  RunContext,
   ServiceInfo,
   ServiceKind,
   ServiceSettings,
@@ -1228,15 +1229,31 @@ export const appMethods = {
   /** The desktop app's settings: quick chat shortcut, start at login, and computer use on this computer. */
   "desktop.get": {
     params: z.object({}).strict(),
-    result: z.object({ shortcut: z.string(), launch_at_login: z.boolean(), computer_use: z.boolean() }),
+    result: z.object({
+      shortcut: z.string(),
+      launch_at_login: z.boolean(),
+      computer_use: z.boolean(),
+      /** The Mac stays awake while APX works for the owner (macOS). */
+      keep_awake: z.boolean(),
+    }),
     effect: false,
     access: "human",
   },
   "desktop.set": {
     params: z
-      .object({ shortcut: z.string().max(60), launch_at_login: z.boolean(), computer_use: z.boolean().default(false) })
+      .object({
+        shortcut: z.string().max(60),
+        launch_at_login: z.boolean(),
+        computer_use: z.boolean().default(false),
+        keep_awake: z.boolean().default(true),
+      })
       .strict(),
-    result: z.object({ shortcut: z.string(), launch_at_login: z.boolean(), computer_use: z.boolean() }),
+    result: z.object({
+      shortcut: z.string(),
+      launch_at_login: z.boolean(),
+      computer_use: z.boolean(),
+      keep_awake: z.boolean(),
+    }),
     effect: true,
     access: "human",
   },
@@ -1663,6 +1680,13 @@ export const appMethods = {
     params: z.object({ run: Id }).strict(),
     result: Run,
     effect: false,
+  },
+  /** What the model received on the run's first call; only the latest runs are kept (RUN_CONTEXTS_KEPT). */
+  "runs.context": {
+    params: z.object({ run: Id }).strict(),
+    result: RunContext,
+    effect: false,
+    access: "human",
   },
   /** Waits until the run ends or `timeout_s` passes, and returns it as it is then. */
   "runs.wait": {

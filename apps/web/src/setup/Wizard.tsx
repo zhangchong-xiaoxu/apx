@@ -15,7 +15,7 @@ import { updateBase } from "../data/projects.ts";
 import { addProject, closeSetup, finishSetup, importV1, scanV1, useSetup, type V1Groups } from "../data/setup.ts";
 import { useData } from "../data/state.ts";
 import { updateAgent } from "../data/team.ts";
-import { type MessageKey, useLanguage, useT } from "../i18n/index.ts";
+import { type MessageKey, useLanguage, usePack, useT } from "../i18n/index.ts";
 import { useDesktopClass } from "../shell/desktop.ts";
 import { LanguageMenu } from "../shell/LanguageMenu.tsx";
 import { go, useNav } from "../shell/nav.ts";
@@ -41,6 +41,10 @@ type Step = "welcome" | "import" | "agent" | "engines" | "memory" | "channels" |
  * channels and a first project, then done. Each step saves as it goes on; the card on the right shows the crew so far.
  */
 export function Wizard() {
+  return usePack("onboarding") ? <WizardBody /> : null;
+}
+
+function WizardBody() {
   const t = useT();
   const lang = useLanguage();
   const mode = useNav((s) => s.mode);

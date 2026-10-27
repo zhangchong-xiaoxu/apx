@@ -61,6 +61,20 @@ Three ways to read it:
 
 Lines in the **Process output** source are what the core printed outside its log, like the trace of a crash.
 
+### Windows 登录后后台消失
+
+Windows 的 `apx service install` 通过 Windows Script Host（`wscript.exe` / JScript）启动隐藏的守护进程，
+登录时不再直接打开 `cmd` 窗口。旧登录项需重新执行 `apx service install` 才会更新；仅执行
+`apx service restart` 会保留原有登录项。安装与重启会等待核心健康检查，启动失败会明确报错。
+若系统禁用了 Windows Script Host，需先由管理员允许使用，不能把安装成功当作后台已运行。
+
+`apx service logs -n 100` 中 `scope: "supervisor"` 的 JSON 记录包含守护进程和核心的 PID、
+核心退出码或信号、重试间隔、停止信号以及守护进程异常类型；不会记录环境变量、完整命令或异常消息。
+这些记录同步写入现有 `core.log`，可用于区分核心自行退出与整个后台一起消失。
+
+强制终止、关闭控制台、断电等场景无法保证执行退出回调。只有启动记录却没有退出记录是排查线索，
+不是进程被谁结束的证明。不要为修复连接问题删除数据库或会话目录。
+
 Desktop app versions before this change wrote `core.log` in the app's own logs folder (`~/Library/Logs/APX` on
 macOS, `%APPDATA%\APX\logs` on Windows, `~/.config/APX/logs` on Linux); older lines stay there.
 
@@ -224,5 +238,5 @@ too. Move things aside instead, and only with the core stopped.
 
 ## Still stuck?
 
-Ask on [Discord](https://discord.gg/vxdZuT5WuE) with the output of `apx status --plain` and the last lines of the
+Open an [issue](https://github.com/zhangchong-xiaoxu/apx/issues) with the output of `apx status --plain` and the last lines of the
 core's log (check them for anything private first).

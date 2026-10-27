@@ -3,6 +3,16 @@
 How v2 leaves the private working repo and reaches people. What was built for updates is
 [D-044](DECISIONS.md#d-044).
 
+## Fork 发布约定
+
+本 fork 的发布分支是 `zhangchong-xiaoxu/apx` 的 `master`；上游的 `main` 只用于人工合并。
+桌面端、core、首次安装脚本及 SSH 安装都默认从 fork 的 GitHub Releases 取包。
+`APX_RELEASES=off` 停止 release 检查；显式设置其他源只影响继承该环境变量的进程。
+连接 fork core 不会改变已有桌面安装包内的更新地址，旧的上游桌面程序必须单独替换。
+
+下面的 History 与 Where v2 lives 描述上游历史，不是 fork 的发布或部署操作指南。
+本 fork 不运行上游的遥测部署、Discord 公告或发布后自动关闭 Issue 的流程。
+
 ## History
 
 The private working repo's older commits carry a work email, AI-tool trailers and a few real names, so its history
@@ -22,21 +32,17 @@ to the public repo ([D-087](DECISIONS.md#d-087)).
 
 ## Where v2 lives
 
-v2 is published into v1's public repo (`agentprojectcontext/apx`), which every v2 install already watches:
-
-1. `release/v2`: v2's rewritten history as its own branch, unrelated to v1's `main`. v1's semantic-release only
-   releases from `main`, so the branch never publishes to npm.
-2. Releases are `v2.x.y` tags on that branch. While v1 and v2 share the repo they are created **not latest**
-   (`APX_V2_LATEST` unset): v1 keeps GitHub's "Latest" for its npm users, and v2 installs still find them because
-   they pick the newest `v2.x.y` from the release list themselves.
-3. Unification, at the end: on `release/v2`, `git merge -s ours main --allow-unrelated-histories`, then `main`
-   fast-forwards to it and v1's old `main` stays as branch `v1`. Both histories survive and `main` holds v2. Set
-   `APX_V2_LATEST=true` from then on.
+v2 is `main` of the public repo (`agentprojectcontext/apx`) since 2.11.0, and its releases are GitHub's "Latest"
+(`APX_V2_LATEST=true`). How it got there: v2 grew on its own branch, `release/v2`, beside v1's `main`; at the
+launch `release/v2` took v1's `main` in with `git merge -s ours --allow-unrelated-histories`, `main` fast-forwarded
+to it and `release/v2` was deleted. v1's last `main` stays as branch `v1`, with v1's docs (built into `/apx/v1/` by
+`pages.yml`) and its own semantic-release, which publishes v1 to npm from that branch. `verify` leaves the commits
+`origin/v1` holds out of its commit check.
 
 ## What a release carries
 
 The release starts as a draft. After all desktop, daemon and Android jobs upload successfully, the publication
-job waits for the `verify.yml` run on `release/v2` for that exact tag commit to pass, then exposes it to update
+job waits for the `verify.yml` run on `master` for that exact tag commit to pass, then exposes it to update
 clients and announcements. Failed builds or verification leave the draft available for repair. Tags build the
 release artifacts; verification runs on the branch commit once, rather than duplicating the same suites for its tag.
 Its jobs run in parallel parts ([TESTING.md](TESTING.md#ci)); publication still requires the whole workflow to
@@ -55,18 +61,18 @@ and Firebase app, set once as repo variable/secret ([apps/mobile/README.md](../a
 
 ## Tagging a release
 
-Only a commit `verify` already passed on `release/v2` is tagged (AGENTS.md rule 28). A tag builds every installer
+Only a commit `verify` already passed on `master` is tagged (AGENTS.md rule 28). A tag builds every installer
 and the APK in about ten minutes, but publication waits for that commit's verify run: tagging before it ends ties
 the release to a run that may still fail, and a red run leaves a draft that only a new tag (and a new version) fixes.
 
 ```bash
-git fetch origin release/v2
-pnpm release:check origin/release/v2               # is its newest verify run green? exits 1 if red, missing or running
-pnpm release:check origin/release/v2 --wait        # …waiting for a run still going
-pnpm release:check --tag v2.10.0 origin/release/v2 # checks, then tags that commit and pushes the tag
+git fetch origin master
+pnpm release:check origin/master                     # is its newest verify run green? exits 1 if red, missing or running
+pnpm release:check origin/master --wait              # …waiting for a run still going
+pnpm release:check --tag v2.11.1 origin/master        # checks, then tags that commit and pushes the tag
 ```
 
-`scripts/release-check.ts` reads the newest `verify.yml` run of that exact commit on `release/v2` (`gh run list
+`scripts/release-check.ts` reads the newest `verify.yml` run of that exact commit on `master` (`gh run list
 --commit`), the run the publish job will wait for; a rerun that turned it green counts. The publish job's wait stays
 as the second guard, for a tag made by hand.
 
@@ -88,11 +94,9 @@ since the last tag either has an entry or is not worth offering.
 ## Issues a release fixes
 
 A commit that fixes a GitHub issue ends its message with a trailer, one per issue: `Issue: #105`. Once that commit
-is pushed to origin's `release/v2` (not before: a local commit or an unmerged branch has fixed nothing yet), whoever
+is pushed to origin's `master` (not before: a local commit or an unmerged branch has fixed nothing yet), whoever
 pushed it comments on the issue with what changed and the commit, and closes it as completed, without waiting for the
-tag. Once the release is out and announced, `release.yml`'s `issues` job (`scripts/issue-replies.ts`) still comments
-on each named issue with the version and the commits, closed ones included, and closes any left open; a version
-already answered is skipped. To preview it locally: `TAG=v2.x.y node scripts/issue-replies.ts --dry`.
+tag. The fork does not enable the upstream release announcement or issue-reply jobs.
 
 ## Install paths
 
@@ -104,9 +108,9 @@ already answered is skipped. To preview it locally: `TAG=v2.x.y node scripts/iss
 | v1 user | the desktop's setup imports from `~/.apx`; on a server install.sh stops v1 and `apx import-v1` imports from its files | a v1 installed with `sudo npm` needs sudo to go |
 | Docker | `scripts/docker/Dockerfile` from a bundle | `APX_TOKEN` required; updates by image |
 
-The install scripts have a URL of their own, served by the Pages site (`apps/docs` copies them in when it builds):
-`https://agentprojectcontext.github.io/apx/v2/install.sh` and `…/install.ps1`. A release's `latest/download` URL would
-be v1's while v1 is "Latest"; the script finds the newest v2 release itself either way.
+The fork's published releases carry `install.sh` and `install.ps1`:
+`https://github.com/zhangchong-xiaoxu/apx/releases/latest/download/install.sh` and `…/install.ps1`.
+Use these files rather than the upstream Pages scripts. The script finds the fork's newest v2 release itself.
 
 ## Testing
 

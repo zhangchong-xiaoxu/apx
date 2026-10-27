@@ -139,7 +139,6 @@
     "apps/core/src/transport/exposed-origins.test.ts": 1,
     "apps/core/src/transport/guard.test.ts": 2,
     "apps/core/src/transport/token.test.ts": 2,
-    "apps/core/src/updates.test.ts": 4,
     "apps/desktop/src/main/askpass.test.ts": 2,
     "apps/desktop/src/main/connection.test.ts": 5,
     "apps/desktop/src/main/core-process.test.ts": 1,
@@ -174,7 +173,6 @@
     "packages/install/src/desktop.test.ts": 1,
     "scripts/browser-coverage.test.ts": 1,
     "scripts/bundle-update.test.ts": 1,
-    "scripts/coverage-maps.test.ts": 4,
     "scripts/e2e-fake-desktop-trash.test.ts": 2
   },
   "raw-rm": {
@@ -204,7 +202,6 @@
     "apps/core/src/services/dialects.test.ts": 1,
     "apps/core/src/services/local-whisper.test.ts": 1,
     "apps/core/src/tools/folders.test.ts": 2,
-    "apps/core/src/updates.test.ts": 3,
     "apps/desktop/src/main/askpass.test.ts": 2,
     "apps/desktop/src/main/connection.test.ts": 5,
     "apps/desktop/src/main/core-process.test.ts": 2,
@@ -236,7 +233,6 @@
     "packages/install/src/desktop.test.ts": 1,
     "scripts/browser-coverage.test.ts": 1,
     "scripts/bundle-update.test.ts": 1,
-    "scripts/coverage-maps.test.ts": 4,
     "scripts/e2e-fake-desktop-trash.test.ts": 2
   },
   "short-window": {

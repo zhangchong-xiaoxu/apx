@@ -1,14 +1,15 @@
 import "../styles/wizard.css";
+import { RELEASE_REPO_URL } from "@apx/protocol/releases";
 import { AgentAvatar } from "@apx/ui";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import logo from "../assets/logo.png";
 import { elapsed } from "../common/format.ts";
-import { type MessageKey, useLanguage, useT } from "../i18n/index.ts";
+import { type MessageKey, useLanguage, usePack, useT } from "../i18n/index.ts";
 import { useScrambleTo } from "./CrewHero.tsx";
 import { startGlyphPortrait } from "./glyphPortrait.ts";
 
 const EVERY_MS = 3200;
-const REPO = "https://github.com/agentprojectcontext/apx";
+const REPO = RELEASE_REPO_URL;
 
 /** "blob|Name|what they do", one per line of the website's ticker. */
 function parseStatuses(text: string): Array<{ blob: string; who: string; what: string }> {
@@ -81,6 +82,10 @@ function Services({ value }: { value: string }) {
 
 /** The desktop app's About window: this build and its core (sent by the shell in the URL), credits and the repo. */
 export function AboutScreen() {
+  return usePack("onboarding") ? <AboutScreenBody /> : null;
+}
+
+function AboutScreenBody() {
   const t = useT();
   const params = new URLSearchParams(window.location.search);
   const version = params.get("v") ?? "";

@@ -10,7 +10,7 @@ type Mapping = { generatedLine: number; generatedCharacter: number; sourceIndex?
 const { decodeMappings } = ts as typeof ts & { decodeMappings: (mappings: string) => Iterable<Mapping> };
 
 /** The languages main.tsx can wait for; each is its own chunk, named after its file (i18n/en.ts → en-<hash>.js). */
-const LANGUAGE_CHUNK = /^assets\/(en|es)-[\w-]+\.js$/;
+const LANGUAGE_CHUNK = /^assets\/(en|es|zh)-[\w-]+\.js$/;
 
 export type Boot = {
   /** The files index.html names (entry script and stylesheet) and the chunks they import statically. */
@@ -66,7 +66,11 @@ export function bootFiles(dist: string): Boot | undefined {
   const languages: Record<string, string[]> = {};
   for (const file of lazy) {
     const lang = LANGUAGE_CHUNK.exec(file)?.[1];
-    if (lang) languages[lang] = closure(dist, [file]).filter((f) => !initial.includes(f));
+    if (!lang) continue;
+    // A late string pack named after its language (es-…) also matches: the language's own chunk is the heavier one.
+    const files = closure(dist, [file]).filter((f) => !initial.includes(f));
+    const seen = languages[lang];
+    if (!seen || sumKb(dist, files) > sumKb(dist, seen)) languages[lang] = files;
   }
   const heaviest = Object.values(languages).sort((a, b) => sumKb(dist, b) - sumKb(dist, a))[0] ?? [];
   return { initial, languages, files: [...initial, ...heaviest] };

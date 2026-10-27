@@ -452,6 +452,7 @@ const KnownPart = z.discriminatedUnion("type", [
   }),
   z.object({
     type: z.literal("browser"),
+    environment: z.literal("vm").optional(),
     tab: z.string(),
     url: z.string(),
     title: z.string(),
@@ -675,6 +676,27 @@ export const Run = z.object({
 });
 export type Run = z.infer<typeof Run>;
 
+/** One named piece of what a model call carried, in characters. */
+export const PromptPart = z.object({ name: z.string(), chars: z.number().int().nonnegative() });
+export type PromptPart = z.infer<typeof PromptPart>;
+
+/** What the model received on a run's first call: its system prompt, the turn's input, the tools, and their sizes. */
+export const RunContext = z.object({
+  run_id: Id,
+  system: z.string(),
+  input: z.string(),
+  tools: z.array(z.string()),
+  sizes: z.object({
+    /** The system prompt by part ("base" is APX's own text); they add up to its length. */
+    system: z.array(PromptPart),
+    /** The turn's input by block ("message" is what was said); they add up to its length. */
+    input: z.array(PromptPart),
+    tools: z.number().int().nonnegative(),
+    history: z.object({ items: z.number().int().nonnegative(), chars: z.number().int().nonnegative() }),
+  }),
+});
+export type RunContext = z.infer<typeof RunContext>;
+
 /** What an agent's turn carries, as the core stamped it: the owner's message, a helper's result, a routine… */
 export const JobFrom = z.object({
   kind: z.enum([
@@ -688,6 +710,7 @@ export const JobFrom = z.object({
     "terminal",
     "go_on",
     "stalled_task",
+    "computer_ready",
     "task_result",
     "delegation_result",
   ]),

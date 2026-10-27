@@ -28,7 +28,7 @@ test("a checkout reads each release's notes from its tags, newest first", () => 
   const git = (...args: string[]) =>
     execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@example.com", ...args], { cwd: dir, stdio: "pipe" });
   try {
-    git("init", "-q", "-b", "release/v2");
+    git("init", "-q", "-b", "main");
     const commit = (subject: string) => git("commit", "-q", "--allow-empty", "-m", subject);
     commit("feat: first");
     git("tag", "v2.0.0");
@@ -41,7 +41,7 @@ test("a checkout reads each release's notes from its tags, newest first", () => 
 
     const notes = notesFromGit(dir);
     assert.equal(notes?.version, "2.1.0", "the last tag the checkout is past");
-    assert.equal(notes?.branch, "release/v2");
+    assert.equal(notes?.branch, "main");
     assert.deepEqual(
       notes?.releases.map((r) => [r.version, r.previous, r.changes.map((c) => c.text)]),
       [
@@ -52,6 +52,12 @@ test("a checkout reads each release's notes from its tags, newest first", () => 
     );
     assert.equal(localReleases(dir).version(), "2.1.0");
     assert.equal(localReleases(dir).notes()?.repo_dir, dir);
+
+    git("update-ref", "refs/remotes/upstream/main", "HEAD");
+    git("update-ref", "refs/remotes/origin/master", "HEAD");
+    git("update-ref", "refs/remotes/origin/fix/example", "HEAD");
+    git("checkout", "-q", "--detach");
+    assert.equal(notesFromGit(dir)?.branch, "master", "a detached fork build names origin's release branch");
 
     // A packaged build reads the file it carries, never git.
     fs.writeFileSync(path.join(dir, "release-notes.json"), JSON.stringify({ version: "9.0.0", releases: [] }));
