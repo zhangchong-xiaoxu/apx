@@ -44,7 +44,7 @@ export function routineTools(store: Store): Tool[] {
     defineTool({
       name: "routine_list",
       description:
-        "List the owner's routines (scheduled jobs), global and per project: name, id, agent, project, when it runs, on or off, last and next run. `routine` (id or name) shows that one with its full prompt.",
+        "List the owner's routines (scheduled jobs), global and per project: name, id, agent, project, when it runs, on or off, last and next run. `routine` (id or name) shows its full prompt and pre/post commands.",
       args: z.object({ routine: z.string().trim().min(1).max(120).optional() }),
       effect: "none",
       deadlineMs: 5_000,
@@ -54,8 +54,16 @@ export function routineTools(store: Store): Tool[] {
           const found = find(store, a.routine);
           if ("error" in found) return found.error;
           const r = found.routine;
-          const extra = [r.action !== "agent" ? `action: ${r.action}` : "", r.pre_command ? "has a pre-command" : ""];
-          return [line(store, r), ...extra.filter(Boolean), "prompt:", r.prompt].join("\n");
+          return [
+            line(store, r),
+            ...(r.action !== "agent" ? [`action: ${r.action}`] : []),
+            "pre_command:",
+            r.pre_command ?? "(none)",
+            "post_command:",
+            r.post_command ?? "(none)",
+            "prompt:",
+            r.prompt,
+          ].join("\n");
         }
         const all = store.routines.list();
         return all.length ? all.map((r) => line(store, r)).join("\n") : "no routines.";
@@ -64,11 +72,13 @@ export function routineTools(store: Store): Tool[] {
     defineTool({
       name: "routine_set",
       description:
-        "Create a routine (name, prompt, one of cron/every_min/at) or change one (routine: id or name; only what you give changes; prompt replaces it whole: read it with routine_list). enabled: on/off; run_now: run it now, also on create or change. Each change waits for the owner's OK, so make it one call.",
+        "Create a routine (name, prompt, one of cron/every_min/at) or change one (routine: id or name; only what you give changes; prompt replaces it whole: read it with routine_list). pre_command/post_command: shell before/after; empty clears. enabled: on/off; run_now: run now. Command changes always need the owner's OK, even in Total.",
       args: z.object({
         routine: z.string().trim().min(1).max(120).optional().describe("omit to create one"),
         name: z.string().trim().min(1).max(120).optional(),
         prompt: z.string().trim().min(1).max(20_000).optional(),
+        pre_command: z.string().trim().max(4000).optional(),
+        post_command: z.string().trim().max(4000).optional(),
         cron: z.string().trim().min(9).max(120).optional().describe('five fields, local time: "30 8 * * 1-5"'),
         every_min: z.number().int().min(5).max(44_640).optional(),
         at: z.string().max(40).optional().describe("ISO date: runs once then"),
@@ -78,6 +88,21 @@ export function routineTools(store: Store): Tool[] {
       }),
       effect: "local",
       confirm: "always",
+      ownerSetting: (a) => a.pre_command !== undefined || a.post_command !== undefined,
+      explain(a) {
+        if (a.pre_command === undefined && a.post_command === undefined) return undefined;
+        const found = a.routine ? find(store, a.routine) : undefined;
+        const was = found && "routine" in found ? found.routine : undefined;
+        return [
+          a.routine ? `Change routine: ${a.routine}` : `Create routine: ${a.name ?? ""}`,
+          `Requested changes:\n${JSON.stringify(a, null, 2)}`,
+          ...(["pre_command", "post_command"] as const).flatMap((key) =>
+            a[key] === undefined
+              ? []
+              : [`${key} before:\n${was?.[key] ?? "(none)"}\n${key} after:\n${a[key] || "(none)"}`],
+          ),
+        ].join("\n\n");
+      },
       deadlineMs: 15_000,
       title: (a) => (a.routine ? `Changed the routine ${a.routine}` : `Created the routine ${a.name ?? ""}`),
       async run(a, ctx) {
@@ -108,7 +133,14 @@ export function routineTools(store: Store): Tool[] {
         const prompt = a.prompt ?? was?.prompt;
         const next = schedule ?? was?.schedule;
         if (!name || !prompt || !next) return "a new routine needs name, prompt and one of cron, every_min or at";
-        const changes = a.name || a.prompt || schedule || a.agent || a.enabled !== undefined;
+        const changes =
+          a.name ||
+          a.prompt ||
+          schedule ||
+          a.agent ||
+          a.enabled !== undefined ||
+          a.pre_command !== undefined ||
+          a.post_command !== undefined;
         let r = was;
         if (!was || changes)
           r = await ctx.callAsOwner("routines.set", {
@@ -120,6 +152,8 @@ export function routineTools(store: Store): Tool[] {
               : {}),
             schedule: next,
             prompt,
+            ...(a.pre_command === undefined ? {} : { pre_command: a.pre_command }),
+            ...(a.post_command === undefined ? {} : { post_command: a.post_command }),
             enabled: a.enabled ?? was?.enabled ?? true,
           });
         if (!r) return "nothing to change";

@@ -177,6 +177,32 @@ describe("sending mail", () => {
     );
     await assert.rejects(bad, (err: unknown) => err instanceof SendError && err.kind === "fatal");
   });
+
+  test("HTML alternatives preserve plain text, with and without attachments", () => {
+    const html = "<h1>News &amp; updates</h1>";
+    for (const files of [undefined, [{ name: "notes.txt", mime: "text/plain", data: Buffer.from("notes") }]]) {
+      const out = composeMail({
+        from: { address: USER },
+        to: "ana@example.org",
+        subject: "Digest",
+        text: "News & updates",
+        html,
+        autoSubmitted: "auto-generated",
+        files,
+      });
+      const raw = out.data.toString();
+      assert.match(raw, /Content-Type: multipart\/alternative; boundary=/);
+      assert.match(raw, /Content-Type: text\/html; charset=utf-8/);
+      assert.ok(raw.includes(Buffer.from(html).toString("base64")));
+      const parsed = parseMail(out.data);
+      assert.equal(parsed.text.trim(), "News & updates");
+      assert.equal(parsed.attachments.length, files ? 1 : 0);
+      if (files) {
+        assert.match(raw, /Content-Type: multipart\/mixed; boundary=/);
+        assert.equal(parsed.attachments[0]?.data.toString(), "notes");
+      }
+    }
+  });
 });
 
 const probe = defineTool({

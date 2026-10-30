@@ -14,6 +14,7 @@ import { audienceOf } from "./engine/audience.ts";
 import { createHooks } from "./engine/hooks.ts";
 import type { Permissions } from "./engine/permissions.ts";
 import { applyProfile, listProfiles, type ProfileRoot } from "./engine/profiles.ts";
+import type { RoutineMail } from "./engine/routine-mail.ts";
 import type { Upkeep } from "./engine/upkeep.ts";
 import type { Computer } from "./environments/computer.ts";
 import { errorMessage } from "./errors.ts";
@@ -57,6 +58,7 @@ import { phoneHandlers } from "./rpc/phone.ts";
 import { providerHandlers } from "./rpc/providers.ts";
 import { resourceHandlers } from "./rpc/resources.ts";
 import type { Dispatch } from "./rpc/router.ts";
+import { routineMailHandlers } from "./rpc/routine-mail.ts";
 import { routineHandlers } from "./rpc/routines.ts";
 import { runHandlers } from "./rpc/runs.ts";
 import { sessionHandlers } from "./rpc/sessions.ts";
@@ -220,6 +222,7 @@ type HandlerDeps = {
   templateRoots: Parameters<typeof teamHandlers>[2];
   /** Where profiles are found: APX's own, then the owner's installed ones. */
   profileRoots: readonly ProfileRoot[];
+  routineMail: RoutineMail;
   engines: Parameters<typeof agentHandlers>[2];
   /** Every built-in tool: what an agent's editor offers. */
   tools: Parameters<typeof agentHandlers>[3];
@@ -278,6 +281,7 @@ export function coreHandlers(d: HandlerDeps & { vm?: Computer | undefined }) {
     ...embeddingHandlers(d.localEmbeds, () => d.memory.engine()),
     ...taskHandlers(d.store, d.engine, d.app.home, d.vm?.beforeDelete),
     ...routineHandlers(d.store, d.scheduler, d.profileRoots),
+    ...routineMailHandlers(d.routineMail),
     ...noticeHandlers(d.store, d.nudges),
     ...notificationHandlers(d.store),
     ...clientHandlers(d.store),

@@ -49,8 +49,10 @@ only `SKIP` and nothing reaches you. Write prompts that leave room for that:
 
 ## Commands before and after
 
-**Add commands before and after** gives a routine a pre-command and a post-command. Both are shell commands you
-write (agents cannot), run in the project's folder, two minutes at most and without credentials in their environment.
+**Add commands before and after** gives a routine a pre-command and a post-command. Both are shell commands that
+run in the project's folder, two minutes at most and without credentials in their environment. An agent can propose
+them through `routine_set`: command changes always need your confirmation, even in Total. `routine_list` shows
+the saved commands. Omitted command fields stay unchanged; an empty string removes a command.
 
 <Steps>
 
@@ -77,11 +79,64 @@ write (agents cannot), run in the project's folder, two minutes at most and with
 
 </Steps>
 
+The post-command also runs after a failed or skipped turn, but not after cancellation or shutdown. Check
+`APX_STATUS` before sending anything. A post-command failure appears in the chat; it does not change the turn's
+terminal state. Secret references are not automatically resolved for shell commands.
+
 That is how a routine spends **0 tokens** on quiet days: Tomás's pre-command lists the low-stock items, with **If it
 printed something**, and the model is called only on the days there are any.
 
 A **Message** routine uses `{{pre_output}}` too: "Today's weather: `{{pre_output}}`" sends the command's output as it
 is, with no model at all.
+
+## Fixed-recipient post mail
+
+A project routine can send its daily report without giving the model or its shell an SMTP password.
+First save its post-command, then save an SMTP authorization code in **Resources → Variables** using encrypted
+storage. Windows uses DPAPI; macOS uses Keychain; Linux uses Secret Service. The plaintext `file` backend
+cannot send routine mail.
+
+The owner configures the destination from the terminal. The JSON file contains only a secret reference:
+
+```json
+{
+  "smtp": { "host": "smtp.example.com", "port": 465, "tls": "implicit" },
+  "from": "sender@example.com",
+  "to": "reader@example.com",
+  "secret": "secret://ROUTINE_MAIL"
+}
+```
+
+```bash
+apx routines mail <routine-id> mail.json
+apx routines mail <routine-id>      # configuration and credential availability, never its value
+apx routines mail <routine-id> off
+```
+
+Only a completed, non-skipped routine run gets `APX_ROUTINE_MAIL_URL` and `APX_ROUTINE_MAIL_TOKEN` in its
+post-command. The token expires when that command ends or is cancelled. POST JSON to
+`$APX_ROUTINE_MAIL_URL/rpc/routines.mail_send` with an `Idempotency-Key` and
+`{ "token": "...", "day": "YYYY-MM-DD", "subject": "...", "text": "...", "html": "..." }`.
+`html` is optional. The day must be the run's local start date. Read the report from its file: `APX_LLM_OUTPUT`
+is not a complete file. Check `APX_STATUS=completed` and `APX_SKIPPED=0`, and reject missing, empty or stale reports.
+This is the ordinary protocol router, not a second API.
+
+The token authorizes no other method, recipient, sender or SMTP server. Credentials are resolved only inside
+core, never injected into the shell. The approval binds the routine, project, agent and saved post-command;
+changing that binding requires the owner to configure it again. It does not sandbox project scripts from other
+processes running as the same operating-system user. MCP mail permissions stay unchanged.
+
+Core persists at most one confirmed delivery per routine and local day. A duplicate returns `state: "sent"`
+with `duplicate: true`. An interrupted SMTP acknowledgment may mean the email arrived: automatic retries are
+blocked. Only after checking the recipient and confirming nothing arrived, the owner can permit a later run:
+
+```bash
+apx routines mail-retry <routine-id> YYYY-MM-DD
+```
+
+This sends nothing immediately and never resets an already confirmed delivery. A post failure appears in the
+routine chat; a completed model turn alone does not mean the email was sent. When migrating an existing routine,
+remove its prompt-driven send instruction before enabling the post-command, so the two paths cannot both send.
 
 ## Anchors: always arrives
 
@@ -129,7 +184,8 @@ apx routines log <routine-id>     # recent runs; "(nothing to say)" marks a SKIP
 ```
 
 <Aside type="note">
-Routines are yours: only you create or change them. An agent cannot schedule standing work for itself.
+Agents can create or change routines through `routine_set`. Ordinary routine changes follow the agent's permission
+mode; changes to pre/post commands always wait for your confirmation.
 </Aside>
 
 ## Next

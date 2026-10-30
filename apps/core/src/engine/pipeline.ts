@@ -15,6 +15,7 @@ import { spawnCommand, stopTree } from "../processes.ts";
 import { workDir } from "../tools/folders.ts";
 import { untrusted } from "../tools/result.ts";
 import type { Display } from "./display.ts";
+import type { RoutineMail } from "./routine-mail.ts";
 import { takeTeamNews } from "./team-news.ts";
 
 /** A step runs at most this long (and never past its run's own deadline). */
@@ -77,22 +78,24 @@ export function runStep(
     let stopping = false;
     // A NUL cannot travel in an environment variable (spawn would throw): it is dropped.
     const env = Object.fromEntries(Object.entries(o.env).map(([k, v]) => [k, v.replaceAll("\0", "")]));
+    const token = env.APX_ROUTINE_MAIL_TOKEN;
+    const redact = (text: string) => (token ? text.replaceAll(token, "[redacted]") : text);
     const done = (exit: number | null, extra = "") => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
       o.signal.removeEventListener("abort", stop);
-      resolve({ output: (out + extra).slice(-STEP_OUTPUT_CHARS), exit, timedOut });
+      resolve({ output: redact(out + extra).slice(-STEP_OUTPUT_CHARS), exit, timedOut });
     };
     let child: ReturnType<typeof spawnCommand>;
     try {
       child = spawnCommand(command, { cwd: o.cwd, env, stdio: ["ignore", "pipe", "pipe"] });
     } catch (err) {
-      resolve({ output: err instanceof Error ? err.message : String(err), exit: null, timedOut: false });
+      resolve({ output: redact(err instanceof Error ? err.message : String(err)), exit: null, timedOut: false });
       return;
     }
     const keep = (b: Buffer) => {
-      out = (out + b.toString("utf8")).slice(-STEP_OUTPUT_CHARS * 2);
+      out = redact(out + b.toString("utf8")).slice(-STEP_OUTPUT_CHARS * 2);
     };
     child.stdout?.on("data", keep);
     child.stderr?.on("data", keep);
@@ -164,6 +167,21 @@ export function messageText(text: string, pre: StepResult | undefined): string {
   return text.includes(PRE_SLOT) ? text.replace(PRE_SLOT, out) : text;
 }
 
+function postMail(
+  mail: RoutineMail | undefined,
+  run: RunRecord,
+  skipped: boolean,
+  signal: AbortSignal,
+  display: Display,
+) {
+  try {
+    return mail?.open(run, skipped, signal);
+  } catch (err) {
+    display.notice("warn", "routine.post.failed", `Post-command: ${err instanceof Error ? err.message : String(err)}`);
+    throw err;
+  }
+}
+
 /** One routine run's pipeline: the pre-step before the turn and the post-step after it, shown in the run's message. */
 export function routinePipeline(o: {
   store: Store;
@@ -172,6 +190,7 @@ export function routinePipeline(o: {
   run: RunRecord;
   display: Display;
   mail?: MailSource | undefined;
+  routineMail?: RoutineMail | undefined;
 }) {
   const { routine, display } = o;
   // The commands run where the routine's agent works in its chat.
@@ -294,18 +313,25 @@ export function routinePipeline(o: {
             .flatMap((p) => (p.type === "text" ? [p.text] : []))
             .join("\n")
         : "";
-      await step(
-        "routine.post",
-        routine.post_command,
-        {
-          APX_LLM_OUTPUT: text.slice(-STEP_OUTPUT_CHARS),
-          APX_STATUS: skipped ? "skipped" : done.state,
-          APX_SKIPPED: skipped ? "1" : "0",
-          APX_PRE_OUTPUT: pre?.output ?? "",
-          APX_PRE_EXIT: String(pre?.exit ?? ""),
-        },
-        AbortSignal.timeout(limitMs),
-      );
+      const signal = AbortSignal.timeout(limitMs);
+      const mail = postMail(o.routineMail, done, skipped, signal, display);
+      try {
+        await step(
+          "routine.post",
+          routine.post_command,
+          {
+            APX_LLM_OUTPUT: text.slice(-STEP_OUTPUT_CHARS),
+            APX_STATUS: skipped ? "skipped" : done.state,
+            APX_SKIPPED: skipped ? "1" : "0",
+            APX_PRE_OUTPUT: pre?.output ?? "",
+            APX_PRE_EXIT: String(pre?.exit ?? ""),
+            ...mail?.env,
+          },
+          signal,
+        );
+      } finally {
+        mail?.close();
+      }
     },
   };
 }

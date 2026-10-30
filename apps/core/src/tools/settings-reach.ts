@@ -34,6 +34,8 @@ const AS_OWNER = "the owner's own word: their answer, their send, their read";
 
 /** Owner methods no agent calls, by reason. */
 export const OWNER_ONLY: Readonly<Record<string, string>> = {
+  "routines.mail_set": AS_OWNER,
+  "routines.mail_retry": AS_OWNER,
   "secrets.set": SECRET,
   "providers.set": SECRET,
   "services.set": SECRET,

@@ -6,6 +6,7 @@ import path from "node:path";
 import type { Message, PendingInput } from "@apx/protocol";
 import { ApxClient } from "@apx/protocol/client";
 import type { TailscaleRun } from "../access.ts";
+import type { smtpSend } from "../channels/email-smtp.ts";
 import type { AdapterFactory } from "../channels/types.ts";
 import { type ProviderConfig, testConfig } from "../config.ts";
 import type { DesktopOps } from "../desktop.ts";
@@ -15,6 +16,7 @@ import type { IMessageOps } from "../imessage.ts";
 import type { Llm, LlmRequest } from "../providers/llm.ts";
 import type { AssistantItem, Completion } from "../providers/types.ts";
 import type { ReleaseSource } from "../release-notes.ts";
+import type { Secrets } from "../secrets.ts";
 import { createCore } from "../server.ts";
 import type { TelemetrySink } from "../telemetry-sink.ts";
 import { removeDir, waitFor } from "../testkit/platform.ts";
@@ -82,6 +84,8 @@ export const callTool = (id: string, name: string, args: object): { message: Ass
 });
 
 export async function startCore(opts: {
+  secrets?: Secrets;
+  routineMailSend?: typeof smtpSend;
   computer?: ComputerConfig;
   llm: Llm;
   home?: string;
@@ -148,6 +152,8 @@ export async function startCore(opts: {
     }),
     {
       quiet: true,
+      ...(opts.secrets ? { secrets: opts.secrets } : {}),
+      ...(opts.routineMailSend ? { routineMailSend: opts.routineMailSend } : {}),
       // A fixed host, so limits and the free-memory check do not depend on the machine running the tests.
       ...(opts.computer
         ? {

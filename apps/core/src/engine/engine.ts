@@ -229,6 +229,7 @@ export function createEngine(deps: {
   desktopLinked?: () => boolean;
   /** The owner's Gmail, for mail routines. */
   mail?: MailSource;
+  routineMail?: import("./routine-mail.ts").RoutineMail;
   /** Work on the thread once a run ended (title, compaction); never blocks the next run. */
   afterRun?: (run: RunRecord) => void;
 }) {

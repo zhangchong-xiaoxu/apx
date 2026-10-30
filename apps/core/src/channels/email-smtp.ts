@@ -175,6 +175,7 @@ export type OutMail = {
   to: string;
   subject: string;
   text: string;
+  html?: string | undefined;
   inReplyTo?: string | undefined;
   references?: string[] | undefined;
   /** RFC 3834: answers written by a machine say so, so other robots do not answer them back. */
@@ -198,12 +199,22 @@ export function composeMail(m: OutMail): { id: string; data: Buffer } {
     "X-Auto-Response-Suppress: All",
     "MIME-Version: 1.0",
   ];
-  const textPart = [
+  let textPart = [
     "Content-Type: text/plain; charset=utf-8",
     "Content-Transfer-Encoding: base64",
     "",
     base64Lines(Buffer.from(m.text.replace(/\r?\n/g, "\r\n"))),
   ].join("\r\n");
+  if (m.html !== undefined) {
+    const alternative = `apx-${randomUUID()}`;
+    const htmlPart = [
+      "Content-Type: text/html; charset=utf-8",
+      "Content-Transfer-Encoding: base64",
+      "",
+      base64Lines(Buffer.from(m.html.replace(/\r?\n/g, "\r\n"))),
+    ].join("\r\n");
+    textPart = `Content-Type: multipart/alternative; boundary="${alternative}"\r\n\r\n--${alternative}\r\n${textPart}\r\n--${alternative}\r\n${htmlPart}\r\n--${alternative}--`;
+  }
   if (!m.files?.length) return { id, data: Buffer.from(`${head.join("\r\n")}\r\n${textPart}\r\n`) };
   const boundary = `apx-${randomUUID()}`;
   const parts = [

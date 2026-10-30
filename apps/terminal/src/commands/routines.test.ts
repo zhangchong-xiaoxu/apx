@@ -186,7 +186,7 @@ test("invalid routine creation and conflicting prompt inputs make no protocol ca
   assert.deepEqual(calls, []);
 });
 
-test("editing a routine reads an exact UTF-8 prompt file and preserves its existing identity and schedule", async (t) => {
+test("routine edits read exact UTF-8 prompts and mail setup accepts only secret-reference config files", async (t) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "apx-routine-prompt-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const file = path.join(dir, "prompt.txt");
@@ -204,6 +204,48 @@ test("editing a routine reads an exact UTF-8 prompt file and preserves its exist
   calls.length = 0;
   await assert.rejects(routines(client, ["edit", "check"], { promptFile: path.join(dir, "absent") }), /ENOENT/);
   assert.deepEqual(calls, []);
+  const config = {
+    smtp: { host: "smtp.example.com", port: 465, tls: "implicit" },
+    from: "sender@example.com",
+    to: "reader@example.com",
+    secret: "secret://routine-mail",
+  };
+  const mail = recordingClient({
+    "routines.list": { routines: [routine] },
+    "routines.mail_set": { configured: true },
+    "routines.mail_get": { config, storage: "dpapi", credential_set: true },
+  });
+  const configFile = path.join(dir, "mail.json");
+  fs.writeFileSync(configFile, JSON.stringify(config));
+  assert.match(
+    await printed(() => routines(mail.client, ["mail", "check", configFile], {})),
+    /secret:\/\/routine-mail/,
+  );
+  assert.deepEqual(mail.calls.at(-2), ["routines.mail_set", { routine: routine.id, config }]);
+  for (const invalid of ["{", JSON.stringify({ ...config, secret: "plaintext-password" })]) {
+    fs.writeFileSync(configFile, invalid);
+    mail.calls.length = 0;
+    await assert.rejects(routines(mail.client, ["mail", "check", configFile], {}));
+    assert.deepEqual(mail.calls, [["routines.list", {}]]);
+  }
+});
+
+test("mail status, disable and owner-confirmed retry use only their designated protocol methods", async () => {
+  const { client, calls } = recordingClient({
+    "routines.list": { routines: [routine] },
+    "routines.mail_get": { config: null, storage: "file", credential_set: false },
+    "routines.mail_set": { configured: false },
+    "routines.mail_retry": { ready: true },
+  });
+  assert.match(await printed(() => routines(client, ["mail", "check"], {})), /"storage": "file"/);
+  assert.deepEqual(calls.at(-1), ["routines.mail_get", { routine: routine.id }]);
+  await printed(() => routines(client, ["mail", "check", "off"], {}));
+  assert.deepEqual(calls.at(-2), ["routines.mail_set", { routine: routine.id, config: null }]);
+  assert.match(await printed(() => routines(client, ["mail-retry", "check", "2026-01-01"], {})), /No mail was sent/);
+  assert.deepEqual(calls.at(-1), ["routines.mail_retry", { routine: routine.id, day: "2026-01-01" }]);
+  calls.length = 0;
+  await assert.rejects(routines(client, ["mail-retry", "check", "invalid"], {}));
+  assert.deepEqual(calls, [["routines.list", {}]]);
 });
 
 test("on and off change only enabled state, preserving commands at the protocol boundary", async () => {

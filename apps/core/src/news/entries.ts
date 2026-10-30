@@ -5,6 +5,8 @@ import { CATALOG } from "../integrations/catalog.ts";
 
 /** What an entry may ask about this install before it is told. */
 export type NewsFacts = {
+  /** The owner has a project routine that could deliver a daily report. */
+  routines: boolean;
   /** The owner's widgets and apps, in every project. */
   artifacts: number;
   /** Google's parts signed in to, and whether Gmail can be read (the owner's own client: APX's only sends). */
@@ -44,6 +46,26 @@ export type NewsEntry = {
 };
 
 export const NEWS: readonly NewsEntry[] = [
+  {
+    id: "routine-post-mail",
+    since: "2.11.0",
+    title: "Routine commands and fixed-recipient reports",
+    applies: (f) => f.routines,
+    text:
+      "Agents can now propose real pre/post commands through routine_set, always with the owner's confirmation, " +
+      "even in Total. A project routine can send one daily report to an owner-approved recipient from its post-command, " +
+      "using an encrypted APX secret without exposing SMTP credentials to the model or shell. The owner sets up the " +
+      "mail binding in the terminal; MCP mail permissions do not change. Uncertain SMTP results block automatic retries.",
+    actions: [
+      {
+        label: { en: "Review my routine delivery", es: "Revisar los envíos de mis rutinas" },
+        prompt:
+          "Review my routines for commands that were put in their prompts rather than real pre/post fields. " +
+          "Propose the smallest correction and wait for confirmation. For daily email reports, explain the owner-only " +
+          "routines mail setup and encrypted secret storage; never ask me to put SMTP passwords in a prompt or .env.",
+      },
+    ],
+  },
   {
     id: "artifacts-kit",
     since: "2.8.0",
@@ -320,6 +342,7 @@ const connectedIntegrations = (store: Store): number => {
 const signedIn = (store: Store, id: string) => Boolean(store.settings.get(`google_account:${id}`));
 
 export const newsFacts = (store: Store): NewsFacts => ({
+  routines: store.routines.list().some((r) => Boolean(r.project_id)),
   artifacts: store.surfaces.list().length,
   google: {
     calendar: signedIn(store, "google-calendar"),

@@ -51,8 +51,9 @@ responde solo `SKIP` y no te llega nada. Escribí prompts que dejen lugar para e
 ## Comandos antes y después
 
 **Agregar comandos antes y después** le suma a la rutina un pre-comando y un post-comando. Los dos son comandos de
-shell que escribís vos (los agentes no pueden), corren en la carpeta del proyecto, dos minutos como máximo y sin
-credenciales en su entorno.
+shell que corren en la carpeta del proyecto, dos minutos como máximo y sin credenciales en su entorno. Un agente
+puede proponerlos con `routine_set`: cambiar comandos siempre requiere tu confirmación, incluso en Total.
+`routine_list` muestra los comandos guardados. Omitir un campo conserva su valor; una cadena vacía lo elimina.
 
 <Steps>
 
@@ -79,11 +80,64 @@ credenciales en su entorno.
 
 </Steps>
 
+El post-comando también corre después de una corrida fallida o salteada, pero no tras cancelación o apagado.
+Revisá `APX_STATUS` antes de enviar algo. Si falla el post-comando, se muestra en el chat sin cambiar el estado
+final de la corrida. Las referencias a secretos no se resuelven automáticamente para comandos de shell.
+
 Así una rutina gasta **0 tokens** los días tranquilos: el pre-comando de Tomás lista los productos con poco stock,
 con **Si hay salida**, y el modelo se llama solo los días en que hay alguno.
 
 Una rutina de **Mensaje** también usa `{{pre_output}}`: "El clima de hoy: `{{pre_output}}`" te manda la salida del
 comando tal cual, sin modelo.
+
+## Correo posterior con destinatario fijo
+
+Una rutina de proyecto puede mandar su informe diario sin darle al modelo ni al shell la contraseña SMTP.
+Primero guardá el post-comando y después el código de autorización SMTP en **Recursos → Variables**, con
+almacenamiento cifrado: DPAPI en Windows, Keychain en macOS o Secret Service en Linux. El backend `file`,
+que guarda texto plano, no permite estos envíos.
+
+El dueño configura el destino desde la terminal. El JSON solo contiene una referencia al secreto:
+
+```json
+{
+  "smtp": { "host": "smtp.example.com", "port": 465, "tls": "implicit" },
+  "from": "sender@example.com",
+  "to": "reader@example.com",
+  "secret": "secret://ROUTINE_MAIL"
+}
+```
+
+```bash
+apx routines mail <id-rutina> mail.json
+apx routines mail <id-rutina>      # configuración y disponibilidad, nunca el valor del secreto
+apx routines mail <id-rutina> off
+```
+
+Solo una corrida completada y no salteada recibe `APX_ROUTINE_MAIL_URL` y `APX_ROUTINE_MAIL_TOKEN` en el
+post-comando. El token vence cuando termina o se cancela el comando. Mandá JSON por POST a
+`$APX_ROUTINE_MAIL_URL/rpc/routines.mail_send`, con `Idempotency-Key` y
+`{ "token": "...", "day": "YYYY-MM-DD", "subject": "...", "text": "...", "html": "..." }`.
+`html` es opcional; el día debe coincidir con la fecha local de inicio de la corrida. Leé el informe del archivo:
+`APX_LLM_OUTPUT` no es un archivo completo. Verificá `APX_STATUS=completed`, `APX_SKIPPED=0` y que el informe
+no falte, no esté vacío ni sea viejo. Se usa el router habitual del protocolo, no una API paralela.
+
+El token no habilita otros métodos, destinatarios, remitentes ni servidores SMTP. Solo core resuelve la
+credencial; nunca entra al shell. La aprobación queda ligada a la rutina, proyecto, agente y post-comando
+guardado: si cambian, el dueño debe configurarla de nuevo. No aísla los scripts de otros procesos del mismo
+usuario del sistema operativo. Los permisos del MCP de correo no cambian.
+
+Core conserva como máximo un envío confirmado por rutina y día local. Un duplicado devuelve `state: "sent"`
+y `duplicate: true`. Si se pierde la confirmación SMTP, el correo puede haber llegado y se bloquean los
+reintentos automáticos. Solo después de comprobar que no llegó, el dueño puede permitir una corrida posterior:
+
+```bash
+apx routines mail-retry <id-rutina> YYYY-MM-DD
+```
+
+Esto no manda correo ahora ni reinicia un envío ya confirmado. Los fallos del post-comando aparecen en el chat:
+que el modelo haya terminado no demuestra que se mandó el correo. Al migrar una rutina, quitá la instrucción
+de envío del prompt antes de activar el post-comando, para no mandar por las dos vías.
 
 ## Anclas: llega siempre
 
@@ -132,7 +186,8 @@ apx routines log <id-rutina>     # corridas recientes; "(nothing to say)" marca 
 ```
 
 <Aside type="note">
-Las rutinas son tuyas: solo vos las creás o las cambiás. Un agente no puede programarse trabajo fijo a sí mismo.
+Los agentes pueden crear o cambiar rutinas con `routine_set`. Los cambios comunes siguen el modo de permisos
+del agente; cambiar pre/post comandos siempre espera tu confirmación.
 </Aside>
 
 ## Lo que sigue

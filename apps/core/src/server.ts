@@ -19,6 +19,7 @@ import type { TemplateRoot } from "./apc/templates.ts";
 import { createBus } from "./bus.ts";
 import { discordAdapter } from "./channels/discord.ts";
 import { emailAdapter } from "./channels/email.ts";
+import type { smtpSend } from "./channels/email-smtp.ts";
 import { googlechatAdapter } from "./channels/googlechat.ts";
 import { imessageAdapter } from "./channels/imessage.ts";
 import { ircAdapter } from "./channels/irc.ts";
@@ -54,6 +55,7 @@ import { createMemoryMaintenance } from "./engine/memory-maintenance.ts";
 import { createNoticePush } from "./engine/notice-push.ts";
 import { createPermissions } from "./engine/permissions.ts";
 import type { ProfileRoot } from "./engine/profiles.ts";
+import { createRoutineMail } from "./engine/routine-mail.ts";
 import { createSkillPicker } from "./engine/skill-pick.ts";
 import { createDrafter } from "./engine/suggest.ts";
 import { afterWorkTurn } from "./engine/task-work.ts";
@@ -95,7 +97,7 @@ import { useLocalEmbedder } from "./rpc/embeddings.ts";
 import { internalCaller } from "./rpc/internal.ts";
 import { createRouter, type Dispatch } from "./rpc/router.ts";
 import { useLocalModel } from "./rpc/transcription.ts";
-import { createSecrets } from "./secrets.ts";
+import { createSecrets, type Secrets } from "./secrets.ts";
 import {
   builtinTools,
   coreHandlers,
@@ -132,6 +134,8 @@ const TERMINAL_MAIN = path.resolve(import.meta.dirname, "../../terminal/src/main
 
 /** What tests swap: the model, harnesses, extra tools, channel adapters and the scheduler's clock. */
 export type CoreOptions = {
+  secrets?: Secrets;
+  routineMailSend?: typeof smtpSend;
   computer?: ComputerConfig;
   /** Asana transport; tests record REST requests without contacting an account. */
   asanaFetch?: typeof fetch;
@@ -197,7 +201,7 @@ export async function createCore(config: CoreConfig, opts: CoreOptions = {}) {
   // The engine exists by the time a command ends.
   const terminals = createTerminals({ bus, commandEnded: (e) => wakeAfterCommand(store, engine.admit, e) });
   const store = createStore(db, bus);
-  const secrets = createSecrets(config.home, config.secrets);
+  const secrets = opts.secrets ?? createSecrets(config.home, config.secrets);
   seed(store, config.agentName);
   const releases =
     opts.releases ?? (config.whatsNew ? localReleases(path.resolve(import.meta.dirname, "../../..")) : undefined);
@@ -362,6 +366,13 @@ export async function createCore(config: CoreConfig, opts: CoreOptions = {}) {
     workDir: path.join(scratchRoot(config.home), "mcp"),
     files: (thread) => agentFiles(store, config.home, thread),
   });
+  const routineMail = createRoutineMail({
+    store,
+    secrets,
+    log,
+    url: () => `http://127.0.0.1:${listening}`,
+    send: opts.routineMailSend,
+  });
   const { hooks, plugins, extensions } = extensionStack({ store, secrets, bus, log, home: config.home });
   const upkeep = createUpkeep({ store, llm, log });
   const services = createServices({
@@ -477,6 +488,7 @@ export async function createCore(config: CoreConfig, opts: CoreOptions = {}) {
     home: config.home,
     skillApps: config.runtimeSkills.homes,
     apxPort: () => listening,
+    routineMail,
     memory,
     skills,
     profileRoots,
@@ -609,6 +621,7 @@ export async function createCore(config: CoreConfig, opts: CoreOptions = {}) {
       channels,
       services,
       scheduler,
+      routineMail,
       nudges: scheduler.nudges,
       extensions,
       mcp,
@@ -721,6 +734,7 @@ export async function createCore(config: CoreConfig, opts: CoreOptions = {}) {
       noticePush.stop();
       plugins.close();
       await channels.stop();
+      routineMail.close();
       webhooks.close();
       await hookListener.close();
       await engine.stop();

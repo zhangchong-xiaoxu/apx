@@ -1,6 +1,6 @@
 // apx routines: an agent's scheduled work from the terminal.
 import fs from "node:fs";
-import { CallModel, type Routine, type Schedule } from "@apx/protocol";
+import { CallModel, methods, type Routine, RoutineMailConfig, type Schedule } from "@apx/protocol";
 import type { ApxClient } from "@apx/protocol/client";
 
 const USAGE = `apx routines                                   Routines and when they run next
@@ -15,6 +15,8 @@ apx routines run <routine>                     Run now
 apx routines on|off <routine>
 apx routines rm <routine>
 apx routines log <routine>                     Recent runs
+apx routines mail <routine> [<config.json>|off] Fixed-recipient post mail; config holds a secret:// reference only
+apx routines mail-retry <routine> <YYYY-MM-DD>  Permit a later attempt only after checking no mail arrived
 <routine> is its id (rtn_…) or its name; --project narrows a name to one project's routines`;
 
 type Opts = {
@@ -110,6 +112,25 @@ export async function routines(client: ApxClient, [sub, id, ...rest]: string[], 
     findRoutine((await client.call("routines.list", {})).routines, ref, opts.project);
   if (sub === "help") {
     console.log(USAGE);
+    return;
+  }
+  if (sub === "mail" && id) {
+    const r = await get(id);
+    const file = rest[0];
+    if (rest.length > 1) throw new Error("usage: apx routines mail <routine> [<config.json>|off]");
+    if (file) {
+      const config = file === "off" ? null : RoutineMailConfig.parse(JSON.parse(fs.readFileSync(file, "utf8")));
+      await client.call("routines.mail_set", { routine: r.id, config });
+    }
+    console.log(JSON.stringify(await client.call("routines.mail_get", { routine: r.id }), null, 2));
+    return;
+  }
+  if (sub === "mail-retry" && id) {
+    const r = await get(id);
+    if (rest.length !== 1) throw new Error("usage: apx routines mail-retry <routine> <YYYY-MM-DD>");
+    const params = methods["routines.mail_retry"].params.parse({ routine: r.id, day: rest[0] });
+    await client.call("routines.mail_retry", params);
+    console.log("A later run may attempt delivery. No mail was sent now.");
     return;
   }
   if (sub === "add") {
