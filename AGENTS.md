@@ -134,6 +134,14 @@ Each rule says how it is enforced. `[gate]` = a command fails; `[review]` = conv
     ([RELEASE.md](rules/RELEASE.md#tagging-a-release)). Never tag a commit whose run is red, missing or still going;
     fix it on the branch and tag the next one. `[gate]` `release:check`, and the publish job's own wait.
 
+29. **One worktree per task, and look before making one.** Other sessions work in this checkout at the same time.
+    Whether code work goes in a worktree or in the checkout is the owner's call (APX agents follow the project's note
+    or ask once). Before creating a worktree, run `git worktree list` and `git branch --list 'feat/*' 'fix/*' 'docs/*'`: if one
+    already covers the task, continue there or ask the session that owns it, never open a second one to reproduce,
+    baseline or retry the same thing. Worktrees live in `.worktrees/<name>` on a named branch (no detached HEAD);
+    once the branch is merged into `staging`, remove the worktree and delete its branch in the same turn. Never remove
+    one that has uncommitted changes or recent commits from another session. `[review]`
+
 26. **Portable tests.** Never let real time decide an outcome: idle, cap, deadline and burst behaviour runs on
     injected timers (`manualTimers`, `runTimers`). Waits use `waitFor` with a wall-clock budget, never a count of
     iterations. Temp folders come from `tempDir()` and are removed only after every child the test started has
@@ -148,6 +156,17 @@ Each rule says how it is enforced. `[gate]` = a command fails; `[review]` = conv
     statically. What it downloads (entry, CSS, language chunk and their static imports) stays within
     `scripts/perf-budget.json`, with no zod in it. When `pnpm perf` fails, split the module it names; raising a budget
     needs a reason in the commit ([D-147](rules/DECISIONS.md#d-147)). `[gate]` biome + perf.
+
+30. **Features and fixes assess documentation impact.** Every feature and fix, including internal and test fixes,
+    records `Docs impact: updated` with paths, or `Docs impact: none` with a concrete reason in the change description
+    or commit body. Check user instructions, reference/CLI/config, troubleshooting, security boundaries and engineering
+    rules; update or create affected docs in the same change, English first with Spanish parity. Review rejects missing
+    assessments or known false docs, not a justified no-change result. See [D-159](rules/DECISIONS.md#d-159) and the
+    [documentation impact contract](rules/WORKFLOW.md#documentation-impact-contract). `[review]`
+
+31. **Sync this fork through a merge branch.** Keep fork-only changes isolated and small, preserve `origin/master` as
+    the release source, and integrate `upstream/main` by merge rather than rebasing or repeated cherry-picks. Follow
+    [FORK_SYNC.md](rules/FORK_SYNC.md) before resolving overlaps or updating the fork. `[review]`
 
 ### Code comments
 
@@ -174,6 +193,7 @@ expected `code_sha`) and the changed path is exercised for real; anything not ex
 | How to verify | [`rules/TESTING.md`](rules/TESTING.md) |
 | Fixing a bug or repairing a failing test | [`rules/TESTING.md#fix-regression-contract`](rules/TESTING.md#fix-regression-contract) |
 | Adding to the prompt or a tool | [`rules/PROMPT_SIZE.md`](rules/PROMPT_SIZE.md) |
+| Syncing the fork with upstream | [`rules/FORK_SYNC.md`](rules/FORK_SYNC.md) |
 | Product direction | `plan/01-arquitectura-v2.md`, `plan/00-plan-maestro.md` (maintainers' checkout) |
 | Design system | [`packages/ui/.design-sync/NOTES.md`](packages/ui/.design-sync/NOTES.md), `packages/ui/src/components/*.md` |
 

@@ -2396,8 +2396,10 @@ and carry data out in queries. Names are the proxy's to resolve. The egress rule
 
 **Loopback between agents.** A service an agent runs on 127.0.0.1 or ::1 is reachable only by that agent. Every
 process of an agent runs in its own cgroup, `user.slice/user-<uid>.slice`: its desktop and terminal through its user
-manager, and its commands, browser and the core's helpers through `systemd-run --scope --uid --slice` (plain `sudo -u`
-from the admin's SSH session would leave them in that session's cgroup). A table of its own, `apx_loopback`, marks
+manager, and its commands, browser and the core's helpers through `systemd-run --scope --slice` and then
+`setpriv --reuid --regid --init-groups` (plain `sudo -u` from the admin's SSH session would leave them in that session's
+cgroup; the scope's own `--uid` keeps root's supplementary group 0, which can read root-group files in the guest). A
+screen does not start unless a process run this way has the agent's uid and its one group. A table of its own, `apx_loopback`, marks
 each loopback packet with its sender's agent uid on the way out (`meta skuid`), and on the way in looks up the listening
 socket (`socket cgroupv2 level 2`) and refuses a new connection to an agent's listener whose mark is not that agent's.
 The egress proxy, the guest's own services and the owner's paths into a screen (private Unix sockets, CDP pipes) are
@@ -2515,3 +2517,58 @@ acting on anything those parts may cover. What D-110 fixed still holds: nothing 
 it did not get and how to read it. A project that wants a rule in every call puts it near the top. The 200,000 safety
 limit, its marker and the owner's notice are unchanged; `.apc/memory.md` still reaches the agents whole. The owner
 sees what a call carried in the chat (runs.context).
+
+Superseded by [D-158](#d-158): AGENTS.md reaches the prompt whole again.
+
+<a id="d-158"></a>
+## D-158 — 2026-10-26 — A project's AGENTS.md reaches the prompt whole again
+Supersedes [D-157](#d-157). Cutting AGENTS.md at 8,000 characters left out the rules near its end: in APX's own repo
+the agent never saw the worktree rule, and kept opening duplicate worktrees. A project's rules are its author's to
+size; the agent gets all of them, as Claude Code and Codex do with theirs. The cost is small because AGENTS.md sits in
+the byte-stable prefix (rule 12) that providers cache. The 200,000 safety limit, its marker and the owner's notice
+from [D-110](#d-110) stay.
+
+<a id="d-159"></a>
+## D-159 — 2026-10-26 — Features and fixes carry a documentation impact assessment
+A regression test protects behavior, but does not keep instructions true. Every feature and fix assesses the docs
+it can invalidate: user guides, CLI/configuration/reference, troubleshooting, security boundaries and engineering
+workflow. Update affected docs or create the missing page in the same change, English first and Spanish alongside
+it where the site is bilingual. Record `Docs impact: updated` with paths, or `Docs impact: none` with a specific
+reason in the change description or commit body. Internal fixes often need no public page; this is an assessment,
+not a quota of documentation edits. Independent review rejects an absent assessment, an unsupported no-impact
+claim or known inaccurate instructions. Release review checks coverage against the actual release diff and tags,
+not only news entries or commit subjects. Builds, route/anchor checks and translation structure checks complement
+source review; none proves every explanation correct. No source-text test or automatic check can decide semantic
+documentation relevance. See [WORKFLOW.md](WORKFLOW.md#documentation-impact-contract).
+
+## D-183 — 2026-10-29 — The isolated computer runs on Linux and Windows too, each with Lima's own driver
+The computer ([D-151](#d-151), [D-152](#d-152)) only ran on macOS with Apple Silicon. `environments/host.ts` now picks
+Lima's driver and pinned build per host: `vz` on macOS 13+ (Apple Silicon or Intel), `qemu` on Linux (x86-64, ARM64)
+and `wsl2` on Windows, the guest template listing Debian's image for both architectures. What a host lacks (QEMU,
+`/dev/kvm`, WSL 2, Git for Windows) stops the first start with the command that fixes it, never a hidden screen.
+
+Windows differs in what it can promise, and the guest is checked for each point, not trusted:
+- WSL imports a root filesystem, not a disk image: APX builds one once from Debian's pinned WSL image, with sshd,
+  systemd, interop off and no Windows PATH (`wsl-seed.ts`), named after its recipe so a change rebuilds it. Plain
+  mode skips Lima's WSL user setup, so the template's first provisioning step creates Lima's user and key.
+- Lima pipes guest scripts through ssh's stdin, which Windows' own OpenSSH never delivers: Git's ssh is used.
+- WSL's distributions share one kernel and network, and that kernel has no nftables socket matching. On WSL the
+  agents' loopback rules mark each connection with the agent that opens it and drop replies unless listener and caller
+  are the same agent or the listener is the egress proxy: agents reach neither each other's nor the owner's other
+  distributions' localhost services. Mirrored networking, which shares Windows' localhost (the core), is refused.
+- Interop is refused through the distribution's root-owned `/etc/wsl.conf` (the `WSLInterop` binfmt entry is
+  global to the WSL kernel), and `/mnt`, where Windows drives mount, stays closed to every user but root at each boot.
+- WSL sizes memory and CPUs for all distributions in `.wslconfig`; the computer's settings do not change them.
+- A host agent that died with the core leaves a pid Lima on Windows cannot inspect past: a dead `ha.pid` is dropped,
+  a folder from a cut-short setup is cleared, and stopping terminates the distribution when Lima cannot.
+
+<a id="d-184"></a>
+## D-184 — 2026-10-31 — Sync the fork by merging upstream main on an isolated branch
+
+`origin/master` remains the fork's release and runtime update source; `upstream/main` is only integrated manually.
+Periodic upstream integration uses a dedicated sync branch and a merge commit, not a rebase or a stream of unrelated
+cherry-picks. This preserves the common history so later syncs compare only new upstream work. Keep fork-only changes
+small and isolated around source-specific seams; preserve the fork's installer/release URLs, `master` CI target,
+telemetry choices, Chinese UI and fork-specific documentation. Keep the upstream remote's push URL set to `no_push`
+and fetch with `--no-tags` so upstream release tags cannot trigger fork releases. During each sync, review protocol
+and migrations as well as product features, and run the relevant gates before merging. See [FORK_SYNC.md](FORK_SYNC.md).

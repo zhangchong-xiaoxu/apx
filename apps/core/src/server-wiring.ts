@@ -41,6 +41,7 @@ import { composerHandlers } from "./rpc/composer.ts";
 import { computerHandlers } from "./rpc/computer.ts";
 import { desktopInstallHandlers } from "./rpc/desktop-install.ts";
 import { deviceHandlers } from "./rpc/devices.ts";
+import { emailSignatureHandlers } from "./rpc/email-signatures.ts";
 import { embeddingHandlers } from "./rpc/embeddings.ts";
 import { environmentHandlers } from "./rpc/environments.ts";
 import { extensionHandlers } from "./rpc/extensions.ts";
@@ -174,7 +175,7 @@ export function builtinTools(
     ...mediaTools(store, home, vm),
     ...phoneTools(),
     ...computerTools(store),
-    ...taskTools(store),
+    ...taskTools(store, home),
     ...videoTools(findProgram("yt-dlp")),
     ...webTools(),
     ...contactTools(store),
@@ -276,7 +277,8 @@ export function coreHandlers(d: HandlerDeps & { vm?: Computer | undefined }) {
     ...jobHandlers(d.store, d.engine),
     ...memoryHandlers(d.store, d.memory, d.memoryMaintenance),
     ...channelHandlers(d.store, d.channels),
-    ...mediaHandlers(d.services),
+    ...emailSignatureHandlers(d.store),
+    ...mediaHandlers(d.services, d.store),
     ...transcriptionHandlers(d.services, d.localModels),
     ...embeddingHandlers(d.localEmbeds, () => d.memory.engine()),
     ...taskHandlers(d.store, d.engine, d.app.home, d.vm?.beforeDelete),

@@ -16,8 +16,12 @@ import { publicProject } from "../domain/projects.ts";
 import type { EngineIds } from "../domain/refs.ts";
 import type { Store } from "../domain/store.ts";
 import { summary } from "../domain/surfaces.ts";
+import { usagePreferences } from "../engine-usage/preferences.ts";
 import { badRequest, conflict, errorMessage, notFound } from "../errors.ts";
+import { acpAgents, acpEngine } from "../harness/acp/agents.ts";
+import { createEngineUsage, detectUsageEngines } from "../harness/engine-usage.ts";
 import type { Harnesses } from "../harness/index.ts";
+import { ONESHOT } from "../harness/oneshot.ts";
 import { importFromV1 } from "../import/v1.ts";
 import type { Catalog } from "../models/catalog.ts";
 import { modelSettings, refProblem } from "../models/choice.ts";
@@ -42,6 +46,19 @@ export function appHandlers(deps: {
   imessage: boolean;
 }) {
   const { store, harnesses, secrets } = deps;
+  const engineUsage = usagePreferences(
+    store.settings,
+    (enabled) =>
+      createEngineUsage({
+        status: () =>
+          detectUsageEngines(undefined, [
+            ...Object.entries(ONESHOT).map(([id, config]) => ({ id, label: config.label, command: config.binary })),
+            ...acpAgents(store).map((agent) => ({ id: acpEngine(agent), label: agent.label, command: agent.command })),
+          ]),
+        enabled,
+      }),
+    () => secrets.listed("chatgpt_login"),
+  );
   const models = modelSettings(store);
   /** A registered project's folder, when it is on disk. */
   const folderOf = (id: string) => {
@@ -269,6 +286,9 @@ export function appHandlers(deps: {
       if (!s) throw notFound(`surface ${surface}`);
       return s;
     },
+    "engines.usage": () => engineUsage.read(),
+    "engines.usage_preferences": () => engineUsage.get(),
+    "engines.set_usage": ({ engine, enabled }) => engineUsage.set(engine, enabled),
     "engines.status": async ({ refresh }) => ({
       engines: await harnesses.status(refresh),
     }),

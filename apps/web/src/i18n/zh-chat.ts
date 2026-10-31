@@ -2,6 +2,10 @@ import type { MessageKey } from "./en.ts";
 
 // UI strings, Simplified Chinese: the chat's composer, messages and Usage panel.
 export const zhChat: Partial<Record<MessageKey, string>> = {
+  "chat.agentProgress": "{name} 的进展",
+  "chat.agentResponse": "{name} 的回复",
+  "chat.agentMessage": "{name} 的消息",
+  "composer.previewFile": "预览 {name}",
   "audio.play": "播放语音消息",
   "audio.pause": "暂停语音消息",
   "audio.seek": "音频位置",

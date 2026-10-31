@@ -14,7 +14,10 @@ boundary changes.
 | **mobile** | `apps/mobile` (Expo) | Operator + node (camera, notify). | App lifecycle. |
 
 Desktop supervises only a bundled child for its explicitly local home/port. URL and SSH connections never grant
-implicit lifecycle control over the server; client restart/update does not update the server. Production daemon
+implicit lifecycle control over the server. Explicit remote updates use the owner-authenticated shared release plan:
+the core installs once, confirms its running target after restart, then Desktop clients may activate their own package.
+The native coordinator and recovery work without the remote panel; offline clients reconcile on reconnect, not atomically.
+A bundled local core still updates with Desktop. See [Update coordination](UPDATE_COORDINATION.md). Production daemon
 startup holds an OS-released SQLite lock per canonical home, independent of port. Local service identities are
 home-specific; `APX_URL` does not redirect OS service commands. See [Desktop lifecycle](DESKTOP_LIFECYCLE.md).
 
@@ -80,6 +83,24 @@ in settings; uncertain deliveries block retries until the owner checks the recip
   (Telegram, WhatsApp, Discord, Slack, iMessage, email, Signal, Matrix, Mattermost) and enters through `threads.send`.
 - `apps/*` never import each other; `packages/*` never import `apps/*`.
 
+The top bar's AI usage panel calls owner-only `engines.usage`. The core probes CLI availability on its own
+computer and asks the local Codex app-server or Claude Code's structured `/usage` report for account rate-limit
+metadata, with bounded child lifetimes, validated windows and a short shared cache. Claude requires version 2.1.273
+or later and runs isolated with safe mode, zero model turns, no session persistence, hooks, tools or MCP servers.
+Only global session and weekly limits are used; model-specific quotas are not substituted. It starts no model turn
+and APX reads no engine credentials. Other
+engines explicitly report unsupported or unavailable limits; session token counts are not account balances.
+The owner can turn quota visibility on or off with the compact Usage switch on each engine card. The core stores
+these choices independently of model power, filters disabled engines before account probes and hides pending/cached
+results after an opt-out. Defaults are off except for a linked ChatGPT plan (metadata only); its quota source still
+requires the separately linked Codex CLI. Explicit choices survive linking or disconnecting the plan.
+
+The super-agent's `apx_settings` email area discovers configured Gmail/SMTP identities and reads one local
+signature by transport, account and sender. Human-only `email.signature_upsert` and `email.signature_remove`
+run through the same owner-confirmed settings flow, with the exact last-read entry as a concurrency precondition
+(`null` only when creating). Writes preserve other signatures and validate configured senders, including removals; an unconfigured mailbox's
+signature stays in the owner's Account settings for manual cleanup. No Gmail settings access, import or remote mutation is added.
+
 ## 4. State and persistence
 
 `~/.apx/v2/apx.db` (SQLite, WAL): projects, agents, threads (incl. a2a sub-threads), messages (what the UI shows),
@@ -95,8 +116,26 @@ playable beside their words, even if transcription fails; `media.transcribe` can
 Agents share local project files through `send_file` → `media.attach`: a snapshot, at most 20 MB, scoped to
 their running owner's chat and work folder. Images appear inline; video/audio files play and download in the
 panel. Attachments survive changes to the source file and a chat reload.
+Tasks keep selected media as independent snapshots owned by their conversation (`task_attachments` records private
+source provenance). `tasks.create`/`tasks.update` accept selected media ids; `tasks.attach` adds them later and
+`tasks.get` lists them independently of comment pagination. A task keeps up to 50 files, each at most 20 MB;
+repeating a source id does not copy it again. Deleting the source chat does not delete the task copy; removing an
+attachment or deleting the task deletes its own snapshot, not copies already shared elsewhere. Temporary task uploads
+(`media.upload task_asset:true`) are consumed after a successful task save or discarded on cancel/error through
+owner-only `media.discard`; ordinary composer uploads are never discarded by that operation. Abandoned task drafts
+older than 24 hours are swept on core startup or the next task upload, retrying filesystem cleanup failures.
+When creating a task from a screenshot request, pass the relevant attachment explicitly, never only its temporary
+path or all of the private history. Agents can use readable owner-chat/task media ids with `file_read` and `send_file`;
+these operations check source scope and snapshot into their own chat, without lending other chats' scratch folders.
+Contact, room and external-client media cannot be exported this way. Files are untrusted data, not instructions.
 Composer uploads accept files and videos up to 20 MB, images up to 5 MB and audio up to 10 MB.
 HTTP and WebSocket payload bounds include base64 expansion; remote uploads have a two-minute client deadline.
+Unsent selected files and their in-flight uploads stay with their draft chat while navigating within the panel;
+image thumbnails open a full-size preview before sending. Attachment drafts live only in that page session, unlike
+text drafts in browser storage: reloading or closing the page discards unsent attachments. Removing or sending a
+chip releases its local preview; deleting a chat invalidates its pending uploads and releases its drafts.
+A failed send restores the existing upload without uploading again. Microphone dictation still requires staying
+in the chat until transcription finishes. Abandoned file drafts stay in memory until removed, sent or the page closes.
 Agents open long reports, plans and reusable text documents with `open_document` after writing the file.
 It extends `media.attach` with bounded UTF-8 validation (400,000 bytes, `.md`/`.markdown`/`.txt`), uses the same
 owner-run/work-folder boundary, and persists a file part with document presentation metadata. The web/desktop
@@ -184,6 +223,16 @@ notice when there is no text. Tools that touch core state call protocol methods 
   For the owner's drafts, an assigned task waits without automatic work until
   its description contains non-whitespace text. Completing the description starts work if it never began;
   later edits do not restart it. Unassigned ideas remain valid. Hourly pickup skips incomplete descriptions.
+  Immediate self-assignment transfers execution to the task session: the source turn can only acknowledge it,
+  including after recovery. Existing request/findings travel as bounded untrusted context, and a code chat's
+  folder/write restriction stays in force. A turn that already delegated work, or whose chat still has active
+  helpers/jobs, running tools or queued turns, cannot spawn a self-task executor; it keeps the existing work instead.
+  After an external harness authorizes a native tool, that turn stays in the source because completion cannot be
+  reliably drained. Codex, without a native-call permission intercept, also keeps immediate self-work in the source.
+  A transfer creates a fresh workspace-restricted session rather than reusing old permissions. Drafts, proposals,
+  clock-driven starts and other-agent assignments do not stop the source. Closure reports to the current transfer's
+  source even for `task_update`, separately from a different historical creator's notification.
+  See [Execution handoff](HISTORY.md#task-execution-handoff).
 - **Cross-project tasks** (`domain/tasks.ts`, `rpc/tasks.ts`, `tools/tasks.ts`): outside any project, the super-agent's
   `task_create` uses the assignee's project by default, or an explicit project id. Ordinary agents and a super-agent
   inside a project keep their thread's scope. To have a destination project's orchestrator prepare the task instead,

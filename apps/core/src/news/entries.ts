@@ -1,6 +1,7 @@
 // Release news worth acting on: what a release lets the super-agent do for this owner. Each entry is told once, and
 // only to an owner it applies to. See rules/DECISIONS.md#d-117
 import type { Store } from "../domain/store.ts";
+import { computerHost } from "../environments/host.ts";
 import { CATALOG } from "../integrations/catalog.ts";
 
 /** What an entry may ask about this install before it is told. */
@@ -17,12 +18,19 @@ export type NewsFacts = {
   contacts: boolean;
   /** Channels the owner connected (Telegram, WhatsApp…). */
   channels: number;
+  /** An SMTP mailbox is configured as an Email channel. */
+  email: boolean;
   /** Catalog integrations the owner connected (GitHub, Notion…). */
   integrations: number;
-  /** This core can run the isolated Linux computer (a Mac with Apple Silicon) and the owner has a project to try there. */
+  /** This core can run the isolated Linux computer (macOS, Linux or Windows) and the owner has a project to try there. */
   computer: boolean;
   /** This core runs on a Mac and the owner has work there (a project). */
   mac: boolean;
+  /** The owner has Codex sessions whose account limits the panel can query. */
+  codex: boolean;
+  claude?: boolean;
+  /** At least one paired Desktop can use coordinated remote updates. */
+  desktop?: boolean;
 };
 
 export type NewsAction = {
@@ -46,6 +54,137 @@ export type NewsEntry = {
 };
 
 export const NEWS: readonly NewsEntry[] = [
+  {
+    id: "computer-linux-windows",
+    since: "2.11.2",
+    title: "Your agents' computer, on Linux and Windows",
+    applies: (f) => f.computer && !f.mac,
+    text:
+      "Agents can now work on a Linux computer they share on this Linux or Windows machine too, not only on a Mac: a VM " +
+      "apart from it with no way into it or the local network, where each allowed agent gets its own user, files and " +
+      "screen with a desktop and browser. On Linux it needs QEMU and KVM; on Windows it runs on WSL 2 and needs Git for Windows. The first start " +
+      "downloads and sets it up, and says what is missing if something is. It is off for every agent until the owner " +
+      "allows one, in the agent's card or settings or by asking the super-agent; the Computers view then shows their screens.",
+    actions: [
+      {
+        label: { en: "What could you do there?", es: "¿Qué harías ahí?" },
+        prompt:
+          "Tell me in a few lines what you could do for me on an isolated Linux computer that you cannot do here, " +
+          "and how much memory it would take from this machine. Do not start it unless I say so.",
+      },
+      {
+        label: { en: "Turn it on for an agent", es: "Activarla para un agente" },
+        prompt:
+          "Tell me which of my agents may use the isolated Linux computer now, and offer to turn it on for the one " +
+          "I pick, with my OK on the card.",
+      },
+    ],
+  },
+  {
+    id: "durable-task-attachments",
+    since: "2.11.1",
+    title: "Keep screenshots and files with a task",
+    applies: (f) => f.secretary,
+    text: "Tasks can keep selected screenshots and files as durable snapshots, at creation or later. Authorized agents can inspect them from the task even after the source chat is deleted. The panel previews and downloads them. This does not grant access to private contact chats or publish files; sending outside APX remains a separate owner action.",
+    actions: [
+      {
+        label: { en: "Attach files to a task", es: "Adjuntar archivos a una tarea" },
+        prompt:
+          "Help me choose a task and the screenshots or files to attach to it. Do not copy unrelated chat history or send anything outside APX.",
+      },
+    ],
+  },
+  {
+    id: "task-chat-actions",
+    since: "2.11.1",
+    title: "Manage tasks from their chat group",
+    applies: (f) => f.secretary,
+    text: "Task chat groups now offer a right-click menu and a visible actions button to change the task's column, mark it waiting, close or reopen it, and archive its chats. Archiving preserves history and does not close the task or restart work. Task status is also visible beside the chat header and updates live. A task's generic opening instruction shows its description as a read-only block with paragraphs, line breaks and lists.",
+    actions: [
+      {
+        label: { en: "Review my tasks", es: "Revisar mis tareas" },
+        prompt:
+          "Show me my current tasks and explain how to change their state or archive their chats without losing history. Do not change anything yet.",
+      },
+    ],
+  },
+  {
+    id: "coordinated-desktop-update",
+    since: "2.11.1",
+    title: "Update the server before your Desktop apps",
+    applies: (f) => Boolean(f.desktop),
+    text:
+      "Desktop now coordinates remote updates over the authenticated APX connection, without SSH. " +
+      "A shared release is checked for server and client packages; the remote core updates once, and each app " +
+      "can apply that release only after confirming the server is running it. Offline apps reconcile when they reconnect. " +
+      "The local integrated core still updates with its Desktop bundle. Older or unsupported servers block the app update " +
+      "with native recovery guidance; this is not an atomic update of every device.",
+    actions: [
+      {
+        label: { en: "Review my update setup", es: "Revisar mis actualizaciones" },
+        prompt:
+          "Help me check how my APX core is installed and explain the coordinated update flow before I update from the Desktop menu.",
+      },
+    ],
+  },
+  {
+    id: "email-signature-settings",
+    since: "2.11.1",
+    title: "Let your agent configure your email signature",
+    applies: (f) => f.google.gmail || f.email,
+    text:
+      "The super-agent can now read and change individual local APX email signatures with your approval. " +
+      "Each signature must match a configured Gmail account or SMTP mailbox. Other signatures are preserved, " +
+      "and a concurrent edit requires a fresh read. This does not import or change Gmail settings or send mail.",
+    actions: [
+      {
+        label: { en: "Configure my signature", es: "Configurar mi firma" },
+        prompt:
+          "Help me configure my local APX email signature. Read my configured mailboxes and ask which signature to use before changing anything.",
+      },
+    ],
+  },
+  {
+    id: "email-signatures",
+    since: "2.11.1",
+    title: "Email signatures by sender",
+    applies: (f) => f.google.gmail || f.email,
+    text:
+      "Settings, Account now lets the owner configure a plain-text and optional basic HTML signature for each " +
+      "connected Gmail sender or SMTP Email channel. New messages and replies include it automatically; ask to omit " +
+      "it for one message. Links and hosted HTTPS images are supported. Existing Gmail drafts are sent unchanged. " +
+      "Gmail signatures are not imported because the connection does not request Gmail settings access; copying one " +
+      "into APX changes only APX's local signature, not Gmail settings.",
+    actions: [
+      {
+        label: { en: "Where do I set my signature?", es: "¿Dónde configuro mi firma?" },
+        prompt:
+          "Show me where to configure email signatures in Settings, Account and explain which email account each signature applies to.",
+      },
+    ],
+  },
+  {
+    id: "engine-usage",
+    since: "2.11.1",
+    title: "Account limits in the top bar",
+    applies: (f) => f.codex || f.claude === true,
+    text:
+      "The panel's AI usage button shows Codex and Claude account quota windows, the share remaining and reset times " +
+      "when their local CLIs can report them. Claude Code 2.1.273 or later supplies structured /usage reports. " +
+      "These are account limits, not token totals from APX chats. OpenCode and Antigravity have explicit " +
+      "unavailable states and guidance rather than estimated subscription balances. " +
+      "The check runs on the core's computer, without starting a model turn or reading credentials in APX. " +
+      "Each engine card has a compact Usage switch independent of model power. Quota checks default off except " +
+      "for a linked ChatGPT plan; an explicit choice is remembered. Codex quota metadata still requires its " +
+      "separately linked local CLI account. Turning Usage off also stops its account probes.",
+    actions: [
+      {
+        label: { en: "Where are my limits?", es: "¿Dónde veo mis límites?" },
+        prompt:
+          "Explain where the AI usage button is in the panel and how account limits differ from the tokens shown in my chats.",
+      },
+    ],
+  },
   {
     id: "routine-post-mail",
     since: "2.11.0",
@@ -286,7 +425,7 @@ export const NEWS: readonly NewsEntry[] = [
     id: "linux-computer",
     since: "2.11.0",
     title: "A Linux computer your agents share",
-    applies: (f) => f.computer,
+    applies: (f) => f.computer && f.mac,
     text:
       "Agents can now work on a Linux computer they share, a VM apart from the owner's Mac with no way into the Mac " +
       "or the local network. Each agent gets its own user, files and screen with a desktop and browser. It is off " +
@@ -344,6 +483,9 @@ const signedIn = (store: Store, id: string) => Boolean(store.settings.get(`googl
 export const newsFacts = (store: Store): NewsFacts => ({
   routines: store.routines.list().some((r) => Boolean(r.project_id)),
   artifacts: store.surfaces.list().length,
+  desktop: store.devices.list().some((d) => d.platform === "desktop"),
+  codex: store.threads.list({ engine: "codex", limit: 1 }).length > 0,
+  claude: store.threads.list({ engine: "claude", limit: 1 }).length > 0,
   google: {
     calendar: signedIn(store, "google-calendar"),
     gmail: signedIn(store, "gmail"),
@@ -353,8 +495,9 @@ export const newsFacts = (store: Store): NewsFacts => ({
   secretary: store.settings.read("profile").id === "secretary",
   contacts: store.persons.list().some((p) => p.role !== "owner" && p.role !== "blocked" && p.addresses.length > 0),
   channels: store.settings.read("channels").length,
+  email: store.settings.read("channels").some((c) => c.type === "email" && c.email !== undefined),
   integrations: connectedIntegrations(store),
-  computer: process.platform === "darwin" && process.arch === "arm64" && store.projects.list().length > 0,
+  computer: computerHost() !== undefined && store.projects.list().length > 0,
   mac: process.platform === "darwin" && store.projects.list().length > 0,
 });
 

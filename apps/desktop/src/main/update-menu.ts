@@ -4,7 +4,7 @@ import { type BaseWindow, dialog, type MenuItemConstructorOptions, Notification 
 import type { Lang } from "./lang.ts";
 import type { createDesktopUpdater, DesktopUpdate } from "./updater.ts";
 
-type Updater = ReturnType<typeof createDesktopUpdater>;
+type Updater = ReturnType<typeof createDesktopUpdater> & { automatic?(): boolean };
 
 const words = (lang: Lang, platform: string) => {
   const pick = (en: string, es: string, zh: string) => ({ en, es, zh })[lang];
@@ -27,6 +27,17 @@ const words = (lang: Lang, platform: string) => {
             "Se instala al reiniciar APX. Si elegís más tarde, se instala cuando salgas de APX.",
             "重启 APX 时会安装。如果选择稍后，它会在你退出 APX 时安装。",
           ),
+    remoteReady: pick(
+      "The server confirmed the target release. It is checked again before applying this app; quitting APX does not install it.",
+      "El servidor ya confirmó la versión. Se vuelve a verificar antes de aplicar esta app; salir de APX no la instala.",
+      "服务器已确认目标版本。应用前会再次检查；退出 APX 不会安装它。",
+    ),
+    openInstaller: pick("Open installer", "Abrir instalador", "打开安装程序"),
+    manualReady: pick(
+      "The server is checked before opening the installer. Replace this app manually, then open it again.",
+      "El servidor se verifica antes de abrir el instalador. Reemplazá esta app manualmente y volvé a abrirla.",
+      "打开安装程序前会检查服务器。请手动替换此应用，然后重新打开。",
+    ),
     restartNow: pick("Restart now", "Reiniciar ahora", "立即重启"),
     later: pick("Later", "Más tarde", "稍后"),
     upToDate: pick("APX is up to date", "APX está al día", "APX 已是最新版本"),
@@ -68,8 +79,8 @@ export function createUpdateMenu(opts: { updater: Updater; window: BaseWindow; l
     const { response } = await dialog.showMessageBox(window, {
       type: "info",
       message: t.readyTitle(version),
-      detail: t.readyDetail,
-      buttons: [t.restartNow, t.later],
+      detail: updater.mode === "drag" ? t.manualReady : updater.automatic?.() === false ? t.remoteReady : t.readyDetail,
+      buttons: [updater.mode === "drag" ? t.openInstaller : t.restartNow, t.later],
       defaultId: 0,
       cancelId: 1,
     });
@@ -101,7 +112,12 @@ export function createUpdateMenu(opts: { updater: Updater; window: BaseWindow; l
     /** The app menu's update entry, as things stand now; none where the app does not update itself (a checkout). */
     item(s: DesktopUpdate): MenuItemConstructorOptions | undefined {
       if (!updater.enabled) return undefined;
-      if (s.ready) return { id: "update", label: t.restart(s.ready), click: () => updater.restart() };
+      if (s.ready)
+        return {
+          id: "update",
+          label: updater.mode === "drag" ? `${t.openInstaller} (${s.ready})…` : t.restart(s.ready),
+          click: () => updater.restart(),
+        };
       if (s.downloading && s.latest) return { id: "update", label: t.downloading(s.latest), enabled: false };
       const latest = s.latest;
       if (latest) return { id: "update", label: t.update(latest), click: () => void update(latest) };
@@ -118,7 +134,7 @@ export function createUpdateMenu(opts: { updater: Updater; window: BaseWindow; l
         if (click) n.on("click", click);
         n.show();
       };
-      if (updater.mode !== "auto") return notify(t.outNote(latest));
+      if (updater.mode !== "auto" || updater.automatic?.() === false) return notify(t.outNote(latest));
       void updater.install().then((r) => {
         if (r.ok && r.ready) notify(t.readyNote(latest), () => void askRestart(latest));
       });

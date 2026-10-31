@@ -7,11 +7,14 @@ import { asanaMethods } from "./asana-methods.ts";
 import { browserMethods } from "./browser.ts";
 import { desktopInstallMethods } from "./desktop-install.ts";
 import { deviceMethods } from "./device-methods.ts";
+import { emailSignatureMethods } from "./email-signatures.ts";
+import { engineUsageMethods } from "./engine-usage.ts";
 import { environmentMethods } from "./environment-methods.ts";
 import { routineMailMethods } from "./routine-mail.ts";
 import { telemetryMethods } from "./telemetry-methods.ts";
 import { terminalMethods } from "./terminal-methods.ts";
 import { threadMethods } from "./thread-methods.ts";
+import { updateCoordinationMethods } from "./update-coordination.ts";
 import { usageMethods } from "./usage-methods.ts";
 
 export const SubsystemStatus = z.object({
@@ -105,6 +108,9 @@ export const methods = {
   ...terminalMethods,
   ...telemetryMethods,
   ...usageMethods,
+  ...engineUsageMethods,
+  ...emailSignatureMethods,
+  ...updateCoordinationMethods,
 } as const satisfies Record<string, MethodDef>;
 
 export type MethodName = keyof typeof methods;

@@ -4,7 +4,7 @@
 // there (DECISIONS.md#d-101), and an @mention of anyone else opens a short consult
 // (the question and its answer, under the task's conversation, shown there as a card); an hourly pickup starts what was
 // assigned and never began. An agent's @mention on a task is a consult whose answer comes back to it (DECISIONS.md#d-132).
-import type { Author, Task, Thread } from "@apx/protocol";
+import type { Author, Part, Task, Thread } from "@apx/protocol";
 import { ownerIdentity } from "../domain/owner.ts";
 import type { Origin, RunRecord } from "../domain/runs.ts";
 import type { Store } from "../domain/store.ts";
@@ -13,9 +13,11 @@ import { type HeldTask, previewOf } from "../domain/threads.ts";
 import { badRequest, conflict } from "../errors.ts";
 import { taskWords } from "../tools/tasks.ts";
 import { agentTrip, heldNotice, trip } from "./breaker.ts";
-import { reportCard } from "./delegation.ts";
+import { actionsOf, reportCard } from "./delegation.ts";
 import type { AdmitFn } from "./engine.ts";
 import { mentioned, mentionsOwner, taskCommentAttention } from "./office.ts";
+import { outcomeOf } from "./run-outcome.ts";
+import { checkSelfHandoff, markHandoff } from "./task-handoff.ts";
 import { answersOwner, ownerTurnEnded } from "./task-inbox.ts";
 import { closedIn, reportClose } from "./task-report.ts";
 
@@ -30,16 +32,22 @@ export type Asker =
   | { kind: "agent"; id: string; name: string; thread_id: string; run_id: string; depth: number };
 
 /** The agent's chat for this task: its latest one, or a new one. */
-export function sessionFor(store: Store, task: Task, agentId: string): Thread {
+export function sessionFor(store: Store, task: Task, agentId: string, source?: Thread): Thread {
   const mine = store.threads.byTask(task.id).filter((t) => t.agent_ids[0] === agentId);
   const last = mine.at(-1);
-  if (last) return last;
+  if (last && !source) return last;
+  if (source) {
+    const sessions = store.threads.byTask(task.id).flatMap((t) => store.threads.family(t.id));
+    if (source.task_id === task.id || store.threads.busy(sessions))
+      throw conflict("this task still has active work: finish it before transferring execution");
+  }
   const thread = store.threads.create({
     kind: "loose",
     title: task.title,
     agent_ids: [agentId],
     project_id: task.project_id,
     task_id: task.id,
+    ...(source?.cwd && source.write ? { cwd: source.cwd, write: source.write } : {}),
   });
   // Lists show how many chats a task has.
   store.tasks.touched(task.id, agentId, "update");
@@ -64,12 +72,13 @@ export function ask(
   asker: Asker,
   author: Author,
   into: Thread = sessionFor(store, task, agentId),
+  parts: Part[] = [{ type: "text", text }],
 ) {
   const thread = into;
   // Work an agent gives spends against the chat it gave it from (DECISIONS.md#d-080).
   if (asker.kind === "agent" && asker.thread_id !== thread.id && !store.threads.context(thread.id).asked_from)
     store.threads.mergeContext(thread.id, { asked_from: asker.thread_id });
-  store.messages.add({ thread_id: thread.id, author, parts: [{ type: "text", text }] });
+  store.messages.add({ thread_id: thread.id, author, parts });
   store.threads.patch(thread.id, { preview: previewOf(text) });
   return admit({
     thread_id: thread.id,
@@ -127,11 +136,12 @@ export function startTaskWork(
   task: Task,
   agentId: string,
   asker: Asker,
+  options: { transfer?: boolean; now?: Date } = {},
 ): RunRecord | undefined {
   // How far agents hand work on is the breaker's, as the owner set it (DECISIONS.md#d-082).
   if (task.state !== "open" || !task.description.trim() || !store.agents.get(agentId)) return undefined;
   // A start time still ahead: the office clock starts it then (startScheduled). A proposal waits for the owner.
-  if (startsLater(task) || task.proposed) return undefined;
+  if (startsLater(task, options.now) || task.proposed) return undefined;
   if (asker.kind === "agent" && (trip(store, asker.thread_id) || agentTrip(store, asker.thread_id, agentId))) {
     hold(store, task, agentId, asker);
     return undefined;
@@ -140,7 +150,15 @@ export function startTaskWork(
   const text = ownWords ? [task.title, task.description].filter(Boolean).join("\n\n") : "Work on this task.";
   const author: Author =
     asker.kind === "agent" ? { kind: "agent", id: asker.id } : ownWords ? { kind: "user" } : { kind: "system" };
-  return ask(store, admit, task, agentId, text, asker, author);
+  const self =
+    options.transfer &&
+    asker.kind === "agent" &&
+    asker.id === agentId &&
+    checkSelfHandoff(store, asker, task.project_id);
+  const source = self ? store.threads.get(asker.thread_id) : undefined;
+  const work = ask(store, admit, task, agentId, text, asker, author, sessionFor(store, task, agentId, source));
+  if (self) markHandoff(store, task, asker, work);
+  return work;
 }
 
 /** Reopens a delivery and records the correction request and its run together, or leaves it unchanged. */
@@ -343,7 +361,7 @@ export function proposalReason(
 const MAX_REVIEW_ROUNDS = 2;
 
 /** Whether a task's start time is still ahead: its work waits until then. */
-export const startsLater = (task: Task, now = new Date()): boolean =>
+export const startsLater = (task: Pick<Task, "start_at">, now = new Date()): boolean =>
   Boolean(task.start_at && task.start_at > now.toISOString());
 
 /** Assigned tasks whose start time came and whose work never began, a few at a time (the office clock, each tick). */
@@ -367,7 +385,7 @@ export function startScheduled(store: Store, admit: AdmitFn, now: Date): RunReco
         store.threads.byTask(t.id).length === 0,
     )
     .slice(0, PICKUP_AT_ONCE)
-    .flatMap((t) => startTaskWork(store, admit, t, t.assignee ?? "", askerOfCreation(store, t)) ?? []);
+    .flatMap((t) => startTaskWork(store, admit, t, t.assignee ?? "", askerOfCreation(store, t), { now }) ?? []);
 }
 
 /** Who gave the task, for a start that comes later: the owner, or the agent and chat it was created from. */
@@ -421,7 +439,12 @@ function afterConsult(
   const part = card?.parts[index];
   if (card && part?.type === "subthread") {
     const parts = [...card.parts];
-    parts[index] = reportCard(part, run, answer || run.error || `(${run.state}, no answer)`);
+    parts[index] = reportCard(
+      part,
+      run,
+      answer || run.error || `(${run.state}, no answer)`,
+      outcomeOf(run, Boolean(answer), actionsOf(store, run)),
+    );
     store.messages.setPart({ ...card, parts }, index);
   }
   if (!task) return;
@@ -456,7 +479,33 @@ function answerAsker(
       ? `${name} answered your question on task ${task.id}:\n${answer.slice(0, 4000)}\n\nGo on with the task.`
       : `${name} could not answer your question on task ${task.id} (${run.error ?? run.state}). Go on without it.`;
   const asker: Asker = { kind: "agent", id: run.agent_id, name, thread_id: run.thread_id, run_id: run.id, depth: 1 };
-  ask(store, admit, current, askerId, text, asker, { kind: "agent", id: run.agent_id }, thread);
+  ask(store, admit, current, askerId, text, asker, { kind: "agent", id: run.agent_id }, thread, [
+    {
+      type: "text",
+      text,
+      response: responseMetadata(store, task, run, Boolean(textOf(store, run))),
+    },
+  ]);
+}
+
+function responseMetadata(store: Store, task: Task, run: RunRecord, answered: boolean) {
+  const outcome = outcomeOf(run, answered, actionsOf(store, run));
+  const issue =
+    outcome.level === "warn" && (outcome.issue === "no_answer" || outcome.issue === "actions_failed")
+      ? outcome.issue
+      : undefined;
+  return {
+    thread_id: run.thread_id,
+    run_id: run.id,
+    task_id: task.id,
+    title: task.title,
+    state: run.state,
+    ...(run.end_reason ? { end_reason: run.end_reason } : {}),
+    ...(issue ? { issue } : {}),
+    ...(store.threads.get(run.thread_id)?.project_id
+      ? { project_id: store.threads.get(run.thread_id)?.project_id }
+      : {}),
+  };
 }
 
 /** Reviewers are told to open with this word when nothing must change; one writing in Spanish says it there. */
@@ -481,7 +530,13 @@ function reviewEnded(store: Store, admit: AdmitFn, task: Task, run: RunRecord, v
   store.tasks.change(task.id, { status: "doing" }, run.agent_id);
   const text = `${name} reviewed the task and asks for changes:\n${verdict.slice(0, 4000)}\n\nFix what must change, check it, then put it back in review (task_update status review).`;
   const asker: Asker = { kind: "agent", id: run.agent_id, name, thread_id: run.thread_id, run_id: run.id, depth: 1 };
-  ask(store, admit, task, doer, text, asker, { kind: "agent", id: run.agent_id });
+  ask(store, admit, task, doer, text, asker, { kind: "agent", id: run.agent_id }, sessionFor(store, task, doer), [
+    {
+      type: "text",
+      text,
+      response: responseMetadata(store, task, run, Boolean(textOf(store, run))),
+    },
+  ]);
 }
 
 /** The final answer of a run, as text. */

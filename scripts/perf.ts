@@ -6,9 +6,12 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { stopped, tempDir } from "../apps/core/src/testkit/platform.ts";
 import { fakeLlm } from "../e2e/fake-llm.ts";
+import { exitWhenClosed } from "../packages/protocol/src/exit.ts";
 import { bootFiles, bootProblems, bootReport, sumKb } from "./bundle.ts";
 import { compileCacheEnv } from "./compile-cache.ts";
+import { processUsage as usage } from "./process-usage.ts";
 
 const root = path.resolve(import.meta.dirname, "..");
 const budget = JSON.parse(fs.readFileSync(path.join(import.meta.dirname, "perf-budget.json"), "utf8")) as Record<
@@ -31,22 +34,6 @@ async function rpc<T>(method: string, params: unknown = {}): Promise<T> {
   const body = (await res.json()) as { ok: boolean; result: T; error?: { message: string } };
   if (!body.ok) throw new Error(`${method}: ${body.error?.message}`);
   return body.result;
-}
-
-/** RSS in MB and CPU seconds of a process, from ps (macOS and Linux). */
-async function usage(pid: number): Promise<{ rss: number; cpu: number }> {
-  const out = await new Promise<string>((resolve) => {
-    const ps = spawn("ps", ["-o", "rss=,time=", "-p", String(pid)]);
-    let s = "";
-    ps.stdout.on("data", (d) => {
-      s += d;
-    });
-    ps.on("close", () => resolve(s.trim()));
-  });
-  const [rss = "0", time = "0:0"] = out.split(/\s+/);
-  const parts = time.split(":").map(Number);
-  const cpu = parts.reduce((acc, n) => acc * 60 + n, 0);
-  return { rss: Number(rss) / 1024, cpu };
 }
 
 const pct = (xs: number[], p: number) =>
@@ -80,7 +67,8 @@ if (
 )
   throw new Error(`port ${port} is taken (another APX core?): stop it or set PERF_PORT`);
 
-const home = fs.mkdtempSync(path.join(os.tmpdir(), "apx-perf-"));
+const temp = tempDir("apx-perf-");
+const home = temp.path;
 const llm = await fakeLlm();
 const startCore = (apxHome: string) =>
   spawn(
@@ -104,7 +92,7 @@ for (let i = 0; i < 300; i++) {
   await sleep(50);
 }
 warm.kill("SIGTERM");
-await new Promise((r) => warm.once("exit", r));
+await stopped(warm);
 
 const coreEpoch = Date.now();
 const t0 = performance.now();
@@ -246,8 +234,8 @@ try {
   failed = true;
 } finally {
   core.kill("SIGTERM");
+  await stopped(core);
   await llm.close();
-  await sleep(300);
-  fs.rmSync(home, { recursive: true, force: true });
+  await temp.remove();
 }
-process.exit(failed ? 1 : 0);
+exitWhenClosed(failed ? 1 : 0);

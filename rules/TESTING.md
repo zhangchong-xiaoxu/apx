@@ -77,6 +77,18 @@ never changes what a test decides. A failure seen only on Windows is first class
 timeout as "gone", a path compared case-sensitively) or test (a real-time window, a folder still held). Fix the
 class, not the instance.
 
+The E2E sandbox keeps the owner's agent CLIs off its `PATH`. On Windows it needs Git for Windows, the built-in
+Windows PowerShell and the .NET Framework C# compiler to create native signed-out CLI fixtures; shell scripts are
+not executable substitutes for `.exe` programs. Keep only the fixture bin, Git and required system directories on
+that path. Dynamic Electron imports use file URLs, interactive terminal expectations follow the selected shell,
+and clipboard comparisons normalize native line endings without changing their contents. Close terminals and
+wait for child processes before removing their temporary folders.
+
+The insecure HTTP specs map `panel.test` to loopback and explicitly select `--proxy-server=direct://` for their
+browser. This keeps the insecure-origin checks real without relying on the machine's proxy configuration; do not
+change system proxy or DNS settings to make these tests pass. Desktop expectations include every supported
+language and assert real service status rather than language-specific decorative content.
+
 `pnpm check:tests` runs `scripts/test-portability.ts`, an AST lint for these classes. Today's remaining hits are
 counted per file and rule in `scripts/test-portability-allowlist.json`; a new hit fails, and so does an allowance
 a file no longer needs. To shrink it, migrate a file, then run `node scripts/test-quality.ts --shrink`: it lowers
@@ -95,7 +107,7 @@ pnpm --filter @apx/ui build        # design system dist/ (what web and design-sy
 ```bash
 pnpm lint                          # Biome; `pnpm lint:fix` applies safe fixes
 pnpm check:private                 # public-safe gate (AGENTS.md rule 17)
-pnpm check:commits HEAD              # the same gate over commits (public-safe history), see rules/RELEASE.md
+pnpm check:commits HEAD^..HEAD     # this commit only; use a base..head range for a change, see rules/RELEASE.md
 pnpm check:schema                  # apps/core/src/db/schema.ts matches the migrations (`node apps/core/scripts/schema.ts` rewrites it)
 ```
 
@@ -209,6 +221,11 @@ A core on a temp home with the fake model: startup, idle memory and CPU, protoco
 once quiet again, and the panel's first load (gzip). Each number has a budget in `scripts/perf-budget.json`;
 going over fails. Raising a budget is a regression: it needs a reason in the commit body.
 
+Process sampling uses `ps` on macOS/Linux and Windows PowerShell's `WorkingSet64` and cumulative processor ticks
+on Windows, converted to resident MB and CPU seconds. Missing processes, command failures and invalid samples
+fail explicitly, never as zero usage. Native sampling support is not proof that a platform meets the budgets:
+report each observed number, and keep a failing budget visible.
+
 The first load is read from the built `apps/web/dist` (`scripts/bundle.ts`), never from source:
 `initial_bundle_gzip_kb` is what `index.html` names plus the chunks it imports statically; `boot_gzip_kb` adds the
 heavier language chunk `main.tsx` waits for, with its own static imports — what a first screen really downloads.
@@ -239,6 +256,14 @@ quarter of an hour while taking one minute. `test-shard.ts` reads each package's
 files out in turn; every part runs each package's build step first. The aggregate `verify` job requires every
 other job, so branch protection that requires it waits for all of them; a failed job can be retried on its own.
 
+Unit coverage includes the documentation's built-route tests. Its CI job installs `apps/docs` with that app's
+frozen lockfile and builds the site before collecting coverage. A local `test:coverage:all` run needs the same
+documentation install and build first; an old `dist` folder is not proof that a clean checkout can run the tests.
+The coverage runner allows 30 minutes for a complete instrumented panel sweep and for Windows desktop collection;
+this bounds the whole child process, not an individual test. Playwright's per-test deadlines remain unchanged.
+Tooling tests are grouped as one repository-root suite using native path components, not a POSIX-only prefix;
+their working directory must never be a test file.
+
 Windows: tests that wait scale their waits by `TEST_TIME_SCALE=3`, and a failed file runs once more
 (`--rerun-failed`): passing then, it is reported as flaky (a warning annotation and a row in the job summary) and
 the job stays green; failing again, the job is red ([D-145](DECISIONS.md#d-145)). Linux and macOS never rerun.
@@ -267,3 +292,20 @@ node apps/terminal/src/main.ts browser shot t1 /tmp/t1.jpg
 Profiles: open `https://httpbin.org/cookies/set?probe=1` in `shared`, then `https://httpbin.org/cookies` with another
 `--by` (must show it) and with `--profile incognito` (must be empty). Credential guard: `browser type` into a
 password field must fail with `credential_field`.
+
+## Documentation checks
+
+Documentation impact is a review contract, not a source-reading behavioral test. Every feature and fix records the
+assessment required by [WORKFLOW.md](WORKFLOW.md#documentation-impact-contract), even when docs stay unchanged.
+For site edits, from `apps/docs` (a standalone install, outside the root workspace):
+
+```bash
+pnpm install --frozen-lockfile
+DOCS_BASE=/apx pnpm build
+pnpm check                 # EN/ES page and heading structure, built internal routes and fragment targets
+```
+
+Also run root `pnpm check:private` and `git diff --check`. The site check deliberately ignores external URLs and
+cannot prove translation meaning, screenshots, command correctness or product behavior. Read the real source and
+exercise changed instructions where safe; record anything not exercised as `UNVERIFIED`. A build is not a semantic
+audit. Runtime application suites are needed only when executable application behavior changes.

@@ -23,8 +23,7 @@
     "apps/core/src/tools/browser.test.ts": 1,
     "apps/core/src/tools/owner-setting.test.ts": 1,
     "apps/core/src/tools/routines.test.ts": 1,
-    "apps/core/src/tools/shell.test.ts": 3,
-    "e2e/specs/20-pairing.spec.ts": 1
+    "apps/core/src/tools/shell.test.ts": 3
   },
   "local-wait": {
     "apps/desktop/src/main/core-process.test.ts": 1,
@@ -160,8 +159,6 @@
     "e2e/desktop/app.spec.ts": 1,
     "e2e/desktop/connect.spec.ts": 3,
     "e2e/install/onboarding.test.ts": 1,
-    "e2e/specs/20-pairing.spec.ts": 1,
-    "e2e/specs/22-workspace.spec.ts": 1,
     "e2e/specs/23-project-settings.spec.ts": 2,
     "e2e/specs/29-team-actions.spec.ts": 1,
     "e2e/specs/38-run-command.spec.ts": 1,
@@ -223,8 +220,6 @@
     "e2e/desktop/app.spec.ts": 1,
     "e2e/desktop/connect.spec.ts": 3,
     "e2e/install/onboarding.test.ts": 1,
-    "e2e/specs/20-pairing.spec.ts": 1,
-    "e2e/specs/22-workspace.spec.ts": 1,
     "e2e/specs/38-run-command.spec.ts": 1,
     "e2e/specs/40-git.spec.ts": 1,
     "e2e/specs/59-widget-media.spec.ts": 1,

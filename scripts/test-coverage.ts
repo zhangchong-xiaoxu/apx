@@ -241,13 +241,13 @@ async function runE2ESuites(
   let failed = false;
   const ports = await sandboxPorts();
   const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
-  const run = (command: string, args: string[]) => {
+  const run = (command: string, args: string[], timeout = 15 * 60_000) => {
     const result = spawnSync(command, args, {
       cwd: root,
       stdio: "inherit",
       shell: process.platform === "win32",
       env: { ...process.env, ...ports, APX_TEST_COVERAGE: "1", APX_TEST_COVERAGE_DIR: raw, NODE_V8_COVERAGE: raw },
-      timeout: 15 * 60_000,
+      timeout,
     });
     if (result.status !== 0) {
       failed = true;
@@ -259,7 +259,7 @@ async function runE2ESuites(
   snapshot(path.join(root, "packages/ui/dist"));
   if (which.web) {
     const shard = typeof which.web === "string" ? [`--shard=${which.web}`] : [];
-    run(pnpm, ["exec", "playwright", "test", "--project", "chromium", ...shard]);
+    run(pnpm, ["exec", "playwright", "test", "--project", "chromium", ...shard], 30 * 60_000);
   }
   if (!which.desktop) return failed;
   run(pnpm, ["--filter", "@apx/desktop", "build"]);
@@ -273,8 +273,13 @@ async function runE2ESuites(
   } else if (process.platform === "darwin") {
     // Native focus assertions need an awake display for the lifetime of the test process.
     run("caffeinate", ["-d", "-i", pnpm, ...desktop]);
-  } else run(pnpm, desktop);
+  } else run(pnpm, desktop, 30 * 60_000);
   return failed;
+}
+
+export function unitCoverageArea(relative: string): string {
+  const parts = relative.split(path.sep);
+  return parts[0] === "scripts" ? "scripts" : parts.slice(0, 2).join(path.sep);
 }
 
 /** The unit suites, area by area, then the mobile app's own; their coverage lands in `raw` and `nativeOutput`. */
@@ -289,7 +294,7 @@ function runUnitSuites(root: string, raw: string, nativeOutput: string, snapshot
   const groups = new Map<string, string[]>();
   for (const file of allTests) {
     const relative = path.relative(root, file);
-    const area = relative.startsWith("scripts/") ? "scripts" : relative.split(path.sep).slice(0, 2).join(path.sep);
+    const area = unitCoverageArea(relative);
     const group = groups.get(area) ?? [];
     group.push(relative);
     groups.set(area, group);

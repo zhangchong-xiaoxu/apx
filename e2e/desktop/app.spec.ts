@@ -5,6 +5,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { _electron, type ElectronApplication, expect, type Page, test } from "@playwright/test";
 import { rpc, until, world } from "../specs/kit.ts";
 
@@ -39,7 +40,7 @@ test.beforeAll(async () => {
       globalThis.apxTestTrayTooltip = text;
       return setToolTip.call(this, text);
     };
-    void import(${JSON.stringify(path.join(root, "apps/desktop/dist/main.js"))});
+    void import(${JSON.stringify(pathToFileURL(path.join(root, "apps/desktop/dist/main.js")).href)});
   `,
   );
   app = await _electron.launch({
@@ -431,15 +432,15 @@ test("an .apxart opened from the system opens the install dialog with it, also w
   const file = path.join(home, "opened-file.apxart");
   fs.writeFileSync(file, JSON.stringify(await rpc<object>("surfaces.export", { surface: made.id, memory: false })));
   const main = await page("main");
-  const dialog = main.getByRole("dialog", { name: /Instalar un artefacto|Install an artifact/ });
+  const dialog = main.getByRole("dialog", { name: /Instalar un artefacto|Install an artifact|安装产物/ });
 
   // macOS hands an opened file to the running app; Windows and Linux start it again with the file's path.
   await app.evaluate(({ app }, file) => app.emit("open-file", { preventDefault() {} }, file), file);
   await expect(dialog.getByText("Opened file", { exact: true })).toBeVisible();
-  await dialog.getByRole("button", { name: /Cancelar|Cancel/ }).click();
+  await dialog.getByRole("button", { name: /Cancelar|Cancel|取消/ }).click();
   await expect(dialog).toBeHidden();
 
   await app.evaluate(({ app }, file) => app.emit("second-instance", {}, ["APX", file], "/"), file);
   await expect(dialog.getByText("Opened file", { exact: true })).toBeVisible();
-  await dialog.getByRole("button", { name: /Cancelar|Cancel/ }).click();
+  await dialog.getByRole("button", { name: /Cancelar|Cancel|取消/ }).click();
 });

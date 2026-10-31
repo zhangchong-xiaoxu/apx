@@ -1,6 +1,8 @@
 ---
 // The docs' front page, in the site's look: a hero with a blobo, the real panel, the way in, and the crew.
 import logo from "../../assets/logo.png";
+import { RELEASES_PAGE } from "../../data/release-feed.ts";
+import { sitePath } from "../../doc-routes.mjs";
 import { HOME, type Lang } from "../../i18n/home";
 import Blob from "../Blob.astro";
 import BlobEyes from "../BlobEyes.astro";
@@ -14,13 +16,12 @@ interface Props {
 }
 const { lang } = Astro.props;
 const t = HOME[lang];
-const base = import.meta.env.BASE_URL.replace(/\/$/, "");
-const href = (path: string) => (/^https?:/.test(path) ? path : `${base}${path}`);
+const href = (path: string) => sitePath(path, import.meta.env.BASE_URL);
 const pre = lang === "es" ? "/es" : "";
 const site = "https://github.com/zhangchong-xiaoxu/apx/releases/latest/download";
 const install = `curl -fsSL ${site}/install.sh | bash`;
 const installWin = `irm ${site}/install.ps1 | iex`;
-const releases = "https://github.com/zhangchong-xiaoxu/apx/releases";
+const releases = RELEASES_PAGE;
 const heroBlobs = ["menta", "orbita", "cobalto", "brasa", "amatista"] as const;
 const parade = [
   "menta",
@@ -161,7 +162,7 @@ const issues = "https://github.com/zhangchong-xiaoxu/apx/issues";
 
 
     <section class="sec" id="new">
-      <div class="wrap">
+      <div class="wrap" id="what">
         <p class="eyebrow">{t.newIn.eyebrow}</p>
         <h2 class="h2">{t.newIn.title}</h2>
         <p class="lead">{t.newIn.lead}</p>
@@ -268,7 +269,7 @@ const issues = "https://github.com/zhangchong-xiaoxu/apx/issues";
       </div>
     </section>
 
-    <section class="sec">
+    <section class="sec" id="start">
       <div class="wrap">
         <p class="eyebrow">{t.steps.eyebrow}</p>
         <h2 class="h2">{t.steps.title}</h2>
@@ -313,7 +314,7 @@ const issues = "https://github.com/zhangchong-xiaoxu/apx/issues";
       </div>
     </section>
 
-    <section class="sec center">
+    <section class="sec center" id="terminal">
       <div class="wrap narrow">
         <p class="eyebrow">{t.cli.eyebrow}</p>
         <h2 class="h2">{t.cli.title}</h2>

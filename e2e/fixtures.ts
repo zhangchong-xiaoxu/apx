@@ -1,5 +1,6 @@
 // The world the e2e core lives in, written into a temp folder: an APX v1 to import (a project with an agent, tasks,
 // a routine, notes, a variable, a skill), a Claude Code and a Codex session to resume, and a project folder of its own.
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -8,6 +9,25 @@ const write = (file: string, v: unknown) => {
   fs.writeFileSync(file, typeof v === "string" ? v : JSON.stringify(v, null, 2));
 };
 const lines = (...rows: unknown[]) => `${rows.map((r) => JSON.stringify(r)).join("\n")}\n`;
+
+export function fixturePath(bin: string): string {
+  if (process.platform === "win32") {
+    const git = (process.env.PATH ?? "")
+      .split(path.delimiter)
+      .map((dir) => path.join(dir, "git.exe"))
+      .find((file) => fs.existsSync(file));
+    if (!git) throw new Error("Git is required for the e2e sandbox");
+    const system = process.env.SystemRoot;
+    if (!system) throw new Error("SystemRoot is required for the Windows e2e sandbox");
+    return [
+      bin,
+      path.dirname(git),
+      path.join(system, "System32"),
+      path.join(system, "System32", "WindowsPowerShell", "v1.0"),
+    ].join(path.delimiter);
+  }
+  return [bin, "/usr/bin", "/bin"].join(path.delimiter);
+}
 
 export function writeFixtures(dir: string, opts: { embedUrl: string }) {
   const home = path.join(dir, "apx-home");
@@ -91,8 +111,31 @@ export function writeFixtures(dir: string, opts: { embedUrl: string }) {
     // `debug models`: one model that takes reasoning efforts, as the real CLI lists them.
     `#!/bin/sh\ncase "$1" in --version) echo "codex-cli 0.1.0";; login) echo "Not logged in";; debug) echo '${JSON.stringify({ models: [{ slug: "gpt-e2e", display_name: "GPT e2e", supported_reasoning_levels: [{ effort: "low" }, { effort: "high" }], default_reasoning_level: "low" }] })}';; esac\n`,
   );
-  for (const f of ["claude", "codex"]) fs.chmodSync(path.join(bin, f), 0o755);
+  if (process.platform === "win32") {
+    const source = path.join(bin, "cli.cs");
+    write(
+      source,
+      `using System;
+using System.IO;
+class Cli {
+  static void Main(string[] args) {
+    string name = Path.GetFileNameWithoutExtension(Environment.GetCommandLineArgs()[0]);
+    string command = args.Length > 0 ? args[0] : "";
+    if (command == "--version") Console.WriteLine(name == "claude" ? "2.0.0 (Claude Code)" : "codex-cli 0.1.0");
+    else if (command == "auth") Console.WriteLine("{\\"loggedIn\\":false}");
+    else if (command == "login") Console.WriteLine("Not logged in");
+    else if (command == "debug") Console.WriteLine("{\\"models\\":[{\\"slug\\":\\"gpt-e2e\\",\\"display_name\\":\\"GPT e2e\\",\\"supported_reasoning_levels\\":[{\\"effort\\":\\"low\\"},{\\"effort\\":\\"high\\"}],\\"default_reasoning_level\\":\\"low\\"}]}");
+    else Environment.ExitCode = 1;
+  }
+}`,
+    );
+    const compiler = path.join(process.env.SystemRoot ?? "", "Microsoft.NET", "Framework64", "v4.0.30319", "csc.exe");
+    execFileSync(compiler, ["/nologo", `/out:${path.join(bin, "claude.exe")}`, source], { timeout: 15_000 });
+    fs.copyFileSync(path.join(bin, "claude.exe"), path.join(bin, "codex.exe"));
+  } else {
+    for (const f of ["claude", "codex"]) fs.chmodSync(path.join(bin, f), 0o755);
+  }
   // node itself, without the folder it lives in (globally installed CLIs sit there too).
-  fs.symlinkSync(process.execPath, path.join(bin, "node"));
+  fs.symlinkSync(process.execPath, path.join(bin, process.platform === "win32" ? "node.exe" : "node"));
   return { home, v1, claude, codex, repo, bin };
 }

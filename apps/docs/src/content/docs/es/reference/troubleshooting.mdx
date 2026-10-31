@@ -62,6 +62,23 @@ Tres formas de leerlo:
 
 Las líneas del origen **Salida del proceso** son lo que el core imprimió fuera de su log, como la traza de una caída.
 
+### El proceso en segundo plano desaparece al iniciar sesión en Windows
+
+En Windows, `apx service install` usa Windows Script Host (`wscript.exe` / JScript) para iniciar el daemon oculto,
+sin abrir una ventana de `cmd` al iniciar sesión. Volvé a ejecutar `apx service install` para actualizar las entradas
+de inicio antiguas; `apx service restart` por sí solo conserva la entrada existente. La instalación y el reinicio
+esperan a que el core esté listo y muestran claramente si falla el inicio. Si Windows Script Host está deshabilitado,
+un administrador debe habilitarlo primero: que la instalación termine no garantiza que el servicio esté corriendo.
+
+Los registros JSON de `apx service logs -n 100` con `scope: "supervisor"` incluyen los PID del daemon y del core,
+el código de salida o la señal del core, los intervalos de reintento, las señales de parada y el tipo de error del
+daemon; no registran variables de entorno, comandos completos ni mensajes de error. También se escriben en el
+`core.log` existente, para distinguir si el core salió por sí solo o desapareció todo el proceso en segundo plano.
+
+No se puede garantizar que se ejecute una función de salida ante una terminación forzada, el cierre de la consola o
+un corte de energía. Un registro de inicio sin registro de salida es una pista, no una prueba de quién terminó el
+proceso. No borres la base de datos ni el directorio de sesiones para resolver problemas de conexión.
+
 Las versiones de la app de escritorio anteriores a este cambio escribían `core.log` en la carpeta de logs de la app
 (`~/Library/Logs/APX` en macOS, `%APPDATA%\APX\logs` en Windows, `~/.config/APX/logs` en Linux); las líneas
 viejas siguen ahí.

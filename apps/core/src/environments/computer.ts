@@ -6,6 +6,7 @@ import { badRequest, conflict, unavailable } from "../errors.ts";
 import { availableMemory } from "../usage.ts";
 import { type ComputerControl, computerControl } from "./control.ts";
 import { guestOperations } from "./guest-operations.ts";
+import type { ComputerNeed } from "./host.ts";
 import type { Appearance, VmLifecycle } from "./lifecycle.ts";
 import { type ReadyEvent, type ReadyStage, readyWaiters } from "./ready.ts";
 import {
@@ -44,6 +45,8 @@ export type ComputerConfig = {
   /** Free host memory in bytes; tests pass their own. */
   freeMemory?: () => Promise<number>;
   host?: Host;
+  /** A step the owner must take on this host before the computer can start (managed.ts, host.ts). */
+  needs?: () => ComputerNeed | undefined;
 };
 
 /** The grant that lets one agent use the computer: for good, or for one chat (DECISIONS.md#d-151). */
@@ -67,6 +70,12 @@ const MONITOR_TTL_MS = 5_000;
 export function createComputer(store: Store, config: ComputerConfig) {
   if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,40}$/.test(config.instance)) throw badRequest("invalid VM name");
   const host = config.host ?? thisHost();
+  /** What the owner still has to do on this host, while the computer is not up (or failed): never while it runs. */
+  const needOf = (phase?: string) => {
+    if (phase === "running" || phase === "preparing" || phase === "stopping" || phase === "unsupported") return {};
+    const need = config.needs?.();
+    return need ? { needs: { reason: need.reason, ...(need.command ? { command: need.command } : {}) } } : {};
+  };
   const freeMemory = config.freeMemory ?? (() => availableMemory());
   const chats = () => store.settings.read("computer_chats");
   const appearance = (): Appearance => (store.settings.get("vm_appearance") === "dark" ? "dark" : "light");
@@ -284,6 +293,7 @@ export function createComputer(store: Store, config: ComputerConfig) {
         idle_minutes: store.settings.read("computer").idle_minutes,
         ...(stopped ? { last_stop: JSON.parse(stopped) as { reason: StopReason; at: string } } : {}),
         ...phaseOf,
+        ...needOf(phaseOf.phase),
       };
     },
     /**
@@ -350,7 +360,7 @@ export function createComputer(store: Store, config: ComputerConfig) {
     },
     /** The owner starts the computer, putting a chat on it when named (its agent must be allowed first). */
     async enable(id: string | undefined, look: Appearance, pastReserve = false) {
-      // The chat goes on the computer only once it can run: a start refused for memory leaves it on this Mac.
+      // The chat goes on the computer only once it can run: a start refused for memory leaves it on this machine.
       if (id) vm.admit(id);
       store.settings.set("vm_appearance", look);
       await vm.boot(pastReserve);
@@ -377,7 +387,7 @@ export function createComputer(store: Store, config: ComputerConfig) {
       const lifecycle = config.lifecycle;
       if (!lifecycle) throw unavailable("this VM has no lifecycle controller");
       const now = await lifecycle.status();
-      if (!now.supported) throw unavailable("Computer currently requires macOS Apple Silicon");
+      if (!now.supported) throw unavailable("The computer is not available on this system");
       if (now.phase === "running" || now.phase === "preparing") return;
       if (now.phase === "stopping") throw conflict("Computer is shutting down; start it again once it is off");
       const refusal = startRefusal(resources(), await freeMemory(), resourceLimits(host).memory_gib.min, pastReserve);
@@ -388,7 +398,7 @@ export function createComputer(store: Store, config: ComputerConfig) {
       lifecycle.start(appearance());
       store.settings.set("computer_enabled", "true");
     },
-    /** The chat goes back to this Mac; a screen it holds is let go (its desktop stays up until room is needed). */
+    /** The chat goes back to this machine; a screen it holds is let go (its desktop stays up until room is needed). */
     leave(id: string, run?: string) {
       const claim = ledger.forThread(id);
       if (claim && (!run || claim.run === run)) ledger.release(claim.run);
@@ -432,7 +442,7 @@ export function createComputer(store: Store, config: ComputerConfig) {
       if (!t)
         throw badRequest(
           store.threads.get(id)?.kind === "home"
-            ? "Home stays on this Mac; use the computer from another chat or a task"
+            ? "Home stays on this machine; use the computer from another chat or a task"
             : "use an owner's native chat",
         );
       const agent = t.agent_ids[0];

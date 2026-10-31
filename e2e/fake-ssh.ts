@@ -43,6 +43,10 @@ class FakeSsh {
       return 0;
     }
     if (Array.IndexOf(args, "BatchMode=yes") >= 0) {
+      if (File.Exists(Path.Combine(state, "down"))) {
+        Console.Error.WriteLine("ssh: connect to host box port 22: Connection refused");
+        return 255;
+      }
       if (!File.Exists(Path.Combine(state, "authorized"))) return Denied();
       if (Array.IndexOf(args, "-N") >= 0) return Forward(args);
       return 0;

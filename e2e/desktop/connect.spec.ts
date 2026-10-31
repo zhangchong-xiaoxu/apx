@@ -162,9 +162,9 @@ test("the first run asks server or client; a new server opens its installed welc
     const panel = await windowAt(first, (url) => url.startsWith(fresh.url));
     await expect(panel.locator(".wiz")).toBeVisible();
     const language = await panel.locator("html").getAttribute("lang");
-    expect(["en", "es"]).toContain(language);
+    expect(["en", "es", "zh"]).toContain(language);
     await expect(panel.locator(".wiz__pill")).toContainText(
-      language === "es" ? "APX está instalado" : "APX is installed",
+      language === "zh" ? "APX 已安装" : language === "es" ? "APX está instalado" : "APX is installed",
     );
     expect(JSON.parse(fs.readFileSync(path.join(dataDir, "connection.json"), "utf8"))).toEqual({ mode: "local" });
     await first.close();
@@ -173,7 +173,7 @@ test("the first run asks server or client; a new server opens its installed welc
     again = await launch(env);
     const reopened = await windowAt(again, (u) => u.startsWith(fresh.url));
     await expect(reopened.locator(".wiz")).toBeVisible();
-    await expect(reopened.locator(".wiz__pill")).not.toContainText(/APX (?:está instalado|is installed)/);
+    await expect(reopened.locator(".wiz__pill")).not.toContainText(/APX (?:está instalado|is installed|已安装)/);
     expect(again.windows().some((p) => p.url().startsWith("apx-app://"))).toBe(false);
     expect(again.windows().some((p) => p.url().includes("welcome="))).toBe(false);
   } finally {
@@ -259,7 +259,7 @@ test("About opens APX's own window with this build's versions and the repo", asy
   await app.evaluate(({ Menu }) => Menu.getApplicationMenu()?.getMenuItemById("about")?.click());
   const about = await windowAt(app, (u) => u.includes("?about"));
   await expect(about.locator(".about__version")).toContainText("APX");
-  await expect(about.locator(".about__status")).toBeVisible();
+  await expect(about.locator(".about__services")).toBeVisible();
   await expect(about.locator(".about__list")).toContainText("Protocol");
   await expect(about.locator(".about__repo")).toHaveAttribute("href", /github\.com/);
   await app.close();
@@ -274,6 +274,40 @@ test("the panel runs the app menu's About, update and connection items (Windows 
   );
   await windowAt(app, (u) => u.includes("?about"));
   await app.close();
+});
+
+test("a direct remote connection blocks unsupported updates through the real native bridge", async () => {
+  fs.writeFileSync(path.join(home, "desktop", "connection.json"), JSON.stringify({ mode: "url", url: core }));
+  const app = await launch({ APX_RELEASES: "off" });
+  try {
+    const panel = await windowAt(app, (url) => url.startsWith(core));
+    await app.evaluate(({ dialog }) => {
+      const state = globalThis as typeof globalThis & { updateDialogs?: Electron.MessageBoxOptions[] };
+      state.updateDialogs = [];
+      dialog.showMessageBox = ((...args: unknown[]) => {
+        state.updateDialogs?.push(args[args.length - 1] as Electron.MessageBoxOptions);
+        return Promise.resolve({ response: 2, checkboxChecked: false });
+      }) as typeof dialog.showMessageBox;
+    });
+    const result = await panel.evaluate(() =>
+      (
+        window as { apxDesktop?: { installUpdate(): Promise<{ ok: boolean; error?: string }> } }
+      ).apxDesktop?.installUpdate(),
+    );
+    expect(result?.ok).toBe(false);
+    expect(result?.error).toContain("does not support coordinated updates");
+    const dialogs = await app.evaluate(
+      () => (globalThis as typeof globalThis & { updateDialogs?: Electron.MessageBoxOptions[] }).updateDialogs,
+    );
+    expect(dialogs).toHaveLength(1);
+    expect(dialogs?.[0]?.buttons).toHaveLength(3);
+    expect(dialogs?.[0]?.detail).toMatch(/not applied|no se aplicó/);
+    expect(fs.existsSync(path.join(home, "desktop", "pending-update.json"))).toBe(false);
+    await panel.evaluate(() => (window as { apxDesktop?: { restartToUpdate(): void } }).apxDesktop?.restartToUpdate());
+    expect(app.process().exitCode).toBeNull();
+  } finally {
+    await app.close();
+  }
 });
 
 test("a server that only takes a password asks for it in the terminal view, then this app's key logs in and opens it", async () => {
@@ -385,9 +419,17 @@ test("a local port belonging to another home is not adopted", async () => {
   fs.writeFileSync(path.join(other, "home-id"), "another-installation");
   const app = await launch({ APX_HOME: other, APX_CONNECTION: "local" });
   try {
-    const page = await windowAt(app, (u) => u.startsWith("data:text/html") && u.endsWith("#apx-unreachable"));
-    await expect(page.locator("body")).toContainText("belongs to another home");
+    const page = await windowAt(app, (u) => u.startsWith("data:text/html") && u.endsWith("#apx-connecting"));
+    await expect(page.getByRole("status")).toContainText(/belongs to another home|pertenece a otra instalación/);
+    await expect(page.getByRole("status")).not.toContainText(/is not answering yet|todavía no responde/);
     expect(app.windows().some((p) => p.url().startsWith(core))).toBe(false);
+    fs.writeFileSync(path.join(other, "home-id"), "");
+    await expect(page.getByRole("status")).toContainText(/identity is missing|Falta la identidad/);
+    await expect(page.getByRole("status")).not.toContainText(/belongs to another home|pertenece a otra instalación/);
+    expect(app.windows().some((p) => p.url().startsWith(core))).toBe(false);
+    fs.copyFileSync(path.join(coreHome, "home-id"), path.join(other, "home-id"));
+    const panel = await windowAt(app, (u) => u.startsWith(core));
+    await expect(panel.locator("#root > *").first()).toBeVisible();
   } finally {
     await app.close();
   }

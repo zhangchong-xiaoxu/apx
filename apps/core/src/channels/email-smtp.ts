@@ -2,6 +2,7 @@
 // AUTH PLAIN or LOGIN, one message per connection. Failures say whether the message may have been delivered: until
 // the final "." nothing was accepted (retry); a lost answer after it may mean it went out (uncertain).
 import { randomUUID } from "node:crypto";
+import { emailMimeBody } from "../domain/email-body.ts";
 import { errorMessage } from "../errors.ts";
 import { type Endpoint, MailSocket, MailTimeout } from "./email-socket.ts";
 import { neverSent } from "./net.ts";
@@ -199,22 +200,7 @@ export function composeMail(m: OutMail): { id: string; data: Buffer } {
     "X-Auto-Response-Suppress: All",
     "MIME-Version: 1.0",
   ];
-  let textPart = [
-    "Content-Type: text/plain; charset=utf-8",
-    "Content-Transfer-Encoding: base64",
-    "",
-    base64Lines(Buffer.from(m.text.replace(/\r?\n/g, "\r\n"))),
-  ].join("\r\n");
-  if (m.html !== undefined) {
-    const alternative = `apx-${randomUUID()}`;
-    const htmlPart = [
-      "Content-Type: text/html; charset=utf-8",
-      "Content-Transfer-Encoding: base64",
-      "",
-      base64Lines(Buffer.from(m.html.replace(/\r?\n/g, "\r\n"))),
-    ].join("\r\n");
-    textPart = `Content-Type: multipart/alternative; boundary="${alternative}"\r\n\r\n--${alternative}\r\n${textPart}\r\n--${alternative}\r\n${htmlPart}\r\n--${alternative}--`;
-  }
+  const textPart = emailMimeBody({ text: m.text, html: m.html });
   if (!m.files?.length) return { id, data: Buffer.from(`${head.join("\r\n")}\r\n${textPart}\r\n`) };
   const boundary = `apx-${randomUUID()}`;
   const parts = [

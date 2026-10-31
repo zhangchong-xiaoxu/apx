@@ -18,6 +18,10 @@ export const ArtifactWindow = lazy(() =>
 );
 export const OAuthReturn = lazy(() => import("./resources/OAuthReturn.tsx").then((m) => ({ default: m.OAuthReturn })));
 
+export const AttachChips = lazy(() =>
+  import("./chat/composer/AttachChips.tsx").then((m) => ({ default: m.AttachChips })),
+);
+
 // Screens and dialogs loaded when first opened: the chat is what the panel opens on.
 export const AppScreen = lazy(() => import("./apps/AppScreen.tsx").then((m) => ({ default: m.AppScreen })));
 export const ChannelScreen = lazy(() =>
@@ -25,6 +29,15 @@ export const ChannelScreen = lazy(() =>
 );
 export const ConfigModal = lazy(() => import("./config/ConfigModal.tsx").then((m) => ({ default: m.ConfigModal })));
 export const TaskPeek = lazy(() => import("./tasks/TaskPeek.tsx").then((m) => ({ default: m.TaskPeek })));
+export const TaskBundle = lazy(() => import("./inbox/TaskBundle.tsx").then((m) => ({ default: m.TaskBundle })));
+export const TaskStatus = lazy(() => import("./common/TaskStatus.tsx").then((m) => ({ default: m.TaskStatus })));
+export const SubthreadPart = lazy(() =>
+  import("./chat/parts/SubthreadPart.tsx").then((m) => ({ default: m.SubthreadPart })),
+);
+export const AgentEvent = lazy(() => import("./chat/AgentEvent.tsx").then((m) => ({ default: m.AgentEvent })));
+export const TaskDescription = lazy(() =>
+  import("./chat/TaskDescription.tsx").then((m) => ({ default: m.TaskDescription })),
+);
 export const EngineSessions = lazy(() =>
   import("./engines/EngineSessions.tsx").then((m) => ({ default: m.EngineSessions })),
 );
@@ -56,7 +69,11 @@ export const ComputersScreen = lazy(() =>
 );
 export const UsageDialog = lazy(() => import("./shell/UsagePanels.tsx").then((m) => ({ default: m.UsageDialog })));
 export const UsageSummary = lazy(() => import("./shell/UsagePanels.tsx").then((m) => ({ default: m.UsageSummary })));
+export const RunningIndicator = lazy(() =>
+  import("./shell/RunningIndicator.tsx").then((m) => ({ default: m.RunningIndicator })),
+);
 // The memory gauge shows a number only after its first read: loading it after the first screen moves nothing shown.
+export const EngineUsageButton = lazy(() => import("./shell/EngineUsageButton.tsx"));
 export const UsageButton = lazy(() => import("./shell/UsageButton.tsx").then((m) => ({ default: m.UsageButton })));
 
 // The sidebar's extras: not needed for the first paint.
@@ -112,6 +129,11 @@ export const ComputerProgress = lazy(() =>
   import("./computers/ComputerProgress.tsx").then((m) => ({ default: m.ComputerProgress })),
 );
 export const ContactChat = lazy(() => import("./channels/ContactChat.tsx").then((m) => ({ default: m.ContactChat })));
+export const ActivityView = lazy(() => import("./inbox/ActivityView.tsx").then((m) => ({ default: m.ActivityView })));
+export const ChannelFace = lazy(() => import("./inbox/ChannelFace.tsx").then((m) => ({ default: m.ChannelFace })));
+export const ChannelTreeRow = lazy(() =>
+  import("./inbox/ChannelTreeRow.tsx").then((m) => ({ default: m.ChannelTreeRow })),
+);
 
 // Message parts load with the first message that has one, not with the chat.
 export const SurfacePart = lazy(() => import("./chat/parts/SurfacePart.tsx").then((m) => ({ default: m.SurfacePart })));

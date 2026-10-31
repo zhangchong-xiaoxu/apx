@@ -19,6 +19,18 @@ export const zhComputer: Record<ComputerKey, string> = {
   "computer.start": "启动虚拟机",
   "computer.enable": "启用电脑",
   "computer.enableTitle": "供智能体使用的 Linux 电脑",
+  "computer.needs.title": "这台电脑还差一步即可使用",
+  "computer.needs.qemu": "虚拟机使用 QEMU 构建 Linux 环境。请在这台电脑的终端中安装一次：",
+  "computer.needs.qemuAny": "虚拟机使用 QEMU 构建 Linux 环境。请使用发行版的包管理器安装 QEMU 和 qemu-img。",
+  "computer.needs.kvm_group":
+    "你的用户需要获得使用这台电脑虚拟化功能的权限。请在终端运行以下命令，然后注销并重新登录：",
+  "computer.needs.kvm_missing":
+    "这台电脑的虚拟化功能已关闭。请在固件设置（BIOS 或 UEFI）中启用，或改用支持该功能的服务器。",
+  "computer.needs.wsl": "电脑运行于 WSL 2。请以管理员身份在 PowerShell 中安装，然后重启 Windows：",
+  "computer.needs.git": "电脑需要 Git for Windows。请在 PowerShell 中安装：",
+  "computer.needs.wsl_mirrored":
+    "WSL 使用镜像网络，这会让电脑与这台机器共享 localhost。请从 .wslconfig 中移除 networkingMode=mirrored，然后运行：",
+  "computer.needs.retry": "已完成，重试",
   "computer.retry": "重试设置",
   "computer.preparing": "正在准备电脑…",
   "computer.stopping": "正在关闭虚拟机…",

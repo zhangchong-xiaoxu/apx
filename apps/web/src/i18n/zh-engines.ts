@@ -5,6 +5,8 @@ export const zhEngines: Partial<Record<MessageKey, string>> = {
   "config.external": "外部会话",
   "engines.leadModels":
     "智能体用来思考和工作的资源：你的 ChatGPT 套餐和各模型 API。Claude Code、Codex 等 CLI 在“外部会话”中。",
+  "engineUsage.title": "AI 配额",
+  "engineUsage.quick": "{engine}：可用 {pct}% · {window}",
   "providers.hide": "从列表中移除 {name}",
   "providers.modelsAuto": "自动",
   "plans.codex.kind": "ChatGPT 套餐",

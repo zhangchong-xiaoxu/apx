@@ -32,7 +32,7 @@ test("each agent's loopback listeners refuse new connections from any other agen
   assert.throws(() => agentLoopbackRules([0]), /invalid screen/);
 });
 
-test("an agent's processes run as its user inside its own slice; the probe user keeps plain sudo", () => {
+test("an agent's processes run as its user, with its own groups only, inside its own slice; the probe user keeps plain sudo", () => {
   assert.equal(screenSlice(3), "user-2003.slice");
   assert.deepEqual(screenArgs(3, "/usr/local/bin/apx-command", "--cancel", "op"), [
     "sudo",
@@ -40,9 +40,12 @@ test("an agent's processes run as its user inside its own slice; the probe user 
     "systemd-run",
     "--quiet",
     "--scope",
-    "--uid=apx-a3",
-    "--gid=apx-a3",
     "--slice=user-2003.slice",
+    "--",
+    "setpriv",
+    "--reuid=apx-a3",
+    "--regid=apx-a3",
+    "--init-groups",
     "--",
     "env",
     "HOME=/home/apx-a3",
@@ -63,4 +66,23 @@ test("each screen's browser logs in its own user's home, never in a folder other
   assert.equal(one.at(-1), "/home/apx-a1/.cache/apx/browser.log");
   assert.equal(two.at(-1), "/home/apx-a2/.cache/apx/browser.log");
   assert.ok(![...one, ...two].some((arg) => arg.startsWith("/tmp/")));
+});
+
+test("on WSL, without socket matching, replies cross only between an agent and itself or the egress proxy", () => {
+  const rules = agentLoopbackRules([1], true);
+  assert.equal(
+    rules,
+    [
+      "table inet apx_loopback {",
+      "  chain output {",
+      "    type filter hook output priority -160; policy accept;",
+      '    oifname "lo" ct state new meta skuid 2001 ct mark set 0x000007d1',
+      '    oifname "lo" ct direction reply meta skuid 2001 ct mark != 0x000007d1 drop',
+      '    oifname "lo" ct direction reply ct mark 0x000007d1 meta skuid != 2001 th sport != 3128 drop',
+      "  }",
+      "}",
+      "",
+    ].join("\n"),
+  );
+  assert.doesNotMatch(rules, /socket cgroupv2/);
 });

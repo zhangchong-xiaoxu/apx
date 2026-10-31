@@ -137,6 +137,14 @@ jobs:
         with:
           browser: linux
           mobile: ${{ matrix.name == 'unit' }}
+      - name: Documentation test dependencies (its own install)
+        if: matrix.name == 'unit'
+        working-directory: apps/docs
+        run: pnpm install --frozen-lockfile
+      - name: Build the documentation tested by unit coverage
+        if: matrix.name == 'unit'
+        working-directory: apps/docs
+        run: pnpm build
       - name: Electron GTK runtime and window manager for native transition tests
         if: matrix.name == 'desktop'
         run: sudo apt-get install --no-install-recommends -y libgtk-3-0t64 openbox

@@ -2,6 +2,7 @@ import { noticeEn } from "@apx/protocol/notices";
 import type { ComputerKey } from "./computer-en.ts";
 import { enChannels } from "./en-channels.ts";
 import { enChat } from "./en-chat.ts";
+import type { enEmailSignatures } from "./en-email-signatures.ts";
 import { enEngines } from "./en-engines.ts";
 import { enFiles } from "./en-files.ts";
 import { enHelper } from "./en-helper.ts";
@@ -13,6 +14,7 @@ import { enTeam } from "./en-team.ts";
 import { enTelemetry } from "./en-telemetry.ts";
 import type { ReceivedKey } from "./received-en.ts";
 import type { SysUsageKey } from "./sysusage-en.ts";
+import type { enThreadDialogs } from "./thread-dialogs-en.ts";
 
 // UI strings, English: the source of truth. Every key lives here; `{name}` placeholders are filled by t().
 export const en = {
@@ -45,8 +47,10 @@ export const en = {
   ...enResources,
   ...enEngines,
   ...enTelemetry,
-  "sysUsage.title": "Usage",
-  "sysUsage.button": "Usage: {pct}% of memory in use",
+  "engineUsage.title": "AI quotas",
+  "engineUsage.quick": "{engine}: {pct}% available · {window}",
+  "sysUsage.title": "System resources",
+  "sysUsage.button": "System: {pct}% of memory in use",
   // Shared words
   "common.agent": "Agent",
   "common.app": "App",
@@ -389,6 +393,11 @@ export const en = {
   "job.output": "Show output",
   "job.openChat": "Open the chat",
   "job.startedIn": "From {origin}",
+  "job.unknownAgent": "Unknown agent",
+  "job.unknownProject": "Project at start unknown",
+  "job.currentChatProject": "Current chat project: {project}",
+  "job.details": "Process details",
+  "job.detailsHint": "Open Process details (ⓘ) to read or copy long values.",
   "chat.activeProcesses": "Active processes: {n}",
   "job.exit": "exit {code}",
   "job.noOutput": "(no output yet)",
@@ -775,6 +784,7 @@ export const en = {
   "link.go.chatNamed": "Open the chat “{name}”",
   "link.go.project": "Open the project",
   "link.go.projectNamed": "Open the project {name}",
+  "media.generating": "Generating images",
   "media.previous": "Previous",
   "media.next": "Next",
   "media.download": "Download",
@@ -1819,13 +1829,6 @@ export const en = {
   "thread.menu.homeLocked": "The main chat can't be archived or deleted",
   "thread.menu.taskLocked": "This chat belongs to a task: delete the task",
   "thread.pinned": "Pinned",
-  "thread.rename.title": "Rename chat",
-  "thread.rename.label": "Name",
-  "thread.rename.hint": "Leave it empty to go back to the automatic title.",
-  "thread.delete.title": "Delete chat",
-  "thread.delete.body": "This action can't be undone.",
-  "thread.delete.what": "“{title}” and all its messages will be deleted.",
-  "thread.delete.confirm": "Delete",
   "inbox.when.pinned": "Pinned",
   "inbox.archived": "Archived",
   "error.updateChat": "Could not update the chat: {error}",
@@ -1840,4 +1843,11 @@ export const en = {
 } as const;
 
 /** Every key the panel may show: these, and those of the packs loaded with their screens (messages.ts PACKS). */
-export type MessageKey = keyof typeof en | ComputerKey | ReceivedKey | SysUsageKey | OnboardingKey;
+export type MessageKey =
+  | keyof typeof en
+  | ComputerKey
+  | ReceivedKey
+  | SysUsageKey
+  | OnboardingKey
+  | keyof typeof enEmailSignatures
+  | keyof typeof enThreadDialogs;

@@ -87,6 +87,14 @@ assert egress.st_uid==1000 and egress.st_mode & 0o777==0o700
 listen=subprocess.check_output(['ss','-Hltnp','src','127.0.0.1:3128'],text=True).strip().splitlines()
 assert len(listen)==1 and 'pid=1,' in listen[0]
 assert subprocess.run(['systemctl','is-enabled','--quiet','apx-agents-boot.service']).returncode==0
+assert oct(Path('/mnt').stat().st_mode & 0o777)=='0o700'
+if Path('/proc/sys/fs/binfmt_misc/WSLInterop').exists():
+  import configparser
+  wsl=configparser.ConfigParser()
+  wsl.read('/etc/wsl.conf')
+  assert Path('/etc/wsl.conf').stat().st_uid==0 and Path('/etc/wsl.conf').stat().st_mode & 0o022==0
+  assert wsl.get('interop','enabled',fallback='true').strip().lower()=='false'
+  assert wsl.get('interop','appendWindowsPath',fallback='true').strip().lower()=='false'
 r=subprocess.run(['sudo','-n','-u','apx-worker','sudo','-n','true'],capture_output=True)
 assert r.returncode!=0
 print('isolated')`,
@@ -102,7 +110,7 @@ print('isolated')`,
       ...workerArgs(
         "python3",
         "-c",
-        "import os,socket;assert os.getuid()==1001;assert not os.access('/home/apx/password',os.R_OK);s=socket.socket();s.settimeout(1);code=s.connect_ex(('192.168.5.2',9));assert code in (1,13,113),code",
+        "import os,socket;assert os.getuid()==1001;assert os.getgid()!=0 and set(os.getgroups())<={os.getgid()};assert not os.access('/home/apx/password',os.R_OK);s=socket.socket();s.settimeout(1);code=s.connect_ex(('192.168.5.2',9));assert code in (1,13,113),code",
       ),
     ],
     { signal, timeout: 5000 },

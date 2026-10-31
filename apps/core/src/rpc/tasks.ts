@@ -21,8 +21,10 @@ import {
   visibleTask,
 } from "../domain/tasks.ts";
 import { ancestors } from "../engine/ancestry.ts";
+import { agentTrip, trip } from "../engine/breaker.ts";
 import type { Engine } from "../engine/engine.ts";
 import { ownerMentionProblem } from "../engine/office.ts";
+import { checkSelfHandoff } from "../engine/task-handoff.ts";
 import { awaitAgent } from "../engine/task-inbox.ts";
 import { reportClose } from "../engine/task-report.ts";
 import {
@@ -38,7 +40,9 @@ import {
 } from "../engine/task-work.ts";
 import { badRequest, conflict, notFound, unauthorized } from "../errors.ts";
 import type { CallContext } from "./context.ts";
+import { assetCaller } from "./media-access.ts";
 import type { Handlers } from "./router.ts";
+import { taskAssets } from "./task-assets.ts";
 import { removeThreadFiles } from "./thread-admin.ts";
 
 export function taskHandlers(
@@ -47,6 +51,7 @@ export function taskHandlers(
   home: string,
   beforeDelete?: (ids: string[]) => Promise<void>,
 ) {
+  const assets = taskAssets(store, home);
   const agentScope = (ctx: CallContext) => boardScope(store, ctx.agent);
   const by = (ctx: CallContext) => ctx.agent?.id ?? "owner";
   /** Who is asking for work: the owner, or an agent one hop further than the turn it calls from. */
@@ -128,7 +133,38 @@ export function taskHandlers(
     return t;
   };
 
+  const checkTransfer = (
+    ctx: CallContext,
+    candidate: {
+      assignee?: string | null;
+      description?: string;
+      project_id?: string;
+      proposed?: boolean;
+      start_at?: string;
+    },
+  ) => {
+    if (
+      !ctx.agent ||
+      candidate.assignee !== ctx.agent.id ||
+      !candidate.description?.trim() ||
+      candidate.proposed ||
+      startsLater(candidate) ||
+      trip(store, ctx.agent.thread_id) ||
+      agentTrip(store, ctx.agent.thread_id, ctx.agent.id)
+    )
+      return;
+    checkSelfHandoff(store, askerOf(ctx), candidate.project_id);
+  };
+
   return {
+    "tasks.attach": ({ task, media_ids }, ctx) => {
+      assetCaller(store, ctx);
+      const t = visible(task, ctx);
+      const sources = assets.prepare(media_ids, ctx);
+      assets.write((attach) => attach(t, sources, ctx));
+      return { attachments: assets.list(task) };
+    },
+    "tasks.detach": ({ task, media_id }, ctx) => assets.detach(visible(task, ctx), media_id, ctx),
     "tasks.list": ({ project, state, assignee, commitments, person, limit }, ctx) => {
       const scope = agentScope(ctx);
       const projects = scope ? [scope.project, undefined] : project ? [project] : undefined;
@@ -167,9 +203,17 @@ export function taskHandlers(
         .filter((child) => !scope || !child.project_id || child.project_id === scope.project)
         .reverse();
       const comments = root.length ? store.messages.list(t.thread_id, 61) : [];
+      let readsAssets = false;
+      try {
+        assetCaller(store, ctx);
+        readsAssets = true;
+      } catch {
+        /* Metadata readers do not inherit file access. */
+      }
       return {
         task: t,
         events: store.tasks.events(t.id),
+        attachments: root.length && readsAssets ? assets.list(t.id) : [],
         sessions,
         consults,
         subtasks,
@@ -194,12 +238,20 @@ export function taskHandlers(
       const start = dueOf(p.start_at);
       const forced = ctx.agent ? proposalReason(store, parent, p.assignee, ctx.agent.id) : undefined;
       const proposed = Boolean(p.propose) || Boolean(forced);
+      checkTransfer(ctx, {
+        assignee: p.assignee,
+        description: p.description,
+        project_id: project,
+        proposed,
+        start_at: start ?? undefined,
+      });
       // The task's conversation: the assignee answers there, or the super-agent until someone is assigned.
       const home = store.threads.get(HOME_THREAD_ID);
       const agent = p.assignee ?? home?.agent_ids[0] ?? "roby";
-      const created = store.tx(() => {
+      const sources = assets.prepare(p.attachments, ctx);
+      const created = assets.write((attach) => {
         const thread = store.threads.create({ kind: "task", title: p.title, agent_ids: [agent], project_id: project });
-        return store.tasks.create({
+        const task = store.tasks.create({
           title: p.title,
           description: p.description,
           project_id: project,
@@ -219,16 +271,22 @@ export function taskHandlers(
           by: by(ctx),
           from: ctx.agent ? { thread: ctx.agent.thread_id, run: ctx.agent.run_id } : undefined,
         });
+        attach(task, sources, ctx);
+        if (!proposed && task.assignee)
+          startTaskWork(store, engine.admit, task, task.assignee, askerOf(ctx), { transfer: true });
+        return task;
       });
       if (proposed) {
         noticeTaskProposed(store, created);
         return created;
       }
-      if (created.assignee) startTaskWork(store, engine.admit, created, created.assignee, askerOf(ctx));
       if (created.status === "review") reviewRequested(store, engine.admit, created);
       return created;
     },
-    "tasks.update": ({ task, person, due_at, remind_at, start_at, reviewer, project, tags, ...c }, ctx) => {
+    "tasks.update": (
+      { task, attachments, person, due_at, remind_at, start_at, reviewer, project, tags, ...c },
+      ctx,
+    ) => {
       const cur = visible(task, ctx);
       checkColumn(store, c.status);
       // An agent keeps its tasks in its own project; the owner can move one anywhere (null = global).
@@ -260,11 +318,22 @@ export function taskHandlers(
         !startsLater({ ...cur, start_at: dueOf(start_at) ?? undefined }) &&
         store.threads.byTask(cur.id).length === 0;
       const starting = !unassign && keeper && (keeper !== cur.assignee || completing || unscheduled || accepting);
-      if (starting) refuseHandOn(ctx);
-      const changed = store.tx(() => {
+      if (starting) {
+        refuseHandOn(ctx);
+        checkTransfer(ctx, {
+          ...cur,
+          ...c,
+          assignee: keeper,
+          project_id: target,
+          start_at: start_at === undefined ? cur.start_at : (dueOf(start_at) ?? undefined),
+        });
+      }
+      const sources = assets.prepare(attachments, ctx);
+      const changed = assets.write((attach) => {
+        attach(cur, sources, ctx);
         noticeTaskWaiting(store, cur, c.awaits_owner ?? cur.awaits_owner);
         if (moving) store.threads.moveTo(cur.thread_id, target);
-        return store.tasks.change(
+        const updated = store.tasks.change(
           task,
           {
             ...c,
@@ -281,6 +350,9 @@ export function taskHandlers(
           },
           by(ctx),
         ) as Task;
+        if (updated.assignee && starting)
+          startTaskWork(store, engine.admit, updated, updated.assignee, askerOf(ctx), { transfer: true });
+        return updated;
       });
       // Put in review (or given another checker while in review): whoever checks it hears now.
       const reviewing = changed.state === "open" && changed.status === "review";
@@ -291,8 +363,6 @@ export function taskHandlers(
         (cur.status !== "review" || (checker !== undefined && checker !== (cur.reviewer ?? null)))
       )
         reviewRequested(store, engine.admit, changed);
-      // Completing a waiting task starts it too; editing one already worked never starts another turn.
-      if (changed.assignee && starting) startTaskWork(store, engine.admit, changed, changed.assignee, askerOf(ctx));
       return changed;
     },
     "tasks.close": ({ task, state, note, rework }, ctx) => {

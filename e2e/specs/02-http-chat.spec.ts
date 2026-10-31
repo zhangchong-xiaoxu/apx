@@ -5,7 +5,7 @@ import { expect, rpc, test } from "./kit.ts";
 test.use({
   launchOptions: {
     executablePath: process.env.E2E_CHROMIUM || undefined,
-    args: ["--host-resolver-rules=MAP panel.test 127.0.0.1", "--no-proxy-server"],
+    args: ["--host-resolver-rules=MAP panel.test 127.0.0.1", "--proxy-server=direct://"],
   },
 });
 

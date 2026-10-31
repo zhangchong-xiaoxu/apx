@@ -1,6 +1,7 @@
-// The owner's arrangement of chats (rename, pin, archive) and deleting one, plus which of their dialogs is open.
+// The owner's arrangement of chats and their management dialogs.
 import type { Thread, WritePolicy } from "@apx/protocol";
 import { t } from "../i18n/index.ts";
+import { discardAttachments } from "./attachmentDrafts.ts";
 import { client } from "./client.ts";
 import { createStore, useSlice } from "./createStore.ts";
 import { keepDraft } from "./drafts.ts";
@@ -9,9 +10,15 @@ import { data } from "./state.ts";
 
 const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
-export type ThreadDialog = { kind: "rename" | "delete"; thread: string } | undefined;
+export type ThreadDialog =
+  | { kind: "rename" | "delete"; thread: string }
+  | { kind: "markRead"; threads: readonly string[] }
+  | undefined;
 const dialogs = createStore<{ open: ThreadDialog }>({ open: undefined });
 export const openThreadDialog = (kind: "rename" | "delete", thread: string) => dialogs.set({ open: { kind, thread } });
+export const openMarkReadDialog = (threads: readonly string[]) => {
+  if (threads.length) dialogs.set({ open: { kind: "markRead", threads: [...new Set(threads)] } });
+};
 export const closeThreadDialog = () => dialogs.set({ open: undefined });
 export const useThreadDialog = () => useSlice(dialogs, (s) => s.open);
 
@@ -34,7 +41,6 @@ export async function deleteThread(id: string): Promise<boolean> {
   try {
     const { deleted } = await client.call("threads.delete", { thread: id });
     forgetThreads(deleted);
-    for (const gone of deleted) keepDraft(gone, "");
     return true;
   } catch (e) {
     notify(t("error.deleteChat", { error: errText(e) }));
@@ -44,6 +50,10 @@ export async function deleteThread(id: string): Promise<boolean> {
 
 /** Drops deleted chats from memory; one still open shows as not found instead of being fetched again. */
 export function forgetThreads(ids: string[]): void {
+  for (const id of ids) {
+    discardAttachments(id);
+    keepDraft(id, "");
+  }
   data.set((s) => {
     const threads: Record<string, Thread> = { ...s.threads };
     const messages = { ...s.messages };

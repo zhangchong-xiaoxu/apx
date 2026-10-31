@@ -3,24 +3,25 @@ import { test } from "node:test";
 import { enComputer } from "./computer-en.ts";
 import { esComputer } from "./computer-es.ts";
 import { en as enBase } from "./en.ts";
+import { enEmailSignatures } from "./en-email-signatures.ts";
 import { enOnboarding } from "./en-onboarding.ts";
 import { es as esBase } from "./es.ts";
+import { esEmailSignatures } from "./es-email-signatures.ts";
 import { esOnboarding } from "./es-onboarding.ts";
 import { loadMessages, loadPack } from "./messages.ts";
 import { enReceived } from "./received-en.ts";
 import { esReceived } from "./received-es.ts";
 import { enSysUsage } from "./sysusage-en.ts";
 import { esSysUsage } from "./sysusage-es.ts";
+import { enThreadDialogs } from "./thread-dialogs-en.ts";
+import { esThreadDialogs } from "./thread-dialogs-es.ts";
 import { zh as zhBase } from "./zh.ts";
 import { zhComputer } from "./zh-computer.ts";
+import { zhEmailSignatures } from "./zh-email-signatures.ts";
 import { zhOnboarding } from "./zh-onboarding.ts";
 import { zhReceived } from "./zh-received.ts";
 import { zhSysUsage } from "./zh-sysusage.ts";
-
-// A pack's strings belong to the language as much as the main chunk's.
-const en = { ...enBase, ...enComputer, ...enReceived, ...enSysUsage, ...enOnboarding };
-const es = { ...esBase, ...esComputer, ...esReceived, ...esSysUsage, ...esOnboarding };
-const zh = { ...zhBase, ...zhComputer, ...zhReceived, ...zhSysUsage, ...zhOnboarding };
+import { zhThreadDialogs } from "./zh-thread-dialogs.ts";
 
 test("onboarding text loads with its screens while shared setup labels remain on the first screen", async () => {
   for (const lang of ["en", "es", "zh"] as const) {
@@ -39,7 +40,54 @@ test("onboarding text loads with its screens while shared setup labels remain on
   }
 });
 
-// Each language is loaded alone, so a key it lacks would show as the bare key.
+test("thread dialog strings load only with their pack in every language", async () => {
+  for (const lang of ["en", "es", "zh"] as const) {
+    const base = await loadMessages(lang);
+    const pack = await loadPack("threads", lang);
+    for (const key of Object.keys(enThreadDialogs) as (keyof typeof enThreadDialogs)[]) {
+      assert.equal(base[key], undefined);
+    }
+    assert.deepEqual(pack, lang === "en" ? enThreadDialogs : lang === "es" ? esThreadDialogs : zhThreadDialogs);
+  }
+});
+
+test("signature strings load as a separate pack in every language", async () => {
+  for (const lang of ["en", "es", "zh"] as const) {
+    const base = await loadMessages(lang);
+    const pack = await loadPack("signatures", lang);
+    assert.equal(base["signature.saved"], undefined);
+    assert.deepEqual(pack, lang === "en" ? enEmailSignatures : lang === "es" ? esEmailSignatures : zhEmailSignatures);
+  }
+});
+
+const en = {
+  ...enBase,
+  ...enComputer,
+  ...enReceived,
+  ...enSysUsage,
+  ...enOnboarding,
+  ...enEmailSignatures,
+  ...enThreadDialogs,
+};
+const es = {
+  ...esBase,
+  ...esComputer,
+  ...esReceived,
+  ...esSysUsage,
+  ...esOnboarding,
+  ...esEmailSignatures,
+  ...esThreadDialogs,
+};
+const zh = {
+  ...zhBase,
+  ...zhComputer,
+  ...zhReceived,
+  ...zhSysUsage,
+  ...zhOnboarding,
+  ...zhEmailSignatures,
+  ...zhThreadDialogs,
+};
+
 for (const [language, translation] of Object.entries({ Spanish: es, Chinese: zh })) {
   test(`every English text has its ${language} translation`, () => {
     const missing = Object.keys(en).filter(

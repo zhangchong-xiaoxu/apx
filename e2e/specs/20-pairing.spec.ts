@@ -2,10 +2,9 @@
 // a wrong code says so, the owner's one-time code pairs this browser, and a token that stops working is dropped. Its
 // own core, apart from the shared sandbox: a token there would lock every other spec out.
 import { type ChildProcess, spawn } from "node:child_process";
-import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { test as base, expect } from "@playwright/test";
+import { stopped, type TempDir, tempDir, waitFor } from "../../apps/core/src/testkit/platform.ts";
 
 const root = path.resolve(import.meta.dirname, "../..");
 const port = Number(process.env.E2E_PAIR_PORT ?? 7466);
@@ -14,9 +13,11 @@ const TOKEN = "e2e-core-token-for-pairing";
 
 let proc: ChildProcess | undefined;
 let dir = "";
+let temp: TempDir;
 
 base.beforeAll(async () => {
-  dir = fs.mkdtempSync(path.join(os.tmpdir(), "apx-e2e-pair-"));
+  temp = tempDir("apx-e2e-pair-");
+  dir = temp.path;
   const home = path.join(dir, "home");
   proc = spawn(process.execPath, ["--no-warnings", path.join(root, "apps/core/src/main.ts")], {
     cwd: root,
@@ -37,18 +38,25 @@ base.beforeAll(async () => {
       CODEX_HOME: path.join(dir, "codex"),
     },
   });
-  for (let i = 0; i < 150; i++) {
-    try {
-      if ((await fetch(`${core}/health`)).ok) return;
-    } catch {}
-    await new Promise((r) => setTimeout(r, 100));
-  }
-  throw new Error("the token-protected core did not start");
+  await waitFor(
+    async () => {
+      try {
+        return (await fetch(`${core}/health`)).ok;
+      } catch {
+        return false;
+      }
+    },
+    "the token-protected core to start",
+    { ms: 15_000, every: 100 },
+  );
 });
 
-base.afterAll(() => {
-  proc?.kill("SIGTERM");
-  if (dir) fs.rmSync(dir, { recursive: true, force: true });
+base.afterAll(async () => {
+  if (proc) {
+    proc.kill("SIGTERM");
+    await stopped(proc);
+  }
+  await temp.remove();
 });
 
 /** The owner, with the core's token (as `apx pair` on the server would be). */

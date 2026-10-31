@@ -14,9 +14,10 @@ import { fakeDiscord } from "../apps/core/src/channels/fake-discord.test-support
 import { fakeSlack } from "../apps/core/src/channels/fake-slack.test-support.ts";
 import { fakeTelegram } from "../apps/core/src/channels/fake-telegram.test-support.ts";
 import { fakeGoogle } from "../apps/core/src/integrations/fake-google.test-support.ts";
+import { waitFor } from "../apps/core/src/testkit/platform.ts";
 import { compileCacheEnv } from "../scripts/compile-cache.ts";
 import { fakeLlm } from "./fake-llm.ts";
-import { writeFixtures } from "./fixtures.ts";
+import { fixturePath, writeFixtures } from "./fixtures.ts";
 
 const root = path.resolve(import.meta.dirname, "..");
 export const E2E = {
@@ -55,7 +56,7 @@ const core = spawn(process.execPath, ["--no-warnings", "--import", hook, path.jo
   stdio: ["ignore", "pipe", "pipe"],
   env: {
     // Only the sandbox's own CLIs, node and the system: none of the machine's agents (claude, codex, opencode…).
-    PATH: [fx.bin, "/usr/bin", "/bin"].join(path.delimiter),
+    PATH: fixturePath(fx.bin),
     HOME: process.env.HOME ?? os.homedir(),
     ...compileCacheEnv(root),
     APX_HOME: fx.home,
@@ -176,12 +177,19 @@ const control = http.createServer((req, res) => {
 control.listen(E2E.control, "127.0.0.1");
 
 // Ready when the core answers.
-for (let i = 0; i < 100; i++) {
-  try {
-    if ((await fetch(`http://127.0.0.1:${E2E.port}/health`)).ok) break;
-  } catch {}
-  await new Promise((r) => setTimeout(r, 100));
-}
+await waitFor(
+  async () => {
+    if (core.exitCode !== null)
+      throw new Error(`e2e core exited (${core.exitCode}); see ${path.join(dir, "core.log")}`);
+    try {
+      return (await fetch(`http://127.0.0.1:${E2E.port}/health`)).ok;
+    } catch {
+      return false;
+    }
+  },
+  "the sandbox core to become ready",
+  { ms: 50_000, every: 100 },
+);
 // Every agent answers with the fake model unless a test picks another.
 await fetch(`http://127.0.0.1:${E2E.port}/rpc/models.set_config`, {
   method: "POST",

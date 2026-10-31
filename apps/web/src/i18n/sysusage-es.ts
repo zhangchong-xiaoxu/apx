@@ -1,9 +1,48 @@
 import type { enSysUsage } from "./sysusage-en.ts";
 
 export const esSysUsage: Record<keyof typeof enSysUsage, string> = {
-  "sysUsage.title": "Consumo",
+  "engines.showUsage": "Consumo",
+  "engines.usageHint":
+    "Mostrar límites de cuenta en APX. Apagado por defecto. Sin una fuente compatible no se muestra un saldo. No enciende ni apaga el engine.",
+  "engines.usageCodexHint":
+    "Mostrar límites de cuenta en APX. Activado por defecto al vincular tu plan ChatGPT. La fuente de cuota también necesita una cuenta vinculada por separado a Codex CLI. No enciende ni apaga los modelos.",
+  "engines.usageLoadError": "No se pudieron cargar las preferencias de consumo. Reintentá para cargar el switch.",
+  "engines.usageSaveError": "No se pudo guardar la preferencia de consumo. Se mantuvo tu elección anterior.",
+  "engineUsage.help": "Ayuda sobre cuotas de IA",
+  "engineUsage.engineHelp": "Ayuda sobre cuotas de {engine}",
+  "engineUsage.empty":
+    "No hay engines seleccionados. Activá Consumo en la card de un engine para ver acá sus límites de cuenta.",
+  "engineUsage.description":
+    "Límites de cuenta informados por los engines en el equipo donde corre el core, no solo por las sesiones de APX.",
+  "engineUsage.disclaimer":
+    "Los tokens de una sesión y los costos de API no son el saldo de una suscripción. Sin datos no significa consumo ilimitado.",
+  "engineUsage.loading": "Consultando límites de cuenta…",
+  "engineUsage.failed": "No se pudieron consultar los límites. Volvé a intentar.",
+  "engineUsage.updated": "Consultado {at}",
+  "engineUsage.remaining": "{pct}% disponible",
+  "engineUsage.used": "{pct}% usado",
+  "engineUsage.primary": "Ventana actual",
+  "engineUsage.secondary": "Ventana extendida",
+  "engineUsage.fiveHours": "5 horas",
+  "engineUsage.weekly": "Semanal",
+  "engineUsage.codexSource": "Fuente: límites de cuenta de Codex",
+  "engineUsage.claudeSource": "Fuente: cuota del plan de Claude (/usage)",
+  "engineUsage.window": "Ventana de {minutes} minutos",
+  "engineUsage.resets": "Se renueva {at}",
+  "engineUsage.notInstalled": "CLI no encontrada",
+  "engineUsage.unsupported": "Sin fuente de cuota compatible",
+  "engineUsage.signedOut": "Iniciá sesión en el engine para consultar los límites.",
+  "engineUsage.unavailable": "Límites de cuenta no disponibles",
+  "engineUsage.source": "Fuente: {source}",
+  "engineUsage.claudeNote":
+    "Cuota del plan de Claude mediante Claude Code 2.1.273 o posterior. Iniciá sesión en el CLI; APX no lee tus credenciales.",
+  "engineUsage.opencodeNote": "OpenCode usa la cuenta del proveedor elegido; no tiene un saldo único.",
+  "engineUsage.antigravityNote":
+    "Consultá tu cuota por modelo en Antigravity. Acá todavía no hay una integración de cuota compatible.",
+  "engineUsage.engines": "Administrar engines",
+  "sysUsage.title": "Recursos del sistema",
   "sysUsage.description": "Lo que tiene esta computadora y cuánto usa APX.",
-  "sysUsage.button": "Consumo: {pct}% de la memoria en uso",
+  "sysUsage.button": "Sistema: {pct}% de la memoria en uso",
   "sysUsage.memory": "Memoria",
   "sysUsage.memoryOf": "{used} de {total} en uso",
   "sysUsage.apx": "APX {size}",
@@ -40,7 +79,7 @@ export const esSysUsage: Record<keyof typeof enSysUsage, string> = {
   "sysUsage.vm.assigned": "{assigned} de memoria asignada",
   "sysUsage.vm.disk": "{size} en el disco",
   "sysUsage.vm.cpus": "{n} núcleos",
-  "sysUsage.openFull": "Ver todo el consumo",
+  "sysUsage.openFull": "Ver todos los recursos",
   "sysUsage.refresh": "Actualizar",
   "sysUsage.unavailable": "No se pudo leer el consumo: {error}",
 };

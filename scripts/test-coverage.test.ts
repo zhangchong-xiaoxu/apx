@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import path from "node:path";
 import { test } from "node:test";
 import { pathToFileURL } from "node:url";
 import { sourceMapResolver } from "./coverage-source-map.ts";
@@ -9,7 +10,13 @@ import {
   mergeCoverage,
   missingParts,
   sandboxPorts,
+  unitCoverageArea,
 } from "./test-coverage.ts";
+
+test("unit coverage groups tooling into the repository-root suite on native paths", () => {
+  assert.equal(unitCoverageArea(path.join("scripts", "sample.test.ts")), "scripts");
+  assert.equal(unitCoverageArea(path.join("apps", "core", "src", "sample.test.ts")), path.join("apps", "core"));
+});
 
 test("coverage sandboxes use distinct available loopback ports and honor explicit overrides", async () => {
   const ports = await sandboxPorts({});

@@ -26,6 +26,16 @@ const PACKS = {
     es: () => import("./es-onboarding.ts").then((m) => m.esOnboarding),
     zh: () => import("./zh-onboarding.ts").then((m) => m.zhOnboarding),
   },
+  threads: {
+    en: () => import("./thread-dialogs-en.ts").then((m) => m.enThreadDialogs),
+    es: () => import("./thread-dialogs-es.ts").then((m) => m.esThreadDialogs),
+    zh: () => import("./zh-thread-dialogs.ts").then((m) => m.zhThreadDialogs),
+  },
+  signatures: {
+    en: () => import("./en-email-signatures.ts").then((m) => m.enEmailSignatures),
+    es: () => import("./es-email-signatures.ts").then((m) => m.esEmailSignatures),
+    zh: () => import("./zh-email-signatures.ts").then((m) => m.zhEmailSignatures),
+  },
   computer: {
     en: () => import("./computer-en.ts").then((m) => m.enComputer),
     es: () => import("./computer-es.ts").then((m) => m.esComputer),

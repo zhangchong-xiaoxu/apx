@@ -33,6 +33,12 @@ export const zh: Partial<Record<MessageKey, string>> = {
   ...zhResources,
   ...zhTeam,
   ...noticeZh,
+  "job.unknownAgent": "未知智能体",
+  "job.unknownProject": "启动时项目未知",
+  "job.currentChatProject": "当前对话项目：{project}",
+  "job.details": "进程详情",
+  "job.detailsHint": "打开“进程详情”(ⓘ) 查看或复制较长的值。",
+  "media.generating": "正在生成图像",
   "telemetry.check": "分享匿名使用统计",
   "telemetry.checkHint":
     "匿名使用统计能让我们了解 APX 的实际使用方式，从而确定优先改进什么。我们绝不会查看你的对话、文件或个人数据。",

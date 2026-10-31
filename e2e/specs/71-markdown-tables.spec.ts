@@ -49,7 +49,7 @@ test("an agent's table keeps its columns, scrolls in its frame, maximizes and co
   await frame.getByRole("button", { name: "Copiar tabla" }).click();
   await page.getByRole("menuitem", { name: "Copiar como Markdown" }).click();
   await expect
-    .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+    .poll(() => page.evaluate(async () => (await navigator.clipboard.readText()).replaceAll("\r\n", "\n")))
     .toContain(
       `| Issue | Classification | Priority | Assigned agent | Result |\n| --- | --- | :---: | --- | --- |\n| #112 | Confirmed bug | High | Fausto | Created \`${task.id}\``,
     );
@@ -57,7 +57,7 @@ test("an agent's table keeps its columns, scrolls in its frame, maximizes and co
   await frame.getByRole("button", { name: "Copiar tabla" }).click();
   await page.getByRole("menuitem", { name: "Copiar como TSV" }).click();
   await expect
-    .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+    .poll(() => page.evaluate(async () => (await navigator.clipboard.readText()).replaceAll("\r\n", "\n")))
     .toMatch(
       /^Issue\tClassification\tPriority\tAssigned agent\tResult\n#112\tConfirmed bug\tHigh\tFausto\tCreated \[Bug #112\] Avoid automatic runs/,
     );
