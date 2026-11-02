@@ -3,6 +3,7 @@
 import type { ProviderConfig } from "../config.ts";
 import { parseRef } from "../domain/refs.ts";
 import type { Secrets } from "../secrets.ts";
+import { untrusted } from "../tools/result.ts";
 import { anthropicMessages } from "./anthropic-messages.ts";
 import { chatgptResponses } from "./chatgpt-responses.ts";
 import { openaiChat } from "./openai-chat.ts";
@@ -11,6 +12,7 @@ import {
   type Completion,
   type ModelFailure,
   ProviderError,
+  parseToolArguments,
   type ToolSpec,
   type Transport,
   type Usage,
@@ -104,11 +106,12 @@ export function createLlm(opts: {
       let broken: ProviderError | undefined;
       const skipped = new Set<string>();
       const failed: ModelFailure[] = [];
-      const need = tokensOf(req);
-      const messages = withImageBytes(req.messages, opts.media);
+      const history = req.tools.length ? req.messages : toolHistoryAsText(req.messages);
+      const need = tokensOf({ ...req, messages: history });
+      const messages = withImageBytes(history, opts.media);
       // A model known not to read images refuses a call carrying any: it gets the words alone.
       const wordsOnly = withoutImages(messages);
-      // A model that failed after streaming part of an answer must not leave that part on screen.
+      // A rejected attempt must not leave its streamed text on screen, even when the same model retries.
       let streamed = false;
       const onText =
         req.onText &&
@@ -165,6 +168,11 @@ export function createLlm(opts: {
               firstByteMs: opts.firstByteMs,
               fetchImpl: opts.fetchImpl ?? fetch,
             });
+            if (out.message.tool_calls?.length && !req.tools.length)
+              throw new ProviderError("empty", "the model returned tool calls while tools are disabled");
+            for (const call of out.message.tool_calls ?? []) parseToolArguments(call);
+            if (/^\s*<\uFF5C\uFF5CDSML\uFF5C\uFF5C calls>/.test(out.message.content ?? ""))
+              throw new ProviderError("empty", "the model returned tool-call markup instead of an answer");
             if (t.provider.transport === "openai-chat") checkNotCut(out.usage, need);
             return {
               ...out,
@@ -176,6 +184,10 @@ export function createLlm(opts: {
             if (req.signal.aborted) throw req.signal.reason ?? err;
             last = err instanceof ProviderError ? err : new ProviderError("network", String(err));
             last.message = `${ref}: ${last.message}`;
+            if (streamed) {
+              streamed = false;
+              req.onText?.("");
+            }
             // A plan's token can be refused before it says it expires: renew it once and try again.
             if (last.kind === "auth" && signIn?.renew && !renewedToken) {
               renewedToken = true;
@@ -200,10 +212,6 @@ export function createLlm(opts: {
         if (last?.limit) limited.push(last);
         if (last && (last.kind === "auth" || last.kind === "model_gone" || last.kind === "bad_request"))
           broken ??= last;
-        if (streamed) {
-          streamed = false;
-          req.onText?.("");
-        }
       }
       // Every model's reason, not only the last one's: the owner needs to see why the first choice failed.
       const reasons = failed.map((f) => `${f.model}: ${f.why}`).join("\n");
@@ -236,6 +244,22 @@ function tokensOf(req: LlmRequest): number {
 }
 
 const kTokens = (n: number) => `${Math.round(n / 1000)}k tokens`;
+
+/** A tool-free summary must not carry structured tool history without the definitions some providers require. */
+function toolHistoryAsText(messages: ChatItem[]): ChatItem[] {
+  return messages.map((m) => {
+    if (m.role === "tool")
+      return { role: "user", content: untrusted("tool_result", { call_id: m.tool_call_id }, m.content) };
+    if (m.role === "assistant" && m.tool_calls?.length) {
+      const { tool_calls, ...rest } = m;
+      return {
+        ...rest,
+        content: [m.content, untrusted("past_tool_calls", {}, JSON.stringify(tool_calls))].filter(Boolean).join("\n\n"),
+      };
+    }
+    return m;
+  });
+}
 
 /**
  * A local server (Ollama) cuts a prompt longer than its context length without saying so: the model then answers

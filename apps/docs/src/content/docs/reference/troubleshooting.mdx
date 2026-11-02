@@ -78,6 +78,21 @@ Windows 的 `apx service install` 通过 Windows Script Host（`wscript.exe` / J
 Desktop app versions before this change wrote `core.log` in the app's own logs folder (`~/Library/Logs/APX` on
 macOS, `%APPDATA%\APX\logs` on Windows, `~/.config/APX/logs` on Linux); older lines stay there.
 
+## A model returns invalid tool calls
+
+Truncated or non-object tool arguments are rejected before execution. APX retries the model within its normal
+bounded retry policy, then tries the next configured model. It never replaces malformed JSON with empty arguments
+or executes a tool envelope printed as ordinary text. Rejected streamed text is cleared before each retry, including
+a retry on the same model. If every model returns invalid output, the turn fails visibly.
+Valid JSON that does not match a tool's schema still returns a validation error to the model so it can correct it.
+
+When tools are disabled for a final summary, earlier calls and results are sent as quoted, untrusted text instead of
+structured tool blocks. This avoids gateways rejecting a request that has tool history but no tool definitions;
+the stored transcript is unchanged. No tools are executed in that final summary.
+
+A fallback notice means another model answered, not that a requested file was saved. Check the tool cards and the
+actual artifact before treating the work as delivered.
+
 ## The port is already in use
 
 Only one process can listen on `7440`. If another core already holds it (an earlier `pnpm dev`, the desktop app's own

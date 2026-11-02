@@ -85,6 +85,18 @@ export class ProviderError extends Error {
   }
 }
 
+export function parseToolArguments(call: ToolCall): Record<string, unknown> {
+  let args: unknown;
+  try {
+    args = JSON.parse(call.function.arguments || "{}");
+  } catch {
+    throw new ProviderError("empty", `invalid JSON arguments for tool ${call.function.name}`);
+  }
+  if (!args || typeof args !== "object" || Array.isArray(args))
+    throw new ProviderError("empty", `non-object arguments for tool ${call.function.name}`);
+  return args as Record<string, unknown>;
+}
+
 export function classifyHttp(status: number, body: string, headers?: Headers): ProviderError {
   const text = body.slice(0, 300);
   if (status === 401 || status === 403) return new ProviderError("auth", `HTTP ${status}: ${text}`);

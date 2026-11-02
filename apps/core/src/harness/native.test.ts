@@ -95,3 +95,22 @@ test("a turn given more steps uses them before it must answer", async () => {
   await nativeHarness(llm).run(io);
   assert.equal(llm.calls.filter((c) => c.tools.length).length, 30);
 });
+
+test("malformed tool JSON never becomes an empty argument object", async () => {
+  const broken = callTool("bad", "file_write", {});
+  const call = broken.message.tool_calls?.[0];
+  assert.ok(call);
+  call.function.arguments = '{"path":"notes.md"';
+  let executed = 0;
+  await assert.rejects(
+    turn(
+      () => broken,
+      () => {
+        executed++;
+        return "written";
+      },
+    ),
+    /arguments.*file_write/,
+  );
+  assert.equal(executed, 0);
+});

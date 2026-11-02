@@ -83,6 +83,23 @@ Las versiones de la app de escritorio anteriores a este cambio escribían `core.
 (`~/Library/Logs/APX` en macOS, `%APPDATA%\APX\logs` en Windows, `~/.config/APX/logs` en Linux); las líneas
 viejas siguen ahí.
 
+## Un modelo devuelve llamadas a herramientas inválidas
+
+Los argumentos truncados o que no son un objeto se rechazan antes de ejecutarlos. APX reintenta dentro de su
+política acotada habitual y después prueba el siguiente modelo configurado. Nunca reemplaza JSON inválido por
+argumentos vacíos ni ejecuta un bloque de llamadas impreso como texto común. Si todos los modelos devuelven una
+salida inválida, el turno falla de forma visible. El texto transmitido de un intento rechazado se limpia antes de
+cada reintento, incluso con el mismo modelo. El JSON válido que no cumple el esquema de una herramienta sigue
+devolviendo un error de validación al modelo para que lo corrija.
+
+Cuando se desactivan las herramientas para el resumen final, las llamadas y los resultados anteriores se envían
+como texto citado y no confiable, en lugar de bloques estructurados. Así se evita que un gateway rechace un pedido
+con historial de herramientas pero sin sus definiciones; la transcripción guardada no cambia. No se ejecutan
+herramientas durante ese resumen final.
+
+Un aviso de modelo alternativo significa que otro modelo respondió, no que se guardó el archivo solicitado.
+Revisá las tarjetas de herramientas y el archivo real antes de dar el trabajo por entregado.
+
 ## El puerto ya está en uso
 
 Un solo proceso puede escuchar en el `7440`. Si otro core ya lo tiene (un `pnpm dev` de antes, el core de la app de

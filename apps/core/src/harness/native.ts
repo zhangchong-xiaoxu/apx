@@ -2,7 +2,7 @@
 // logged as they happen.
 
 import type { Llm } from "../providers/llm.ts";
-import type { ChatItem, ModelFailure, Usage } from "../providers/types.ts";
+import { type ChatItem, type ModelFailure, ProviderError, parseToolArguments, type Usage } from "../providers/types.ts";
 import { readsImages } from "../providers/vision.ts";
 import { modelSpec } from "../tools/types.ts";
 import type { Harness } from "./types.ts";
@@ -62,6 +62,8 @@ export function nativeHarness(llm: Llm): Harness {
             io.onText(prefix + s);
           },
         });
+        if ((!tools || toolsOff || !io.tools.length) && c.message.tool_calls?.length)
+          throw new ProviderError("empty", "the model returned tool calls while tools are disabled");
         io.signal.throwIfAborted();
         io.alive?.();
         model = c.model;
@@ -105,10 +107,7 @@ export function nativeHarness(llm: Llm): Harness {
         // The model that asked for these tools takes the next step too, unless it fails over.
         const sees = readsImages(c.model);
         for (const call of calls) {
-          let args: Record<string, unknown> = {};
-          try {
-            args = JSON.parse(call.function.arguments || "{}") as Record<string, unknown>;
-          } catch {}
+          const args = parseToolArguments(call);
           const out = await io.execute(call.id, call.function.name, args);
           io.alive?.();
           push({ role: "tool", tool_call_id: call.id, content: out.text });

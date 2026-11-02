@@ -298,7 +298,7 @@ test("a token the plan refuses before its expiry is renewed once and the call go
     llm.complete({
       models: ["chatgpt/gpt-6-luna"],
       messages: [{ role: "user", content: "how many tasks?" }],
-      tools: [],
+      tools: [{ type: "function", function: { name: "task_list", description: "tasks", parameters: {} } }],
       signal: AbortSignal.timeout(5000),
     });
 

@@ -108,7 +108,7 @@ test("tool calls stream in fragments and keep provider extras", async () => {
   const out = await llm.complete({
     models: ["pa"],
     messages: [],
-    tools: [],
+    tools: [{ type: "function", function: { name: "f", description: "", parameters: {} } }],
     signal: new AbortController().signal,
     onText: () => {},
   });
@@ -140,7 +140,7 @@ test("a stream cut inside a tool call's arguments is retried, never handed to th
   const out = await llm.complete({
     models: ["pa/m1"],
     messages: [],
-    tools: [],
+    tools: [{ type: "function", function: { name: "file_write", description: "", parameters: {} } }],
     signal: new AbortController().signal,
     onText: () => {},
   });
