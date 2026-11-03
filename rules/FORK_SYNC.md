@@ -32,9 +32,35 @@ not point the fork's update feed, installer, or release workflow at upstream.
 ## Verifying
 
 1. Check for conflict markers and review the complete merge diff, especially protocol methods, migrations, update
-   sources, installer URLs, telemetry, release workflows, and translations.
+   sources, installer URLs, telemetry, release workflows, and translations. Confirm the fork-owned guidance survived:
+   rule 31 and the "Syncing the fork" row in `AGENTS.md`, D-184 in `DECISIONS.md`, this file, and
+   `.agents/skills/apx-upstream-sync/`.
 2. If the lockfile changed, run `pnpm install --frozen-lockfile`. Run focused tests for each changed surface, then
    `pnpm preflight`; use `pnpm verify` when end-to-end or performance paths changed.
 3. Keep the fork's release branch and CI targets on `master`. Do not push or tag an unverified sync.
 4. Merge the integration branch only after checks pass. If only a subset of upstream commits was cherry-picked, keep
    the fork marked as partially integrated and do not treat that as a completed upstream sync.
+
+## Recording a sync
+
+- The merge commit body lists the upstream range, each conflicted area with how it was resolved, the checks run with
+  their results, and any known limitation accepted by the owner.
+- A pitfall that will recur on later syncs is added to [Known pitfalls](#known-pitfalls) on the same sync branch.
+  The narrative of one sync (timeline, sizes, judgement calls) stays in the maintainers' private notes, not here.
+
+## Known pitfalls
+
+Each entry names the symptom and what to keep; remove an entry once upstream or the fork makes it impossible.
+
+- **Update feed and installers drift to upstream.** Merged updater, desktop install and single-instance adoption
+  code resolves the upstream feed again, and docs regain official installer links or deployment defaults. Keep the
+  `master` feed end to end and drop upstream deployment defaults.
+- **Chinese translations disappear.** Taking upstream's side of an i18n file drops fork-only keys. Merge key by key
+  and keep the Chinese entries.
+- **The first screen picks up schema code.** A merged import can pull zod into the first load (rule 27). Run
+  `pnpm perf` and move the import behind `apps/web/src/lazy.ts`.
+- **Windows-only failures.** E2E fixtures, native process sampling and performance budgets have failed only on
+  Windows after a sync. Classify each as product or test before changing it ([TESTING.md](TESTING.md#portable-tests));
+  a budget miss accepted by the owner is recorded in the commit body, and that commit is not tagged.
+- **CI prerequisites move.** Upstream workflow changes can drop a step the fork's jobs need (the documentation build
+  once lost its prerequisite). Read the merged workflow diff, not only the job results.
