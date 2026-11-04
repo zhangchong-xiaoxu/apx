@@ -16,13 +16,16 @@ import {
   Switch,
 } from "@apx/ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { EmailSignatures } from "../config/EmailSignatures.tsx";
 import { client } from "../data/client.ts";
 import { loadMarks } from "../data/models.ts";
 import { notify } from "../data/notices.ts";
 import { signInMcp } from "../data/resources.ts";
 import { useData } from "../data/state.ts";
 import { isKey, useT } from "../i18n/index.ts";
+import { CalendarReminders } from "./CalendarReminders.tsx";
 import { GoogleSignInForm } from "./GoogleSignIn.tsx";
+import { MailCheck } from "./MailCheck.tsx";
 import type { TabProps } from "./ResourcesView.tsx";
 
 export type Integration = Result<"integrations.list">["integrations"][number];
@@ -32,6 +35,12 @@ export const describe = (i: Pick<Integration, "id" | "description">, t: ReturnTy
   const key = `int.desc.${i.id.replaceAll("-", "")}`;
   return isKey(key) ? t(key) : i.description;
 };
+/** It has settings of its own (a signature and the mail check need the account they are for). */
+const configurable = (i: Integration) =>
+  Boolean(
+    i.settings?.includes("reminders") ||
+      (i.oauth?.account && (i.settings?.includes("signature") || i.settings?.includes("mail"))),
+  );
 /** Nothing to type: it signs in through the owner's browser (or needs no account at all). */
 const viaBrowser = (i: Integration) => !i.oauth && i.fields.length === 0;
 
@@ -244,6 +253,7 @@ function IntegrationDetail({
   const t = useT();
   const [mode, setMode] = useState<"all" | "chosen">(i.off_in.length ? "chosen" : "all");
   const [account, setAccount] = useState(editing);
+  const [preferences, setPreferences] = useState(false);
   const [busy, setBusy] = useState(false);
   useEffect(() => setMode(i.off_in.length ? "chosen" : "all"), [i.off_in.length]);
   const everywhere = async () => {
@@ -273,8 +283,18 @@ function IntegrationDetail({
           </span>
         </span>
         <Button size="sm" variant="secondary" leadingIcon={<Icons.Pencil size={14} />} onClick={() => setAccount(true)}>
-          {t("res.edit")}
+          {t("int.editConnection")}
         </Button>
+        {configurable(i) && (
+          <Button
+            size="sm"
+            variant="secondary"
+            leadingIcon={<Icons.Settings size={14} />}
+            onClick={() => setPreferences(true)}
+          >
+            {t("int.configure")}
+          </Button>
+        )}
         <Button size="sm" variant="ghost" loading={busy} onClick={() => void disconnect()}>
           {t("int.disconnect")}
         </Button>
@@ -323,6 +343,26 @@ function IntegrationDetail({
           );
         })}
       </div>
+
+      {preferences && (
+        <Dialog open size="lg" title={t("int.configure")} onOpenChange={(open) => !open && setPreferences(false)}>
+          {i.settings?.includes("mail") && i.oauth?.account && (
+            <MailCheck id={i.id} readable={i.oauth.client === "own"} />
+          )}
+          {i.settings?.includes("signature") && i.oauth?.account && (
+            <EmailSignatures
+              target={{
+                transport: "gmail",
+                account: i.oauth.account,
+                sender: i.oauth.account,
+                label: i.label,
+                importable: i.oauth.client === "own",
+              }}
+            />
+          )}
+          {i.settings?.includes("reminders") && <CalendarReminders id={i.id} />}
+        </Dialog>
+      )}
       {account && (
         <ConnectForm
           i={i}

@@ -33,7 +33,7 @@ not point the fork's update feed, installer, or release workflow at upstream.
 
 1. Check for conflict markers and review the complete merge diff, especially protocol methods, migrations, update
    sources, installer URLs, telemetry, release workflows, and translations. Confirm the fork-owned guidance survived:
-   rule 31 and the "Syncing the fork" row in `AGENTS.md`, D-184 in `DECISIONS.md`, this file, and
+   rule 34 and the "Syncing the fork" row in `AGENTS.md`, D-185 in `DECISIONS.md`, this file, and
    `.agents/skills/apx-upstream-sync/`.
 2. If the lockfile changed, run `pnpm install --frozen-lockfile`. Run focused tests for each changed surface, then
    `pnpm preflight`; use `pnpm verify` when end-to-end or performance paths changed.
@@ -55,12 +55,18 @@ Each entry names the symptom and what to keep; remove an entry once upstream or 
 - **Update feed and installers drift to upstream.** Merged updater, desktop install and single-instance adoption
   code resolves the upstream feed again, and docs regain official installer links or deployment defaults. Keep the
   `master` feed end to end and drop upstream deployment defaults.
-- **Chinese translations disappear.** Taking upstream's side of an i18n file drops fork-only keys. Merge key by key
-  and keep the Chinese entries.
+- **Chinese translations disappear or tests assume English.** Taking upstream's side of an i18n file drops fork-only
+  keys, while locale-sensitive notice tests can fail when they assert English literals. Merge key by key, keep the
+  Chinese entries, and derive expected notice text with the selected locale.
+- **Upstream extracts a lazy language pack.** The fork's base dictionaries may still duplicate those strings in the
+  first-screen bundle, while locale-specific chunks retain obsolete keys. Move extracted strings out of the base
+  dictionaries, provide a loader for every supported language, and run the i18n and performance checks.
 - **The first screen picks up schema code.** A merged import can pull zod into the first load (rule 27). Run
   `pnpm perf` and move the import behind `apps/web/src/lazy.ts`.
 - **Windows-only failures.** E2E fixtures, native process sampling and performance budgets have failed only on
   Windows after a sync. Classify each as product or test before changing it ([TESTING.md](TESTING.md#portable-tests));
   a budget miss accepted by the owner is recorded in the commit body, and that commit is not tagged.
+- **Changing an SSH connection aborts the chooser.** Load the first-run chooser before stopping the previous tunnel;
+  stopping it first can interrupt the panel navigation and leave the desktop window blank.
 - **CI prerequisites move.** Upstream workflow changes can drop a step the fork's jobs need (the documentation build
   once lost its prerequisite). Read the merged workflow diff, not only the job results.

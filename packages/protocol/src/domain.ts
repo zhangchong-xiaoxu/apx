@@ -1,6 +1,6 @@
 // Domain shapes every client renders. Run states follow A2A task states so an A2A adapter stays thin.
 import { z } from "zod";
-import { PERSON_RELATIONS } from "./constants.ts";
+import { NEGATIVE_PROMPT_MAX, PERSON_RELATIONS } from "./constants.ts";
 
 export const Id = z.string().min(1).max(128);
 
@@ -36,7 +36,10 @@ export const AgentRules = z.object({
 });
 export type AgentRules = z.infer<typeof AgentRules>;
 
-/** What each autonomy amounts to per risk, as the editor shows it before an agent sets rules of its own. */
+/**
+ * What each autonomy amounts to per risk, only as the editor shows it: the core runs the mode itself, so this is never
+ * saved as an agent's rules (DECISIONS.md#d-090).
+ */
 export const AUTONOMY_RULES: Record<Autonomy, Required<AgentRules>> = {
   manual: { read: "auto", write: "ask", outside: "ask", irreversible: "ask" },
   auto: { read: "auto", write: "auto", outside: "ask", irreversible: "ask" },
@@ -94,6 +97,11 @@ export const Project = z.object({
   kind: z.string().optional(),
   /** false when the registered folder is not on disk (moved, unmounted drive). */
   present: z.boolean().default(true),
+  /**
+   * Why a folder that is there could not be read: `waiting`, the system has not let APX in yet (a macOS privacy
+   * prompt nobody answered); `denied`, it refused. Known only to the running core.
+   */
+  unreadable: z.enum(["waiting", "denied"]).optional(),
   /** Blob name from the design system catalog, used as the project's avatar. */
   blob: z.string().optional(),
   path: z.string().optional(),
@@ -331,7 +339,7 @@ export type Author = z.infer<typeof Author>;
  * `agent_id` is that agent's; without one, every agent's. `project` answers a folder card: the folder becomes a
  * read-only folder of the chat's project (never a grant).
  */
-export const ApprovalScope = z.enum(["once", "session", "always", "project"]);
+export const ApprovalScope = z.enum(["once", "session", "always", "project", "tab", "turn"]);
 export type ApprovalScope = z.infer<typeof ApprovalScope>;
 /** Ends the key of a grant for a tool's calls that always ask (a destructive command, a routine change). */
 export const STRICT_APPROVAL = "#always";
@@ -340,7 +348,17 @@ export const ToolApproval = z.object({
   server: z.string(),
   project_id: Id.optional(),
   tool: z.string(),
-  scope: z.enum(["session", "always"]),
+  scope: z.enum(["session", "always", "tab", "turn"]),
+  browser: z
+    .object({
+      origin: z.string(),
+      tab: z.string(),
+      epoch: z.string(),
+      run: Id,
+      title: z.string().max(200).optional(),
+      tab_number: z.number().int().positive().optional(),
+    })
+    .optional(),
   thread_id: Id.optional(),
   agent_id: Id.optional(),
   /**
@@ -523,6 +541,16 @@ const KnownPart = z.discriminatedUnion("type", [
     /** For a confirmation: the tool and a readable summary of its arguments. */
     tool: z.string().optional(),
     detail: z.string().optional(),
+    browser: z
+      .object({
+        origin: z.string(),
+        title: z.string().max(200).optional(),
+        tab_number: z.number().int().positive().optional(),
+        document: z.string(),
+        path: z.string().optional(),
+        sha256: z.string().optional(),
+      })
+      .optional(),
     change: FileChange.optional(),
     options: z.array(z.string()).optional(),
     /** A question whose options may be picked several at once. */
@@ -562,6 +590,8 @@ const KnownPart = z.discriminatedUnion("type", [
    * is shown. `why`: the agent's line on what it would do with it.
    */
   z.object({ type: z.literal("connect"), why: z.string().optional(), offers: z.array(ConnectOffer) }),
+  /** A Flow an agent made or changed in this turn: the chat shows its drawing and opens it in the editor. */
+  z.object({ type: z.literal("flow"), flow: z.string(), project: z.string(), name: z.string() }),
   /** Something the system says about the turn (interrupted, fallback engine, no answer): never the agent's words. */
   z.object({
     type: z.literal("notice"),
@@ -721,14 +751,17 @@ export const JobFrom = z.object({
     "surface",
     "channel",
     "routine",
+    "mail",
     "input_answer",
     "job",
     "terminal",
     "go_on",
     "stalled_task",
+    "task_continue",
     "computer_ready",
     "task_result",
     "delegation_result",
+    "added",
   ]),
   /** Who sent it (the helper, the contact, the routine, the surface), when it has a name. */
   name: z.string().optional(),
@@ -1199,7 +1232,7 @@ export const ImageDefaults = z.object({
   height: z.number().int().min(64).max(4096),
   steps: z.number().int().min(1).max(200),
   cfg_scale: z.number().min(0).max(50),
-  negative_prompt: z.string().max(2000),
+  negative_prompt: z.string().max(NEGATIVE_PROMPT_MAX),
   count: z.number().int().min(1).max(8),
 });
 export type ImageDefaults = z.infer<typeof ImageDefaults>;
@@ -1280,12 +1313,12 @@ export type MemorySettings = z.infer<typeof MemorySettings>;
 /** How APX reaches the owner when they are not looking at the app. */
 export const NoticePrefs = z.object({
   /**
-   * Where notices go: a channel (its id) or a paired device's push ("device:<id>"); none = the first running channel
-   * that knows the owner.
+   * Which chat app the super-agent also writes to unasked: a channel (its id), "none" for the app only, or unset for the
+   * first running channel that knows the owner. The app and paired phones are told either way (engine/notice-push.ts).
    */
   channel: z.string().optional(),
   /**
-   * Quiet hours (local time, "HH:MM"): what APX would say unasked waits until they end (and then goes together); answers
+   * Quiet hours ("HH:MM" in the owner's time zone): what APX would say unasked waits until they end (and then goes together); answers
    * and questions still arrive, without sound.
    */
   quiet_from: z

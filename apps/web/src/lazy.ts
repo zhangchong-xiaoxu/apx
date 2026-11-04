@@ -64,6 +64,7 @@ export const WidgetChatHost = lazy(() =>
 );
 export const PhoneDialog = lazy(() => import("./shell/PhoneDialog.tsx").then((m) => ({ default: m.PhoneDialog })));
 export const TasksScreen = lazy(() => import("./tasks/TasksScreen.tsx").then((m) => ({ default: m.TasksScreen })));
+export const FilesScreen = lazy(() => import("./files/FilesScreen.tsx").then((m) => ({ default: m.FilesScreen })));
 export const ComputersScreen = lazy(() =>
   import("./computers/ComputersScreen.tsx").then((m) => ({ default: m.ComputersScreen })),
 );
@@ -97,6 +98,9 @@ export const JobList = lazy(() => import("./shell/JobList.tsx").then((m) => ({ d
 
 export const CoreBehind = lazy(() => import("./shell/CoreBehind.tsx").then((m) => ({ default: m.CoreBehind })));
 export const UpdateDialog = lazy(() => import("./shell/UpdateDialog.tsx").then((m) => ({ default: m.UpdateDialog })));
+export const WhatsNewDialog = lazy(() =>
+  import("./shell/WhatsNewDialog.tsx").then((m) => ({ default: m.WhatsNewDialog })),
+);
 
 // The side panel's tabs load when first opened, not with the chat.
 export const ChatFiles = lazy(() => import("./panel/ChatFiles.tsx").then((m) => ({ default: m.ChatFiles })));
@@ -137,6 +141,8 @@ export const ChannelTreeRow = lazy(() =>
 
 // Message parts load with the first message that has one, not with the chat.
 export const SurfacePart = lazy(() => import("./chat/parts/SurfacePart.tsx").then((m) => ({ default: m.SurfacePart })));
+// A browser card shows only in a chat whose agent used a browser.
+export const BrowserPart = lazy(() => import("./chat/parts/BrowserPart.tsx").then((m) => ({ default: m.BrowserPart })));
 export const ChoicesPart = lazy(() => import("./chat/parts/ChoicesPart.tsx").then((m) => ({ default: m.ChoicesPart })));
 export const ConnectPart = lazy(() => import("./chat/parts/ConnectPart.tsx").then((m) => ({ default: m.ConnectPart })));
 export const MediaGroup = lazy(() => import("./chat/parts/MediaGroup.tsx"));
@@ -164,6 +170,17 @@ export const ModelList = lazy(() => import("./config/models/ModelList.tsx").then
 
 // The editor and its languages load when the first text file opens.
 export const CodeView = lazy(() => import("./project/files/CodeView.tsx").then((m) => ({ default: m.CodeView })));
+
+// Flows: the list first, then a flow's runs and the editor (with the canvas library) only when opened.
+export const FlowsScreen = lazy(() => import("./flows/FlowsScreen.tsx"));
+export const FlowDetail = lazy(() => import("./flows/FlowDetail.tsx").then((m) => ({ default: m.FlowDetail })));
+export const FlowEditor = lazy(() => import("./flows/FlowEditor.tsx").then((m) => ({ default: m.FlowEditor })));
+// A project's tables, on the Flows screen's Tables.
+export const TablesView = lazy(() => import("./flows/TablesView.tsx").then((m) => ({ default: m.TablesView })));
+// A Flow an agent made or changed: its card in the chat draws it with the canvas library.
+export const FlowCard = lazy(() => import("./flows/FlowCard.tsx").then((m) => ({ default: m.FlowCard })));
+// Its drawing opened large, to look at each step.
+export const FlowViewer = lazy(() => import("./flows/FlowViewer.tsx").then((m) => ({ default: m.FlowViewer })));
 
 // The searchable picker (base-ui's combobox) loads after the first paint: the inbox's new-chat button has one.
 export const SearchSelect = lazy(() =>

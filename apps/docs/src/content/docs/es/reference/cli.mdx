@@ -48,7 +48,8 @@ pipe) la consola no arranca: `apx` muestra la ayuda.
 | `apx desktop` | Abre la app de escritorio (la primera vez baja y abre el instalador). |
 | `apx wizard` | Configuración y mantenimiento guiados en la terminal. |
 | `apx upgrade --check` | ¿Hay un APX más nuevo? |
-| `apx upgrade` | Aplicarlo, igual que **Actualizar ahora** en el panel. |
+| `apx upgrade` | Aplicarlo, igual que **Actualizar ahora** en el panel. Si el core no responde, un APX instalado con el script de instalación se actualiza igual: baja el paquete más nuevo, lo verifica y hace que el servicio lo arranque. `apx update` es el mismo comando. |
+| `apx doctor` | Por qué el core no responde en esta computadora (qué dice su log, el servicio, si hay una versión más nueva) y el comando a correr. Funciona sin el core; `--json`. |
 | `apx logs` | Las líneas más nuevas del log del core, a través del core: `-n 200`, `--level info\|warn\|error`, `--grep texto`, `--scope core\|output`, `--json`. Si ningún core responde, el archivo de esta computadora. |
 | `apx service logs` | El archivo de log de esta computadora (`<home>/logs/core.log`); `-n 100`, `-f` para seguirlo. |
 | `apx daemon` | Explica qué comando `apx service` usar (el core en segundo plano ahora es un servicio). |
@@ -65,7 +66,7 @@ aceptan `--json`. `apx status --plain` saca la tarjeta y el retrato.
 |---|---|
 | `apx service install` | Corre el core en segundo plano: una unidad de usuario de systemd (Linux), un agente de launchd (macOS) o una entrada de inicio de sesión (Windows), que arranca al iniciar sesión y de nuevo si se cae. |
 | `apx service status` | Si el servicio está instalado y corriendo, y si el core responde. |
-| `apx service restart` | Lo reinicia (el core lee `core.env` al arrancar). |
+| `apx service restart` | Lo reinicia (el core lee `core.env` al arrancar). `apx service start` hace lo mismo, o lo instala si todavía no está instalado. |
 | `apx service uninstall` | Saca el servicio. |
 | `apx expose tailscale` | Publica el core en tu tailnet en `https://<machine>.<tailnet>.ts.net`; el core queda en loopback. |
 | `apx expose lan` | Escucha en todas las direcciones de red de esta máquina. |
@@ -182,6 +183,8 @@ Qué es una referencia de modelo y el router está en [Modelos](/es/concepts/mod
 | `apx routines on <id>` | La prende (`off` la apaga). |
 | `apx routines rm <id>` | La borra. |
 | `apx routines log <id>` | Sus últimas corridas. |
+| `apx flows run <flow> ['<JSON>']` | Corre ahora un flow publicado; uno con webhook recibe el JSON como cuerpo. No corre dentro del comando de un agente. |
+| `apx flows stop <flow> <evento>` | Detiene una ronda que está corriendo; un mensaje o llamada ya mandados quedan para revisar. No corre dentro del comando de un agente. |
 | `apx memory [words]` | Las notas que guardan los agentes, de la más nueva a la más vieja, o las que mejor coinciden con las palabras (`--project`, `--agent`, `--json`). |
 | `apx memory add [scope] <text>` | Agrega una nota. El alcance es `global`, `project` o `agent` (con `--project <id>` o `--agent <id>`); sin alcance sigue esas opciones, y si no, `global`. |
 | `apx memory edit <id> <text…>` | Reescribe una nota en el lugar. |

@@ -1,0 +1,171 @@
+.fc {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  background: var(--apx-bg);
+}
+.fc .react-flow {
+  --xy-background-color: transparent;
+  --xy-node-border-radius: var(--apx-radius-lg);
+  --xy-edge-stroke: var(--apx-border-strong);
+  --xy-edge-stroke-selected: var(--apx-fg-muted);
+  --xy-handle-background-color: var(--apx-fg-muted);
+  --xy-handle-border-color: var(--apx-surface-raised);
+  --xy-minimap-background-color: var(--apx-surface);
+  --xy-minimap-mask-background-color: color-mix(in srgb, var(--apx-bg) 60%, transparent);
+  background: transparent;
+}
+.fc .fc-grid {
+  --xy-background-pattern-color: var(--apx-border-strong);
+}
+.fc .react-flow__node-step {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.fc .react-flow__node-step.selected,
+.fc .react-flow__node-step:focus-visible {
+  outline: none;
+}
+.fc .react-flow__node-step:focus-visible .apx-flowstep {
+  box-shadow:
+    0 0 0 3px var(--apx-fill-strong),
+    var(--apx-shadow-md);
+}
+.fc .fc-handle {
+  width: 9px;
+  height: 9px;
+  border: 1.5px solid var(--apx-surface-raised);
+  background: var(--apx-fg-muted);
+}
+.fc .fc-handle--in {
+  border-color: var(--apx-fg-subtle);
+  background: var(--apx-surface-raised);
+}
+.fc:not(.is-edit) .fc-handle {
+  visibility: hidden;
+}
+.fc .fc-handle--yes {
+  background: var(--apx-brand);
+}
+.fc .fc-handle--no {
+  background: var(--apx-fg-subtle);
+}
+.fc .fc-edge .react-flow__edge-text {
+  font-size: 11px;
+  fill: var(--apx-fg-muted);
+}
+.fc .fc-edge .react-flow__edge-textbg {
+  fill: var(--apx-surface-raised);
+  stroke: var(--apx-border);
+}
+.fc .fc-edge .react-flow__edge-path {
+  stroke: var(--apx-border-strong);
+  stroke-width: 1.5;
+}
+.fc .fc-edge.is-ran .react-flow__edge-path {
+  stroke: var(--apx-brand);
+}
+.fc .fc-edge.is-no .react-flow__edge-path {
+  stroke-dasharray: 5 4;
+}
+.fc.is-edit .react-flow__node-step {
+  cursor: grab;
+}
+.fc:not(.is-edit) .react-flow__node-step {
+  cursor: pointer;
+}
+.fc-zoom {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  z-index: 5;
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+.fc-zoom__buttons {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--apx-border);
+  border-radius: var(--apx-radius-md);
+  background: var(--apx-surface-raised);
+  box-shadow: var(--apx-shadow-sm);
+  overflow: hidden;
+}
+.fc-zoom__buttons > * + * {
+  border-top: 1px solid var(--apx-border);
+}
+.fc-zoom__level {
+  padding: 2px 8px;
+  border-radius: var(--apx-radius-pill);
+  background: var(--apx-fill);
+  font-size: 11px;
+  color: var(--apx-fg-subtle);
+}
+.fc .fc-minimap {
+  border: 1px solid var(--apx-border);
+  border-radius: var(--apx-radius-md);
+  overflow: hidden;
+  box-shadow: var(--apx-shadow-sm);
+}
+.fc-mini {
+  fill: var(--apx-fill-strong);
+}
+.fc-mini--warning {
+  fill: var(--apx-warning);
+}
+.fc-mini--info {
+  fill: var(--apx-info);
+}
+.fc-mini--violet {
+  fill: var(--apx-violet);
+}
+.fc-mini--brand {
+  fill: var(--apx-brand);
+}
+
+@media (max-width: 640px) {
+  .fc .fc-minimap {
+    display: none;
+  }
+}
+/* A check with more than two ways out names each beside its handle. */
+.fc .fc-outs {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: -2px -12px -4px 0;
+}
+.fc .fc-out {
+  position: relative;
+  align-self: flex-end;
+  padding: 1px 14px 1px 0;
+  font-size: 11px;
+  line-height: 18px;
+  color: var(--apx-fg-muted);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fc .fc-out.is-no {
+  color: var(--apx-fg-subtle);
+}
+.fc .fc-out .fc-handle {
+  right: 0;
+}
+/* A connection picked in the editor stands out, with its bin beside it. */
+.fc .fc-edge.is-picked .react-flow__edge-path {
+  stroke: var(--apx-brand);
+  stroke-width: 2.5;
+}
+.fc-edgebin {
+  position: absolute;
+  pointer-events: all;
+  border-radius: 50%;
+  background: var(--apx-surface-raised);
+  box-shadow: var(--apx-shadow-sm);
+}

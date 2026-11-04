@@ -10,6 +10,7 @@ import type { Bus } from "./bus.ts";
 import type { CoreConfig } from "./config.ts";
 import { nativeApproval } from "./domain/approvals.ts";
 import type { Store } from "./domain/store.ts";
+import { type Added, tellAdded } from "./engine/added.ts";
 import { audienceOf } from "./engine/audience.ts";
 import { createHooks } from "./engine/hooks.ts";
 import type { Permissions } from "./engine/permissions.ts";
@@ -39,6 +40,7 @@ import { channelHandlers } from "./rpc/channels.ts";
 import { clientHandlers } from "./rpc/clients.ts";
 import { composerHandlers } from "./rpc/composer.ts";
 import { computerHandlers } from "./rpc/computer.ts";
+import type { CallContext } from "./rpc/context.ts";
 import { desktopInstallHandlers } from "./rpc/desktop-install.ts";
 import { deviceHandlers } from "./rpc/devices.ts";
 import { emailSignatureHandlers } from "./rpc/email-signatures.ts";
@@ -46,6 +48,7 @@ import { embeddingHandlers } from "./rpc/embeddings.ts";
 import { environmentHandlers } from "./rpc/environments.ts";
 import { extensionHandlers } from "./rpc/extensions.ts";
 import { fileHandlers } from "./rpc/files.ts";
+import { flowHandlers } from "./rpc/flows.ts";
 import { gitHandlers } from "./rpc/git.ts";
 import { integrationHandlers } from "./rpc/integrations.ts";
 import type { InternalCall } from "./rpc/internal.ts";
@@ -75,7 +78,7 @@ import { transcriptionHandlers } from "./rpc/transcription.ts";
 import { webhookHandlers } from "./rpc/webhooks.ts";
 import type { Secrets } from "./secrets.ts";
 import type { RuntimeHomes } from "./skills/runtimes.ts";
-import { kitSource, withKit } from "./surface-kit.ts";
+import { storedPublicPages } from "./surface-pages.ts";
 import type { Telemetry } from "./telemetry.ts";
 import { agentSetTools } from "./tools/agent-set.ts";
 import { agentTools } from "./tools/agents.ts";
@@ -86,6 +89,7 @@ import { connectionTools } from "./tools/connections.ts";
 import { contactTools } from "./tools/contact.ts";
 import { directoryTools } from "./tools/directory.ts";
 import { fileTools } from "./tools/files.ts";
+import { flowTools } from "./tools/flow-tool.ts";
 import { limitTools } from "./tools/limits.ts";
 import { mediaTools } from "./tools/media.ts";
 import { memoryTools } from "./tools/memory.ts";
@@ -181,6 +185,7 @@ export function builtinTools(
     ...contactTools(store),
     ...requestTools(store),
     ...settingsTools(store, roots),
+    ...flowTools(store),
     ...extra,
   ];
   // The owner may let an agent use one of them without asking again, as with an MCP tool (DECISIONS.md#d-062).
@@ -207,6 +212,9 @@ type HandlerDeps = {
   channels: Parameters<typeof channelHandlers>[1];
   services: Parameters<typeof mediaHandlers>[0];
   scheduler: Parameters<typeof routineHandlers>[1];
+  flows: Parameters<typeof flowHandlers>[1];
+  /** Which model references a Flow's model step may name. */
+  flowModel: Parameters<typeof flowHandlers>[3];
   nudges: Parameters<typeof noticeHandlers>[1];
   extensions: Parameters<typeof extensionHandlers>[0];
   mcp: Parameters<typeof extensionHandlers>[1] & Parameters<typeof mcpHandlers>[0];
@@ -244,6 +252,7 @@ type HandlerDeps = {
   /** Who may reach this core (this computer, the network, the tailnet). */
   access: Parameters<typeof accessHandlers>[0];
   webhooks: Parameters<typeof webhookHandlers>[0];
+  publicCredentials: Parameters<typeof webhookHandlers>[1];
   /** What asks an integration's remote server about the owner's account (tests pass a fake). */
   integrationFetch?: typeof fetch | undefined;
   /** The owner's shells in a chat's folder. */
@@ -254,6 +263,12 @@ type HandlerDeps = {
 
 /** The handler table the router serves: one entry per protocol method. */
 export function coreHandlers(d: HandlerDeps & { vm?: Computer | undefined }) {
+  const app = appHandlers({ ...d.app, store: d.store, secrets: d.secrets, services: d.services });
+  const agents = agentHandlers(d.store, d.apc, d.engines, d.tools);
+  // What the owner adds by hand reaches the super-agent, which offers to adapt it; an agent's own calls do not.
+  const added = (ctx: CallContext, a: Added) => {
+    if (ctx.actor === "human" && !ctx.agent) tellAdded(d.store, d.engine.admit, a);
+  };
   return {
     ...environmentHandlers(d.store, d.vm, d.engine.cancel),
     ...desktopInstallHandlers(d.desktopInstaller),
@@ -276,20 +291,21 @@ export function coreHandlers(d: HandlerDeps & { vm?: Computer | undefined }) {
     ...runHandlers(d.store, d.engine),
     ...jobHandlers(d.store, d.engine),
     ...memoryHandlers(d.store, d.memory, d.memoryMaintenance),
-    ...channelHandlers(d.store, d.channels),
-    ...emailSignatureHandlers(d.store),
+    ...channelHandlers(d.store, d.channels, d.nudges),
+    ...emailSignatureHandlers(d.store, d.google),
     ...mediaHandlers(d.services, d.store),
     ...transcriptionHandlers(d.services, d.localModels),
     ...embeddingHandlers(d.localEmbeds, () => d.memory.engine()),
     ...taskHandlers(d.store, d.engine, d.app.home, d.vm?.beforeDelete),
     ...routineHandlers(d.store, d.scheduler, d.profileRoots),
     ...routineMailHandlers(d.routineMail),
+    ...flowHandlers(d.store, d.flows, d.publicCredentials, d.flowModel, d.bus),
     ...noticeHandlers(d.store, d.nudges),
     ...notificationHandlers(d.store),
     ...clientHandlers(d.store),
     ...deviceHandlers(d.store, { addresses: d.addresses, onRevoke: (id) => d.vm?.revokeDevice(id) }),
     ...accessHandlers(d.access),
-    ...webhookHandlers(d.webhooks),
+    ...webhookHandlers(d.webhooks, d.publicCredentials),
     ...phoneHandlers(d.broker, d.store, d.app.home),
     ...computerHandlers(d.broker, d.store, d.app.home, d.engine, (thread) => Boolean(d.vm?.hasThread(thread))),
     ...extensionHandlers(d.extensions, d.mcp),
@@ -314,7 +330,17 @@ export function coreHandlers(d: HandlerDeps & { vm?: Computer | undefined }) {
       runtimeHomes: d.runtimeHomes,
     }),
     ...providerHandlers(d.providers, d.secrets, d.chatgpt),
-    ...appHandlers({ ...d.app, store: d.store, secrets: d.secrets, services: d.services }),
+    ...app,
+    "projects.create": (p: Parameters<(typeof app)["projects.create"]>[0], ctx: CallContext) => {
+      const r = app["projects.create"](p);
+      added(ctx, { what: "project", id: r.project.id, name: r.project.name });
+      return r;
+    },
+    "projects.register": (p: Parameters<(typeof app)["projects.register"]>[0], ctx: CallContext) => {
+      const r = app["projects.register"](p);
+      added(ctx, { what: "project", id: r.project.id, name: r.project.name });
+      return r;
+    },
     ...artifactHandlers({
       store: d.store,
       secrets: d.secrets,
@@ -323,7 +349,12 @@ export function coreHandlers(d: HandlerDeps & { vm?: Computer | undefined }) {
         ? (html, onCall) => d.headless?.checkPage(html, onCall) ?? Promise.resolve({ errors: [], text: "", views: [] })
         : undefined,
     }),
-    ...agentHandlers(d.store, d.apc, d.engines, d.tools),
+    ...agents,
+    "agents.create": (p: Parameters<(typeof agents)["agents.create"]>[0], ctx: CallContext) => {
+      const r = agents["agents.create"](p);
+      added(ctx, { what: "agent", id: r.id, name: r.name });
+      return r;
+    },
     ...teamHandlers(d.store, d.apc, d.templateRoots, (s) => d.scheduler.nextFor(s)),
     ...fileHandlers(d.store, d.desktop, d.app.home),
     ...gitHandlers(d.store, d.upkeep),
@@ -449,13 +480,7 @@ export async function listen(
       d.log,
       gate,
       servedPanel(config),
-      {
-        artifact: (t) => {
-          const s = d.store.surfaces.byShareToken(t);
-          return s ? { title: s.title, html: withKit(s.html), app: s.app, connect: s.connect } : undefined;
-        },
-        kit: kitSource,
-      },
+      storedPublicPages(d.store),
       (token) => d.store.clients.byToken(token),
       (token) => d.store.devices.byToken(token),
     ),

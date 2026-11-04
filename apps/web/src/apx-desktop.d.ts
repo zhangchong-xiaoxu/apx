@@ -43,6 +43,9 @@ declare global {
     apxDesktop?: {
       /** Host OS of the desktop shell (`darwin` | `win32` | `linux`). */
       platform?: string;
+      /** The window is in native fullscreen (no traffic lights). Missing in builds from before it was reported. */
+      isFullScreen?(): boolean;
+      onFullScreen?(listener: (full: boolean) => void): () => void;
       /** The core's token, when the app knows it: the panel sends it on every call. */
       coreToken?: string;
       updateAuth?(token?: string): void;
@@ -102,8 +105,8 @@ declare global {
       updateStatus?(check?: boolean): Promise<DesktopUpdate | undefined>;
       /** Downloads the newer app and leaves it ready (`ready: false`: opened for the owner to drag in). */
       installUpdate?(): Promise<{ ok: true; ready: boolean } | { ok: false; error: string } | undefined>;
-      /** Quits and opens the newer app that is ready. */
-      restartToUpdate?(): void;
+      /** Quits and opens the newer app that is ready; an answer means it could not (an older app answers nothing). */
+      restartToUpdate?(): Promise<{ ok: true } | { ok: false; error: string } | undefined> | undefined;
       /** The app's update changed, wherever it was started (the panel or the app menu). */
       onUpdateStatus?(listener: (status: DesktopUpdate) => void): () => void;
       /** What each of the app's processes takes in memory (the panel, each browser tab, the GPU…), biggest first. */

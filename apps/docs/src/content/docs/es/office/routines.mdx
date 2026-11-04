@@ -27,7 +27,8 @@ Cada rutina hace una de cuatro cosas:
 | **Mensaje** | Te manda un mensaje fijo por tu canal (Telegram, WhatsApp…). Sin modelo. |
 | **Shell** | Solo corre un comando en la carpeta del proyecto. Sin modelo ni aviso. |
 | **Vigía** | Recorre tu trabajo buscando lo que vale una palabra (tareas atrasadas, compromisos por vencer, proyectos quietos, tareas armadas de forma que no pueden avanzar) y llama al modelo solo cuando hay algo nuevo. |
-| **Novedades del equipo** | Te cuenta en un solo mensaje lo que las rutinas y avisos de tus otros agentes tenían para vos; mientras haya una prendida, ellos no te escriben por su cuenta. Llama al modelo solo cuando hay novedades. |
+
+**Novedades del equipo** es una [capacidad de secretaría](/es/office/secretary/), que activás o desactivás desde **Configuración → Super-agente**, no una acción de rutina. Lo que una integración hace sola, como la revisión de mails nuevos de Gmail o los recordatorios de eventos de Google Calendar, tampoco es una rutina: se prende y se ajusta en la configuración de esa integración.
 
 ## Horarios
 
@@ -40,10 +41,262 @@ Cada rutina hace una de cuatro cosas:
 
 Una corrida que se perdió con el core apagado corre una vez cuando vuelve, nunca dos.
 
+## Flows
+
+En la rama de integración todavía no publicada, abrí **Flows** en el sidebar global junto a **Tareas** y **Recursos**.
+La lista muestra todos los flows de todos los proyectos con sus pasos, cuántos usan IA, una barra por cada una de sus
+últimas rondas y un interruptor de encendido; el menú de proyecto la acota. El acceso de Rutinas abre esta misma
+pantalla global. Los enlaces directos usan `#view=flows`, `#view=flows&scope=<project-id>`,
+`#view=flows&flow=<flow-id>` (sus rondas) o `#view=flows&flow=<flow-id>&edit=1` (su editor); los botones del chat
+pueden usar `apx:flows`, `apx:flows/<project-id>`, `apx:flows/<project-id>/<flow-id>` o
+`apx:flows/<project-id>/<flow-id>/edit`.
+
+**Nuevo flow** abre el editor, en blanco o desde una forma de arranque. Sumá pasos desde la izquierda (se unen después
+del paso elegido), arrastrá desde el punto de salida de un paso para unir dos pasos y tocá un paso para configurarlo en
+la tarjeta que se abre sobre el lienzo (el paso se centra sin cambiar el zoom; el lienzo, × o Escape la cierran). En el
+teléfono los tipos de paso se abren desde **Sumar un paso** y la tarjeta es una hoja abajo:
+
+| Paso | Qué hace |
+|---|---|
+| Webhook entrante | Arranca el flow cuando un servicio llama a su dirección. Su tarjeta muestra la dirección (producción o prueba, un solo botón para copiar), qué **Acepta** (POST con un cuerpo JSON, GET con los datos como parámetros, o los dos) y su **Clave** (ver [Probar un flow](#probar-un-flow-con-un-evento-real)). |
+| Horario | Arranca el flow a horas fijas en tu zona horaria, sin escribir un cron: una opción rápida (**Cada 5 min**, **Cada hora**, **Hábiles 08:30**, **Diario 03:00**), **Horas fijas** (marcá los días, cada uno con una o más horas, o dale a un grupo de días las mismas horas), **Cada…** (una cantidad de minutos, horas, días o meses, o un día de la semana) o **Cron** a mano. El panel lateral muestra las próximas rondas. |
+| Condición | Prueba sus casos en orden y sigue por el primero que se cumple; si no, por su última salida. Un caso tiene un nombre y **Comparar** o **Fórmula**. **Comparar** tiene una o más comparaciones, cada una un valor elegido con `{}` (lo que llegó, el resultado de un paso anterior como `$steps.normalize.username`, o una variable), leído como **Texto**, **Número** o **Sí o no**, y comparado: *es*, *no es*, *contiene*, *empieza con*, *es mayor* o *menor que*, *es al menos* o *como mucho*, *está vacío*, *no está vacío*. Uní dos o más con **Y** (se cumplen todas) u **O** (se cumple una). **Fórmula** es libre: `$trigger.amount > 100 && $vars.vip`. Con un caso se lee **Sí** y **No**; con más, cada caso tiene su punto, con su nombre, y además **Si no**. Sin modelo. |
+| Variables | Nombra valores una vez para los pasos que siguen: texto, un número, sí o no, o una fórmula sobre `$trigger`, `$steps` y las variables de arriba. Los pasos siguientes los leen como `$vars.nombre`. Un valor puede guardar una clave elegida de tu lista (`secret://nombre`): se usa solo en los headers de un webhook saliente y en las variables de un comando, y un flow que la pone en un mensaje, un cuerpo o una instrucción no se puede guardar para que corra. Sin modelo. |
+| JavaScript | El cuerpo de una función corta que recibe `input` (lo que llegó o el resultado de un paso anterior) y `vars`, y devuelve lo que los pasos siguientes leen como `$steps.<paso>`. Corre aparte, con tiempo máximo, y no puede abrir archivos, usar internet ni correr programas. Sin modelo. |
+| Leer tabla | Elige cualquiera de las tablas del proyecto (muestra cuántas filas tiene cada una), o crea una nueva ahí, y trae **Una fila, por su clave** (como `$trigger.email`) o **Las últimas filas**. Marcá las **Columnas que trae** (todas, salvo que desmarques alguna); al lado de cada una está el nombre con que la lee un paso siguiente, `$steps.<paso>.<columna>` (de la fila, o de la más nueva), para copiar. La fila o las filas enteras son `.row` y `.rows`. Una tabla vacía no lee nada. Las columnas se renombran o quitan en **Tablas**. Sin modelo. |
+| Guardar en la tabla | Elige cualquiera de las tablas del proyecto, o crea una nueva ahí, y la llena **Por columna** (qué va en cada columna, elegido con `{}` de lo que llegó o de un paso anterior) o guarda un **Valor entero** (un solo campo con `{}`; vacío guarda todo lo que llegó). Una columna obligatoria lleva un asterisco: el paso no está completo hasta que algo va en ella. **Columna nueva** suma una columna en el momento, y una vista previa muestra la clave y qué llena cada columna. La clave puede salir de lo que llegó (`$trigger.email`); guardar otra vez con la misma clave cambia solo las columnas que llena. Sin modelo. |
+| SQL | Una instrucción sobre un archivo SQLite en la carpeta del proyecto (`data/app.db`). Los valores van aparte de la consulta, como `:nombre` con una línea `nombre: $trigger.email`, nunca adentro. **Solo lectura** lee filas (`$steps.<paso>.rows`, hasta 500); apagado, puede agregar, cambiar y borrar filas y agregar tablas o índices. Sin modelo. |
+| Modelo IA | Le da una tarea a un agente del crew o a un bot de este flow, con lo que llegó o el resultado de un paso anterior, en el harness y el modelo que elijas (ver abajo). Gasta tokens. |
+| Rutina | Corre una rutina manual del proyecto. |
+| Modelo directo | Le pregunta una vez a un modelo configurado, sin herramientas, y pasa su respuesta. Gasta tokens. Queda en los flows que ya lo tienen; los pasos nuevos usan **Modelo IA**. |
+| Webhook saliente | Llama a una URL con GET, POST o PUT. Headers y body pueden llevar valores de la ronda; una clave va en un header como `secret://nombre`, de **Secretos**. Los pasos siguientes leen su respuesta como `$steps.<paso>.status`, `.ok` y `.json` (o `.body` si no es JSON). |
+| Cmd | Un comando de shell en la carpeta del proyecto, como el de una rutina. Los valores de la ronda le llegan solo como variables (`EMAIL=$trigger.email`, que lee como `$EMAIL`) y como su entrada, nunca dentro del texto; una clave va en una variable como `secret://nombre`. Los pasos siguientes leen `$steps.<paso>.stdout` y `.exit`; un error corta el flow salvo que **Seguir si falla** esté prendido. Tiene tiempo máximo (hasta 2 minutos). |
+| Avisar | Manda un mensaje por vos en una de tus apps de chat (Telegram, WhatsApp, Discord…) a alguien que conocés ahí, a vos o a una sala que listaste. En APX aparece en ese chat como escrito por el agente que atiende esa app, tal como llegó. Con **Solo si hay algo para contar**, no manda nada cuando todos los valores del mensaje salen vacíos. |
+
+La barra de arriba del editor tiene el nombre del flow a la izquierda y **Salir** a la derecha, junto al estado de
+guardado, **Escuchar un evento de prueba**, **Simular**, **Guardar borrador** y **Guardar** (en el teléfono, **Borrador** y un ícono para salir). Si
+hay cambios sin guardar, pregunta antes de salir y ofrece **Guardar borrador** para conservarlos.
+
+### Probar un flow con un evento real
+
+La dirección de un flow es `https://<tu dirección pública>/flows/<nombre>`, donde el final sale del nombre del flow
+(`leads-del-formulario`). La tarjeta del paso webhook la muestra desde el primer momento, antes de guardar, con un botón
+para copiarla. **Arranca con** cambia el disparador entre webhook y horario sin volver a dibujar sus conexiones.
+
+Tocá el final de la dirección y escribí el nuevo ahí mismo (Enter lo toma, Esc cancela); antes de guardar por primera
+vez, queda cuando guardás.
+Cambiarlo después hace que la dirección anterior deje de funcionar enseguida (pregunta antes): los servicios que llaman
+al flow necesitan la nueva. Su clave, si tiene, sigue siendo la misma. La dirección solo funciona desde afuera cuando
+configurás una dirección pública en **Dispositivos**.
+
+Quien llama manda la **Clave** del flow en el encabezado `Authorization: Bearer <clave>`; sin ella se rechaza. **Crear
+clave** hace una; podés mostrarla, copiarla, reemplazarla con **Clave nueva** o escribir la tuya con **Usar la mía** (de
+24 a 200 letras, números, puntos, guiones o guiones bajos). Reemplazarla corta la clave anterior en el acto, así que
+pregunta antes.
+
+**Prueba**, al lado de **Producción**, muestra la **dirección de prueba**, `…/flows/test/<nombre>`. Solo responde mientras probás. **Escuchar un evento de
+prueba**, arriba, guarda lo que dibujaste (si falta completar un paso, dice cuál), pregunta **¿Dejás que este flow actúe
+por vos?** cuando el flow mandaría, llamaría, correría o cambiaría algo nuevo, y espera cinco minutos un evento en la
+dirección de prueba. Mandalo desde el servicio, o a mano, como un POST con JSON como `{"id": "1", "data": {"name":
+"Ada"}}` (con la clave de la dirección, cuando tiene una). No hace falta que el flow esté prendido. Cuando llega el
+evento el flow corre como lo dibujaste, de verdad: sus mensajes, llamadas y comandos pasan. Los pasos se encienden a
+medida que corren, y el registro de abajo muestra qué llegó (sus encabezados y datos) y después cada paso cuando empieza
+y termina, con lo que recibió y devolvió. Mientras probás podés abrir un paso para ver qué recibió y devolvió, pero no
+cambiarlo; **Volver a editar** cierra el registro. **Escuchar otra vez** espera otro evento. Un flow con horario tiene
+**Probar ahora**, que lo corre una vez ya.
+
+Una ronda de prueba aparece entre las rondas del flow, marcada **Prueba**, con el mismo registro. No cuenta como la
+última ronda del flow en la lista, y por ella un horario no saltea su hora.
+
+### Quién responde en un paso Modelo IA
+
+Un flow es de un proyecto, que se elige arriba al crear el flow: los pasos que lo necesitan (agentes, tablas, rutinas,
+una carpeta) lo dicen hasta que lo elegís. Los campos de texto ofrecen valores mientras escribís `$`, `{{` o
+`secret://`, o con su botón de llaves; donde puede ir una clave, la lista también ofrece **Guardar una clave**.
+
+**Quién responde** es **Un agente** (uno del crew, con sus instrucciones, personalidad, memoria y herramientas) o **Un
+bot de este flow**: un nombre y **Cómo trabaja**, el prompt de sistema que escribís. Un bot arranca de cero en cada
+ronda: sin memoria, sin historial y sin equipo, y trabaja solo con la web, los archivos y comandos del proyecto y su
+propio navegador, nunca con tus chats, correo, calendario o cuentas. Después elegí:
+
+- **Agente del crew**: los agentes del proyecto y, siempre, tu super-agente, como tarjetas.
+- **Harness**: **APX** (el propio de APX, sobre las APIs de modelos que configuraste) o una app de esta computadora como
+  Claude Code o Codex, si está instalada. En una app, el paso corre en la carpeta del proyecto con las herramientas y la
+  configuración de esa app, en una sesión propia; quién responde va en su encargo, y la memoria de APX no le llega.
+- **Modelo** y, si el modelo lo acepta, **Esfuerzo**. Si lo dejás como está, un agente usa su propio modelo y un bot tu
+  modelo por defecto.
+- **Permisos**: en APX, los del agente, **Pregunta antes**, **Auto** o **Total**; en una app, **Pregunta antes**,
+  **Edita libre** o **Solo lectura**. Un flow corre sin nadie mirando: lo que pregunta te espera hasta el tiempo máximo
+  de la ronda.
+- **Puede pedirle a otros agentes** (solo agentes en APX), apagado de entrada. Apagado, el agente trabaja solo con todas
+  sus herramientas y su memoria, pero no puede pasarle trabajo a tus otros agentes, escribirles, ni crearles o
+  comentarles tareas. Prendido, trabaja como en un chat.
+
+La ronda muestra quién respondió, en qué harness y modelo, y **Abrir chat** abre la conversación que tuvo.
+
+Un flow tiene un solo disparador. Un flow corre como está dibujado: los pasos pueden abrirse en caminos y volver a
+juntarse, y cada paso puede recibir lo que llegó o el resultado de un paso anterior. En **Sigue con** elegís por cuál
+salida de una condición sale cada conexión; un paso que sumás después de una condición toma su primera salida libre. La lista de pasos, debajo de los tipos de paso, dice *Corre así como está* o por qué todavía no puede correr (un agente fuera del proyecto, un modelo
+sin configurar, dos pasos que guardan en la misma clave sin orden entre ellos, un horario más seguido que cada 5
+minutos), también en un flow nuevo antes de guardarlo por primera vez.
+
+**Guardar** conserva tu dibujo. Si el flow está prendido, guardar también lo convierte en lo que corre: los eventos
+nuevos lo usan y los que ya llegaron terminan con la versión con la que empezaron. Si está apagado, prenderlo convierte
+tu último dibujo guardado en lo que corre. **Guardar borrador** conserva el dibujo tal como está, con pasos sin
+terminar incluidos, y nunca cambia lo que corre, aunque el flow esté prendido: el estado dice **Borrador guardado. Lo
+que corre no cambia.** Igual necesita un nombre y un proyecto. **Guardar**, y prender el flow, te piden terminar cada
+paso antes y dicen cuál. Un flow con la forma vieja de un solo camino (webhook, condiciones, leer,
+guardar y un agente o rutina) sigue corriendo como antes hasta que guardes un dibujo que esa forma no puede representar.
+**Simular** sigue datos de ejemplo por las condiciones y los caminos y marca los pasos a los que llegaría, sin
+guardar, leer la tabla, mandar ni pasarle nada a un agente; un paso que necesita la respuesta de otro dice que depende
+de ella.
+Guardar nunca corre nada, y un flow nuevo arranca apagado.
+
+Cada vez que guardás un cambio en el dibujo queda una versión: un borrador que guardaste, uno que pasó a ser lo que
+corre, uno que te dibujó un agente o uno que restauraste. En la página del flow, cambiá la lista de la derecha de
+**Rondas** a **Historial** para verlas, de la más nueva a la más vieja, con cuándo, quién y cuántos pasos. Elegí una
+para ver su dibujo (no corre) y **Restaurar como borrador** para seguir desde ahí: pasa a ser el borrador, y lo que
+corre no cambia hasta que lo guardes. En el editor, el botón de historial de la barra de arriba abre la misma lista;
+restaurar ahí reemplaza el lienzo y, si tenés cambios sin guardar, pregunta antes. Se guardan las últimas 50
+versiones y todas las que usó alguna ronda.
+
+Al abrir un flow ves sus pasos como corrieron en la ronda elegida (numerados, en verde si corrieron, punteados si no,
+en rojo si fallaron), qué recibió y qué dio cada paso, cuándo empezó y terminó, un log y las rondas a la derecha con su
+duración y tokens. Una ronda hecha con un dibujo anterior muestra ese dibujo y dice **Versión anterior**. Una ronda que
+cortó una condición marca esa condición con **no** y los pasos siguientes como no corridos. Un paso que le pasó trabajo
+a un agente abre su chat.
+
+Mientras espera un borrador guardado, la lista muestra sus pasos marcados **Borrador**, y la página del flow lo dibuja
+con **Borrador** en la esquina; **Lo que corre** cambia a la versión que corre, y elegir una ronda muestra la versión
+que usó esa ronda. Un flow del que todavía no corre ningún dibujo (uno que tu super-agente acaba de crear) muestra solo
+su borrador.
+
+Cada ronda tiene 10 minutos desde que llega su evento; un paso de modelo tiene su propio límite (hasta 2 minutos). Los
+pasos que llaman a un modelo se mandan una vez y nunca más: si APX se detiene o la respuesta no llega a tiempo después
+de mandar el pedido, la ronda dice **Para revisar** en lugar de reintentar, porque el modelo pudo haberlo hecho igual. Los
+comandos y las escrituras SQL siguen la misma regla: uno cortado por un reinicio, el tiempo máximo o **Detener ronda**
+no se vuelve a correr. Prender un flow con un comando o una escritura SQL pregunta antes (**¿Dejás que este flow actúe
+por vos?**), con el comando y la carpeta o la base; cambiar cualquiera de los dos vuelve a preguntar.
+Apagar un flow frena los pasos nuevos; una ronda que estaba esperando termina igual al llegar su límite. Un flow corre
+un evento por vez, en el orden en que llegaron.
+
+**Correr ahora**, en la página del flow, lo arranca en el momento por el mismo camino que su disparador. Un flow con
+horario corre con un evento vacío; uno con webhook te pide el cuerpo que recibe, cargado con el último que llegó, y lo
+trata como cualquier dato de afuera. La ronda dice **La arrancaste vos**. **Detener ronda**, en una ronda que está
+corriendo, la frena: los pasos que no empezaron no corren y un paso que ya se le mandó a un modelo queda **Para
+revisar**, sin volver a mandarse.
+
+Un flow con horario corre mientras APX está prendido. Si APX estaba apagado a la hora de una ronda, el flow corre una
+vez al arrancar APX (no una por cada hora que se perdió) y esa ronda dice que arrancó tarde. Si la ronda anterior sigue
+corriendo cuando llega la hora siguiente, esa hora se salta, no se encola, y la página del flow dice cuántas se saltaron.
+Un flow apagado no corre por horario y, al prenderlo de nuevo, cuenta desde ese momento. Un flow con horario no tiene
+dirección: nunca recibe un POST, y uno con webhook nunca corre por horario.
+
+### Mensajes y llamadas que un flow hace por vos
+
+El texto de un paso lleva valores de la ronda: `$trigger.email` es un campo de lo que llegó, `$steps.<paso>.text` la
+respuesta de un paso anterior, `$vars.nombre` una variable, `$apx.project`, `$apx.now` y `$apx.run` el nombre del
+proyecto, la fecha y hora y el número de ronda, y `$$` es un signo de pesos. No hace falta saberlos: en cualquier campo
+que acepta valores, escribí `{{` o `$`, o tocá el botón **{}**, y elegí entre lo que llegó, los pasos anteriores, las
+variables del flow y los valores de APX; lo que elegiste se ve como una insignia. **Qué recibe** funciona igual: vacío
+es todo lo que llegó, o elegí un campo o el resultado de un paso anterior. Los **Secretos** se ofrecen solo en los
+headers de un webhook saliente y en las variables de un comando, donde el paso los lee por su cuenta; un mensaje, un
+body o una instrucción de IA nunca reciben uno. Lo que
+llega solo llena las palabras: quién recibe el mensaje es la persona o sala que elegiste, nunca una que nombren los datos.
+
+Como Avisar habla como vos y un webhook saliente actúa sobre otro servicio, la primera vez que un dibujo mandaría o
+llamaría a un lugar nuevo, guardarlo prendido (o prenderlo) pregunta **¿Dejás que este flow actúe por vos?** y lista
+cada persona, sala y dirección. **Permitir** lo convierte en lo que corre; **Ahora no** deja corriendo la versión
+anterior. Después, cada ronda manda sin volver a preguntar.
+
+Cada mensaje y cada llamada que cambia algo sale una sola vez: si APX se detiene o el otro lado no responde después de
+mandarlo, el paso dice **Para revisar** en lugar de repetirlo (revisá el chat o el servicio). Un GET, que no cambia
+nada, prueba una vez más si la conexión falla antes de cualquier respuesta. Un flow manda como mucho 20 mensajes por
+hora y hace como mucho 60 llamadas que cambian algo; la siguiente falla sin salir. Un mensaje a una app de chat que no
+está andando se retira, no sale después. Un webhook saliente solo llama a direcciones de internet: una dirección de esta
+computadora o de una red privada se rechaza, también cuando un nombre apunta ahí, y no sigue redirecciones. De la
+respuesta se leen hasta 256 KB (16 KB de texto), los archivos solo se mencionan, y un secreto que usó nunca aparece en
+la ronda, solo `secret://nombre`.
+
+### Tablas
+
+Las tablas de un proyecto guardan lo que tus flows guardan, una fila por clave y un valor por columna. Cambiá la
+pantalla de Flows a **Tablas** para verlas: elegí una tabla para ver sus columnas y filas, **Sumar fila**, tocá la
+clave de una fila para cambiarla o borrarla, sumá una columna con **Columna nueva**, y renombrá o borrá una tabla o una
+columna desde su menú. **Hacer obligatoria** en el menú de una columna la marca con un asterisco: ningún guardado puede
+dejarla vacía, así que una fila sumada acá la pide, el guardado de un flow tiene que llenarla, y una ejecución cuyo valor
+sale vacío se detiene en ese paso y dice qué columna era. Una tabla creada acá, o por tu super-agente, queda para que cualquier flow la lea: Leer y
+Guardar listan todas las tablas del proyecto y pueden crear una tabla o una columna nueva sin salir del paso.
+
+Pedile a tu super-agente en cualquier chat ("sumá este lead a la tabla leads", "¿qué hay en la tabla pedidos?") y lee o
+llena una tabla sin un flow. Si el chat tenía un mensaje de otra persona o una página web, te pregunta antes de cambiar
+una tabla; renombrar o borrar una tabla o una columna siempre pregunta. Un flow cuya tabla o columna se renombró o
+borró deja de tomar eventos, y su editor dice qué paso la perdió: elegí la tabla de nuevo y guardá.
+
+### Pedile un flow a tu super-agente
+
+Pedilo en cualquier chat ("cuando llegue un lead de la web, guardalo y avisame por Telegram") y tu super-agente dibuja el
+flow en el proyecto que corresponde, o cambia los pasos de uno que ya tenés. Ubica los pasos, revisa qué impide que
+corra y lo arregla. El chat muestra el dibujo del flow, si es un borrador, y **Abrir en el editor**.
+Hacé clic en el dibujo para verlo en grande: podés moverte y hacer zoom, y al tocar un paso ves sus ajustes al costado
+(en el teléfono, en una hoja abajo): qué tipo de paso es, qué usa y con qué sigue. Esta vista solo muestra el flow; para
+cambiarlo, usá **Abrir en el editor**. Se cierra con Esc, con × o tocando afuera. Muestra el borrador si hay uno; si
+no, lo que corre.
+
+Lo que guarda es un borrador: nada corre hasta que lo revisás en el editor y prendés el flow (o lo guardás estando
+prendido). Prender un flow cuyos últimos cambios dibujó un agente abre primero su editor: revisalos y tocá **Guardar**
+para hacerlos tuyos.
+
+También podés pedirle en el chat que lo prenda y lo pruebe. Antes te pregunta con una tarjeta que nombra el flow y
+lo que va a mandar, llamar, correr y cambiar; con tu OK el dibujo corre y el flow queda prendido. Para probarlo lo corre
+una vez con datos de ejemplo, de nuevo después de tu OK en una tarjeta que muestra los datos, y te cuenta cómo salió cada
+paso.
+
+Los mensajes, llamadas, comandos y escrituras en bases de datos te preguntan **¿Dejar que este flow actúe por
+vos?** antes. Si en el chat había un mensaje de otra persona o una página web, el super-agente te pregunta antes de
+guardar el borrador. Qué tan libre actúa un paso Modelo IA (su modo de permisos, si puede pedirle a otros agentes) lo
+elegís vos en el editor. La lista y la página de un flow muestran los
+cambios del agente apenas se guardan.
+
+**Desde el editor.** **Pedírselo a** (con el nombre de tu super-agente), en la barra de arriba del editor, abre un chat
+con él sobre el lienzo, en el lugar de los ajustes de un paso; en el teléfono es una hoja abajo. Decile qué cambiar y
+mirá: mientras trabaja el lienzo avisa que está editando, tus pasos quedan quietos, y cada paso que suma o cambia
+aparece marcado **Nuevo** o **Cambiado** un momento; su respuesta dice **Dibujo actualizado** en vez de mostrar el flow de nuevo. El chat queda guardado para ese flow, así que **Pedírselo a** lo
+continúa; ↻ empieza uno nuevo. Tus cambios sin guardar se guardan como borrador cuando mandás un mensaje, para que
+arranque de lo que ves, con los pasos sin terminar incluidos. En un flow nuevo, elegí
+primero el proyecto: tu super-agente crea el flow ahí y el editor lo abre. La barra dice **Lo dibujó** con su nombre
+hasta que tocás **Guardar**. Un editor abierto sin ese chat conserva lo que tiene en pantalla si un agente cambia el
+flow desde otro chat: salí y volvé a abrirlo para verlo.
+
+El CLI también arranca y detiene rondas: `apx flows run <flow> ['<cuerpo de ejemplo JSON>']` y
+`apx flows stop <flow> <evento>`. Actúan como vos, así que no corren dentro del comando de un agente.
+
+Un Flow pertenece a un proyecto. Su clave se hace en la tarjeta del paso webhook (**Configuración → Dispositivos →
+Endpoints** lista las direcciones de los flows encendidos). El acceso público se configura por separado y nunca expone el
+RPC privado ni el panel.
+
+Enviá JSON como `{"id":"order-42","data":{"status":"paid"}}` a `POST /flows/<ruta>` con la clave del flow como token
+bearer, o, si su webhook acepta GET, `GET /flows/<ruta>?id=order-42&status=paid` (los parámetros salvo `id` son los
+datos; uno repetido es una lista; sin `id` cada llamada es un evento nuevo).
+Conservá el mismo ID de evento en los reintentos. Los eventos vacíos, duplicados o que no coinciden con los filtros no
+llaman al modelo; el trabajo coincidente usa el vínculo guardado, no una identidad ni un comando elegido por el payload.
+Las tablas y el historial persisten tras reiniciar. Una ejecución vinculada puede fallar y no se garantiza exactamente
+un efecto en servicios externos. El panel muestra las últimas 50 rondas (**Ver rondas anteriores** trae más) y hasta 20
+filas de la tabla, con un enlace a la tabla entera en **Tablas**; los métodos privados del protocolo
+`tables.get`, `flows.rows` y `flows.events` permiten inspeccionarlos con paginación.
+
+Rotar invalida el token anterior inmediatamente. Si falla el borrado de su secreto, queda una referencia que no autoriza
+pedidos, para reintentar la limpieza al iniciar el core o en la próxima rotación; la credencial nueva se devuelve igual.
+La creación interrumpida de un token también queda registrada para limpieza. Si la cola de limpieza se llena (1.000
+referencias), recuperá el backend de Secrets antes de rotar. Usá la misma clave de idempotencia al reintentar un pedido
+de administración cuya respuesta se perdió.
+
 ## El silencio también es una respuesta: SKIP
 
 El prompt de una rutina de agente son tus propias palabras. Cuando esta vez no hay nada que valga contarte, el agente
-responde solo `SKIP` y no te llega nada. Escribí prompts que dejen lugar para eso:
+responde solo `SKIP` y no te llega nada. Cuando la tarea de la rutina es escribirte («recordame por Telegram…»), ese
+mensaje te llega una vez: lo que el agente dice después sobre haberlo mandado queda en el chat de la rutina en APX.
+Escribí prompts que dejen lugar para eso:
 
 > Revisá los pedidos de ayer buscando algo raro: reembolsos de más de 200, un producto vendiendo 3 veces su promedio,
 > un pago rechazado. Si no hay nada, respondé SKIP.

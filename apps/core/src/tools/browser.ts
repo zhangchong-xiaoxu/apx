@@ -6,6 +6,7 @@ import { z } from "zod";
 import type { AgentRecord } from "../domain/agents.ts";
 import type { Store } from "../domain/store.ts";
 import { pruneUploads, saveUpload } from "../services/uploads.ts";
+import { browserEvaluateTool } from "./browser-evaluate.ts";
 import { cap, untrusted } from "./result.ts";
 import { defineTool, type Tool, type ToolContext } from "./types.ts";
 import { urlConfirm } from "./web.ts";
@@ -73,7 +74,7 @@ export function browserTools(store: Store, home: string, vm?: { hasThread(id: st
   };
 
   /** An agent only touches tabs of its own profile, and not while another agent is driving them. */
-  const own = async (ctx: ToolContext, id: string): Promise<string> => {
+  const own = async (ctx: Pick<ToolContext, "agent" | "call">, id: string): Promise<string> => {
     const t = (await ctx.call("browser.tabs", {})).tabs.find((x) => x.tab === id);
     if (!t) throw new Error(`unknown tab ${id}; open one with browser_open`);
     if (t.profile !== profileFor(ctx.agent))
@@ -101,6 +102,7 @@ export function browserTools(store: Store, home: string, vm?: { hasThread(id: st
   };
 
   return [
+    browserEvaluateTool(store, home, own, vm),
     defineTool({
       needsCap: BROWSER_CAP,
       name: "browser_open",
@@ -145,7 +147,7 @@ export function browserTools(store: Store, home: string, vm?: { hasThread(id: st
         if (a.wait_s) await setTimeout(a.wait_s * 1000, undefined, { signal: ctx.signal });
         const r = await ctx.call("browser.snapshot", { tab, max_chars: 12_000 });
         await look(ctx, tab);
-        return untrusted("web_snapshot", { tab }, cap(r.tree));
+        return untrusted("web_snapshot", { tab, ...(r.document ? { document: r.document } : {}) }, cap(r.tree));
       },
     }),
     defineTool({

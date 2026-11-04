@@ -172,7 +172,7 @@ the core. A plugin process reads only its folder,
 writes only its data folder and starts no processes (Node's permission model); Node does not restrict the network, so
 the runner also refuses raw socket modules and makes `fetch` refuse this machine and metadata addresses — a best-effort
 guard so a plugin cannot call APX's loopback API as the owner. Plugins watch declared events and may add context to
-owner turns (outside data, capped, 2 s); they never call APX.
+owner turns (outside data, capped, 2.5 s); they never call APX.
 
 ## D-019 — 2026-10-01 — Outside apps get a scoped client token and always act as a model
 An app such as Claude Code connects with its own token (`x-apx-client`, apart from `APX_TOKEN`'s Authorization
@@ -323,6 +323,10 @@ quiet hours. Something critical may skip the cap (on by default) and, as a separ
 the owner's own messages, confirmations and pairing never pass through the gate. Feedback (👍/👎) and the agent's own
 `notify_owner` tool come next and use the same gate.
 
+Changed 2026-10-28: quiet hours and the day the cap counts read the machine's clock while channel hours (D-136) read the
+owner's time zone, so a core on UTC silenced the phone at the wrong hours. Both now use the owner's profile time zone
+(`ownerTimeZone`, the machine's when unset), through `quietNow` and `dayStart`.
+
 <a id="d-032"></a>
 ## D-032 — 2026-10-04 — The phone lends location and camera as a node, and takes notices by push
 The paired phone opens a second socket as a node lending `location` and `camera`; its tools (`phone_location`,
@@ -361,6 +365,11 @@ No learned model, no per-signal scoring: two counts and a rule the owner can rea
 routine's thread (its answer is already delivered) and between agents (the answer goes back to the asker), and it is
 not among a contact's tools. It asks the owner's OK while outside content is in the turn: an injected page must not
 write to the owner in APX's voice. The tool reports what the gate did, so a dropped message is not retried.
+
+Changed 2026-10-28: `message_contact` with `to="me"` was a second way to the owner's phone with no cap, quiet hours or
+👎. An agent's message to the owner in a run the owner did not ask for (`ownerAsked`) now goes through the same budget
+in `channels.message`, as `agent:<id>`, keeping its channel and files when it goes now; held for quiet hours, only its
+text goes later. In a run the owner asked for ("send it to my WhatsApp") it goes as before.
 
 <a id="d-036"></a>
 ## D-036 — 2026-10-04 — A commitment ends kept, missed or released; a new date is an event, not an outcome
@@ -868,7 +877,9 @@ calls nobody. It is not offered `delegate` (`MAX_DEPTH` 1), `delegate` refuses f
 comments summon no one, and a consult's answer asks nobody (this replaces D-073's two-hop cascade). The board stays
 open: it may still create and assign tasks, which start their agent's own work, bounded by the turn's depth
 (`MAX_MENTION_DEPTH`). The owner's agent, and an agent working its own task, can still delegate and consult. Amended by
-[D-077](#d-077): the delegate names who owns the rest and the caller asks them.
+[D-077](#d-077): the delegate names who owns the rest and the caller asks them. The board part is amended by
+[D-079](#d-079) (an answering agent gives nobody task work) and [D-082](#d-082) (no fixed depth: the owner's limit,
+off by default since [D-160](#d-160)).
 
 <a id="d-075"></a>
 ## D-075 — 2026-10-14 — The core gives agents their own `apx`
@@ -1084,6 +1095,11 @@ of its text arguments starts with one, or is a URL on that domain) and an `expir
 keeps when and from which chat it was given (`tools.grant_set`). A grant with a condition never counts as using a tool
 freely, so it is not handed on to another agent. `orchestrator: true` marks the head of a team explicitly and `orchestrator: false` says an agent is not it; the
 guesses by role ("orchestrator", "CEO", "lead") remain only for files that say neither.
+
+Changed 2026-10-28: the editor wrote its four-value summary of the project's mode as the agent's rules, and that summary
+is not what the core runs (an Auto agent began asking before reading outside, an Accept edits one stopped asking before
+commands). Leaving the project's mode now copies that mode as the agent's own `autonomy` and saves only the changed case
+as a rule; "Use the project's again" clears both. `AUTONOMY_RULES` is display only.
 
 <a id="d-091"></a>
 ## D-091 — 2026-10-16 — A run no one watches gets more steps, and a routine can set its own
@@ -1415,6 +1431,7 @@ is kept as `projects.context_chars` and sent as `Project.agents_md_chars` only p
 settings and by `apx projects list`. `.apc/memory.md` shares the cap and agent-facing marker, but has no CLI/UI notice.
 What reaches the prompt whole is superseded by [D-157](#d-157): every call now carries an AGENTS.md's first 8,000
 characters and the headings of the rest; the 200,000 limit, its marker and the owner's notice stay as they are.
+[D-158](#d-158) restores it whole.
 
 
 <a id="d-111"></a>
@@ -1602,8 +1619,7 @@ The owner's other requests in the same report, all through that rule:
 
 Left as they are, and why: the board's project scope for tasks and memory scopes are about which project's data an
 agent sees, not its mode; the 60-action computer-use check is a runaway guard; the Rules editor writing all four
-rules when an agent leaves its project's mode freezes them over a later mode change (none on this machine today),
-which is a product question for that page; the owner's own Claude Code settings still apply to Claude Code's tools.
+rules when an agent leaves its project's mode froze them over a later mode change (settled in D-090's 2026-10-28 change); the owner's own Claude Code settings still apply to Claude Code's tools.
 
 <a id="d-116"></a>
 ## D-116 — 2026-10-21 — 150 steps a turn, and a cut delegate goes on while it makes progress
@@ -1934,6 +1950,10 @@ cancels. Confirmations follow D-106's strong actions: an event only on the owner
 Doc APX writes are the owner's own and do not ask; inviting people, cancelling and sharing a file speak to others in
 the owner's name and ask; sending mail still always asks.
 
+Changed 2026-10-28: moving an event with guests, taking guests off or cancelling emailed them (`sendUpdates: "all"`)
+with no card, since only adding guests asked. Now Calendar writes with `sendUpdates: "none"` unless the call emails
+guests on purpose (an invitation, or `notify_guests`), and such a call is `always`, as `gmail_send` is.
+
 <a id="d-131"></a>
 ## D-131 — 2026-10-22 — One owner per task, hand-offs through tasks, and follow-ups an agent proposes
 **One owner per task.** The agent a task is given to carries it end to end; it uses its own workers for separate
@@ -1945,7 +1965,7 @@ accepts it (`tasks.update` with `proposed: false`, the owner only), and the owne
 An agent creates what its own role hands out and proposes the rest (QA, reviews, another area's work). The panel lists
 proposals first, with **Accept all**; the mobile app groups them the same way.
 
-**Proposals the agent did not ask for.** The fan-out check (a third agent in one turn asks first) no longer stops a wide `task_create` with a card:
+**Proposals the agent did not ask for.** (Superseded by [D-160](#d-160): there is no fan-out check.) The fan-out check (a third agent in one turn asks first) no longer stops a wide `task_create` with a card:
 those tasks become proposals, so the owner picks which go ahead; a wide `delegate` still asks. A sub-task three
 hand-offs deep, or one for an agent that created a task above it, is a proposal too, so agents cannot pass work down
 forever or ping-pong it. Rejected: a counter on the task (it misses a chain that runs across tasks).
@@ -2103,6 +2123,9 @@ serves to the tailnet, and only APX's own Funnel is undone when it is turned off
 core, which remembers the last address ngrok gave and tells the owner only when one is new (a free account usually
 keeps one across starts; a reserved domain can be given); or the owner's own https URL (a proxy they run). Each adapter reads its address through `io.hookUrl()`, and a
 channel that needs one and has none says so in its status until one exists.
+
+Later: Flow addresses answer at `/flows/<path>`, the Flow's own path, and `/flows/test/<path>` takes one test event
+while the owner listens for it ([D-178](#d-178)).
 
 <a id="d-140"></a>
 ## D-140 — 2026-10-23 — The owner's settings change on their card, at their word alone
@@ -2541,6 +2564,827 @@ not only news entries or commit subjects. Builds, route/anchor checks and transl
 source review; none proves every explanation correct. No source-text test or automatic check can decide semantic
 documentation relevance. See [WORKFLOW.md](WORKFLOW.md#documentation-impact-contract).
 
+## D-160 — 2026-10-27 — Agents finish what they were asked: limits are the owner's to turn on, and the super-agent asks how in its own words
+Supersedes the defaults of [D-069](#d-069) and [D-081](#d-081), and the fan-out check of [D-131](#d-131). A night's
+three tasks stalled: 30 unattended turns went fast because every background command that ended woke its agent as a
+turn; past it every result paused the chain and told the owner's Telegram, in English, once per result (about thirty
+messages); a paused chain left tasks "in progress" with nobody on them; and the super-agent stopped twice on a system
+card asking to hand work to a third agent, after the owner had already said to do the work. Coding agents finish what
+they are asked; APX's agents should too.
+
+- **No unattended limits by default** (`MAX_UNATTENDED_RUNS` and `MAX_UNATTENDED_TOKENS` are 0). **Set limits** in
+  Config › Agents turns them on, starting from 100 turns and 5M fresh tokens (`SUGGESTED_LIMITS`, `agents.limits`
+  `defaults`), room for a large feature. Owners who never changed them get no limit; one who set their own keeps it.
+  Deadlines, the idle watch and the stalled-task nudge stay: they catch a stuck agent, not a busy one.
+- **A pause is told once, in the app.** A `breaker.paused` or `breaker.held` notice becomes one tray notice per
+  conversation tree (`breaker:<top thread>`), in the owner's language, until read; no channel message. Each result
+  that lands while paused still adds its line to the chat.
+- **No fan-out card.** The super-agent no longer asks through a system card before handing work to a third agent, and
+  wide `task_create`s are no longer turned into proposals; `fan_out_ask` and `agents.set_fan_out_ask` are gone. Its
+  role line tells it instead: several pieces of work and the owner did not say how, ask once with `ask_owner` and short
+  options (a plan first, one task each, it does it); if they said how, do it. The hand-off-depth and give-back
+  proposals of D-131 stay.
+
+Rejected: raising the default to 100 turns (still a stop the owner did not ask for, on the work they asked for).
+
+<a id="d-161"></a>
+## D-161 — 2026-10-27 — The app is where the owner is always told; the super-agent tells what its team finished and what the owner added
+Until now a chat app was the owner's main place to be told: phones got a push only for a finished turn or an agent
+waiting for their OK, and picking a phone as "where notices go" replaced the channel. The owner wants the opposite:
+APX's apps always tell them, and a chat app is an extra they may pick or not.
+
+- **Every tray notice reaches paired phones** (`engine/notice-push.ts`), in quiet hours only a question or an error.
+  The desktop and web panel show it as a system notification unless the owner is looking at that very chat. The dev
+  `APX.app` is signed again (ad-hoc) after it is renamed, since macOS drops a broken bundle's notifications silently.
+- **The chat app is optional.** `notices.channel` takes `"none"`: nothing the super-agent says unasked goes to a chat
+  app (news stays `no_channel`, in the tray). An old `device:<id>` choice means the same; the phone option is gone from
+  the selector, since every phone is told. What a contact leaves for the owner reaches the tray too.
+- **The super-agent hears what its team closes.** A task closed by an agent that the super-agent did not create (the
+  owner's, or another agent's) reports to Home too (`task_result` with `by`), and the super-agent tells the owner in a
+  line or two. Not when it created or closed the task itself, nor when the owner closed it.
+- **What the owner adds reaches the super-agent.** A project created or registered, or an agent created, from an app
+  (`actor: human`, no agent call) gives the super-agent a Home turn (origin `added`) to offer adapting it, asking
+  before changing anything; not while it is working, since then it is most likely its own doing.
+
+Rejected: a digest of closed tasks once a day (the owner wants to hear when the work is done, not the next morning).
+
+<a id="d-162"></a>
+## D-162 — 2026-10-27 — Work goes on until it is done, and says what shows it
+Patterns read in an open harness (DeepSeek Harness, MIT, studied as reference; no code taken), adopted where APX's
+agents stopped short. Each answers a stop seen in real work:
+
+- **A task turn that ends with the task in progress goes on at once** (`engine/task-continue.ts`), numbered "part k of
+  at most 9", telling the agent to finish, verify and close, mark it waiting on the owner with why, or say what blocks
+  it. Not after a part that made no progress (`progress.ts` `stalled`), past `MAX_AUTO_PARTS` in a row, in review,
+  or while a subtask, a helper, a background command, a question or the breaker is still to come. The stall watch
+  (20 minutes, then the owner) stays for what this does not catch.
+- **Repeating a call is reminded, not cut.** Only the same call in a row counts (arguments compared with their keys
+  in order): a reminder at the third and fifth, tools off at the eighth. Returning to a read between other work is
+  not stuck.
+- **A background command's end joins its agent's running turn** between steps (the steer buffer carries results as
+  well as the owner's words), instead of one turn per command; with no running turn it starts one, as before.
+- **Providers get four tries** with doubling, jittered waits (up to 8 s), a Retry-After under 30 s waited for, a later
+  one moving to the next model at once; the turn's signal cuts any wait.
+- **Done says what shows it.** The agent closing its own work as done gives a note of what it verified; marking a task
+  as waiting on the owner gives `why`, posted on the task.
+- **A turn's changes card shows that turn's changes**: a git tree snapshot (private index) while the turn is prepared,
+  compared at its end.
+
+Rejected for now: programmatic tool calling (a typed tool SDK in the prompt breaks the prompt budget and needs its own
+sandbox), a goal tool separate from tasks (tasks already are the goal), fresh-worker rounds (APX's sessions keep
+context and compact).
+
+<a id="d-163"></a>
+## D-163 — 2026-10-27 — A teammate's question reaches the owner's chat app as the super-agent saying who waits
+A card any agent raised used to reach the owner's chat app as a system message with buttons ("Fausto wants to use
+file_edit…"), as if APX itself spoke. Questions and approvals stay with the agent that does the work: its card is in
+its chat, in the app's tray, on the desktop and on paired phones (D-161). On the chat app the owner picked, a
+teammate's card is now one line in the super-agent's voice, "Fausto te espera: <what>", without buttons, to answer
+in the app; the super-agent's own questions still come whole with their buttons. With no chat app chosen, nothing
+goes there. Rejected: forbidding delegated agents to ask the owner (their questions would go through the
+super-agent and lose the card's context).
+
+<a id="d-164"></a>
+## D-164 — 2026-10-27 — An unasked message goes on with the conversation; it greets only after a silence
+The super-agent's routine news, task reports and release news opened with "Hi, I'm Roby" minutes after the owner and
+it had been chatting: those turns run in a chat of their own (a routine's) or a single call (the news), so the model
+never saw that a conversation was under way. Every turn whose answer reaches the owner unasked (`unasked()` in
+`engine/last-talk.ts`: routines, jobs, the computer starting, stalled tasks, task and delegation results) and the
+release news now carry a `[last talk]` line in the turn's input: how long since the owner wrote and since the last
+message reached them (an agent's reply content in Home or the chat, or a sent nudge). Empty placeholders and tool-only
+activity do not count as replies. This line shares timestamps only, never words from another chat, independently of
+memory-sharing settings. Mid-conversation it says to go on with no greeting, no "hello again" and no introduction; after six hours
+of silence, or a new calendar day in the owner's time zone after three, it says to open with one short greeting for
+the time of day. Home is always the conversation, since the owner's channel lands there; a routine's own chat is not,
+since its stored prompt is not the owner talking. The line is per-turn data, so the system prompt stays byte-stable
+([rules/PROMPT_SIZE.md](PROMPT_SIZE.md)); the owner's own turns never carry it. `unasked()` lists every origin, so a
+new one must decide. Fixed template messages are untouched.
+
+<a id="d-165"></a>
+## D-165 — 2026-10-27 — Arbitrary browser JavaScript is reviewed execution, not a credential sandbox
+The owner explicitly accepted reviewed JavaScript execution in the existing APX tab after the security review explained
+that arbitrary page code cannot retain a mechanical guarantee against reading or filling sensitive fields, making
+requests or sending as the signed-in account. This is a narrow exception for `browser_evaluate`, not a change to the
+ordinary browser typing guard, navigation policy or a permission to handle passwords, 2FA or card data.
+
+Execution requires an app approval, including Total and an agent rule set to auto. The owner can approve once,
+for this tab, or during this turn; `session` remains the existing durable chat grant and is not offered here.
+Temporary consent is held only in core memory, limited to the exact conversation, agent and approved HTTP(S) origin,
+and activates only after its first approved execution succeeds on the host. A tab consent has a maximum lifetime of
+30 minutes and also binds the browser connection and Chromium page epoch;
+closing, navigating or reloading the tab, or reconnecting the browser invalidates it. Same-origin reload is deliberately
+not an exception: inspect a fresh snapshot and approve again. A turn consent covers other tabs only on that exact
+origin and only within the current run, without an additional consent timeout; never a future turn, delegation,
+routine or restarted core. Both scopes are
+revocable through the owner's existing approval controls. Neither is a global tool grant or a grant to other tools.
+The complete app card identifies tab, expected origin and the complete immutable source; shortened channel messages
+cannot approve execution. New sources within a temporary consent do not open another card: this is explicitly broader
+than approving the displayed source once. A card whose original waiting turn ended cannot grant browser execution. Local `.js` files require normal folder
+read permission and an exact SHA-256 match before approval; the same in-memory snapshot is executed, never a reopened
+path. VM chats refuse host file inputs. The underlying RPC is human-only, unavailable to outside MCP clients, and the
+normal profile and user/handoff controls remain. The latest snapshot supplies a bounded Chromium review handle capturing the exact document and URL. Execution uses
+that retained context and checks document, URL and approved origin before any source runs. Reloading, navigation,
+changing an SPA route or taking another snapshot invalidate the old approval context. Source runs as a DevTools function,
+not page eval; CSP does not need unsafe-eval. Expressions return their value; statement files need an explicit return.
+Results and page errors are untrusted and bounded; scripts are not a sandbox, and timeouts stop waiting rather than
+cancel or undo effects. An uncertain send must be inspected, never automatically retried. Credential use remains
+prohibited by policy and owner review, not claimed as mechanically prevented for arbitrary JavaScript.
+
+Rejected: silently treating approval as technical containment, silently bypassing the ordinary guards, or calling a
+read-only snapshot console equivalent to executing code against the owner's actual page.
+
+## D-166 — 2026-10-28 — Screens talk to the person, and a UI change is looked at before it is done
+Flows and the public address reached the owner as a JSON form and a settings section that explained its own
+plumbing: "token bearer", "RPC", "listener", "registered routes", which channels sign their requests, what APX "does
+not promise", and the same address and the same sentence twice. Every gate was green: the change workflow measured
+types, tests, runtime, security and architecture, and nothing measured what a person sees or reads. Reviewers'
+caveats were written into hints, and the agents' own terse register (how they write to each other) became the UI's.
+
+UI text now addresses the person (AGENTS.md rule 31): what they can do, what happens, what they decide. Internals,
+which integration a mechanism serves, review caveats and repeated facts go to docs. Before and after:
+
+- "Every Flow needs its own bearer token… LINE and Teams use their platform signatures instead." →
+  "Addresses other services can call. Revoke one you no longer use."
+- "Only registered routes are reachable: never the panel or the API." → nothing: it is a guarantee, not a choice.
+
+A UI change also has a reference before and screenshots of the running build after, reviewed by the designer
+(rule 32, [UI changes](WORKFLOW.md#ui-changes)). The harness says it too, in every project: an agent or worker whose
+folder can change is told, in its prompt's "Your folder" section, to see a visible change running in its browser and
+report it with a picture, never leaving the check to the owner (`VISUAL_CHECK` in `engine/context.ts`). So is any
+agent in a project chat outside plan mode, since project agents edit from task chats too; a chat outside projects,
+a contact's and a read-only folder do not carry it. The default prompt's budget is unchanged; a project chat's grew
+from 7,500 to 8,000 for it (`PROMPT_SIZE.md`). Rejected: a lint word list for jargon (it would ban words, not
+explanations aimed at the wrong reader), and treating E2E as visual review (it proves a click works, not that
+the screen makes sense).
+
+<a id="d-167"></a>
+## D-167 — 2026-10-28 — A published Flow graph runs as drawn, on a small executor that never repeats an uncertain step
+The graph foundation stored drafts and refused every publication until an executor existed. Its design asked for
+much more than running a graph: execution modes with a return to legacy, quarantine, paginated export sessions with
+chained digests, a cross-node call/token budget, a value journal quota, fencing epochs and a cancel outbox. Each is
+a reasonable answer to a risk; together they kept anything from running.
+
+The executor that shipped keeps the guarantees that protect the owner and drops the machinery whose risk is bounded
+some other way:
+
+- **Revisions are immutable and pinned.** Publishing (CAS on the draft version and the published revision) inserts a
+  new revision and consumes the draft. Admission pins revision, redacted payload, deadline and node rows in the same
+  transaction as the `(flow,event)` dedup. Saving a draft or publishing never wakes or rewrites an event. Events
+  admitted by the legacy executor keep `executor='legacy'` and drain on it untouched; nothing is migrated.
+- **A step runs once.** Database steps commit their effect and checkpoint together. A model step commits
+  `dispatched` synchronously just before its single transport call (one exact model, no retry, no fallback, no
+  token renewal, no tools); a restart that finds it without output marks it `uncertain` for the owner, never
+  re-sends it. Agent and routine steps link their run to the step in the transaction that admits it, through the
+  router with an internal context no transport can set, and are never readmitted. Their output is the run's own
+  final answer; a failed, canceled, cut or silent run blocks what follows.
+- **Everything ends.** Each event has an absolute 10-minute deadline persisted at admission, each model step its own
+  timeout. At the deadline pending steps are cancelled, waiting runs are asked to cancel, and late results are kept
+  out of the graph. Disabling a Flow stops new steps; its deadline keeps running.
+- **Payloads stay data.** Bindings are fixed in the revision; the payload never picks an agent, routine, model, tool or
+  path. Values are redacted with the shared credential matcher (like legacy events) and capped at 32 KiB.
+- **Bounds instead of budgets.** At most four model steps per graph (one call each, ≤ 2,048 output tokens, ≤ 120 s),
+  32 nodes, one active event per Flow (FIFO) and four Flows advancing at once; agent and routine runs keep their
+  existing limits.
+
+Rejected for now: execution modes and return to legacy (a Flow returns to legacy by retiring and recreating it),
+quarantine (no database ever held a publication), export sessions and receipts (the CLI export now includes the graph
+and each run's steps; retirement keeps the owner's explicit `confirm-exported`), a cross-node budget and a cancel
+outbox (a canceled request is retried on every recovery pass). A routine step reuses the reviewed legacy routine
+admission, binding re-checked against the pinned revision, and keeps its usual delivery to the owner.
+
+## D-168 — 2026-10-28 — A schedule Flow ticks on the routine scheduler's beat and owes at most one run
+A Flow can start from a schedule (a five-field cron, in the owner's time zone) as well as from a POST. Its ticks come
+from the routine scheduler's existing beat (`officeScheduler` → `flows.tick`), not from a second loop or a timer per
+Flow. Each schedule Flow keeps one moment, `since`, that its next time is counted from:
+
+- **One run per time due, at most one owed.** A beat that finds a time due admits one event, `schedule:<due time>`,
+  through the same admission transaction as a POST (dedup per Flow and scheduled time, pinned to the published
+  revision), and moves `since` to the beat. Times missed while the core was off run once when it starts, not once
+  each: a backlog of a schedule is noise, and repeating work the owner thought was skipped is worse. The run records
+  when it was due, so the screen can say it started late. A failed admission spends the time too, as a routine's does.
+- **Off owes nothing.** Turning a Flow off deletes its `since`; turned on again it counts from then.
+- **One way in each.** Admission checks the source against the pinned revision's trigger: a schedule Flow has no
+  public route and refuses a POST, a webhook Flow never ticks. The owner's "Run now" goes through the same admission,
+  marked `owner`: an empty event for a schedule Flow, the sample body (untrusted, redacted like any payload) for a
+  webhook one. A cron that could fire twice within five minutes is refused, like a routine's.
+- **Cancel follows the deadline rule.** The owner stops a going run in one transaction: steps not started are
+  cancelled, a model call that may have been sent is left uncertain (never re-sent), a run a step handed work to is
+  asked to stop. The run ends cancelled, or uncertain when a step is. Owner-only.
+
+Rejected: a timer per Flow (a second clock to keep right across sleep and restarts), catching up every missed time,
+and letting a webhook Flow tick or a schedule Flow take POSTs "for testing" (that is what Run now is for).
+
+<a id="d-169"></a>
+## D-169 — 2026-10-28 — A Flow speaks as the owner and calls other services only where its published revision says
+Flows got two steps that act outside APX: notify (a message through one of the owner's chat apps) and an outgoing
+HTTP request. Rule 10 makes sending or posting as the owner a strong action that needs confirmation; a Flow runs
+unattended, often on an outside service's POST. The confirmation therefore moves to the moment the owner decides what
+the Flow does, and everything a run could change afterwards is taken out of the payload's hands:
+
+- **Publishing is the approval, of exactly what was shown.** `flows.outward` lists, for a drawing, each person or room
+  it sends to (by channel) and each method and URL it calls. `flows.publish` refuses a drawing with such steps unless
+  it carries that list back (`outward_unconfirmed`), so a client can't publish them without having had them to show.
+  The panel asks **Let this flow act for you?** whenever a destination is new to the published revision; Not now keeps
+  the previous one running. Drafts and publication stay owner-only (OWNER_ONLY): the super-agent can't publish, run or
+  stop a Flow, and the CLI's `apx flows run|stop` refuse inside an agent's command, whose own `apx` calls already ask.
+- **Destinations are ids in the revision.** A notify step names a channel id and a person or a listed room by id; the
+  send uses exact ids (`messageContact` with an exact channel, `postToRoom`), never a name match, so a payload, a renamed
+  room or a second channel of the same type can't redirect it. The payload only fills the words, through placeholders
+  that are bindings, not expressions. The URL of an HTTP step is fixed (no placeholders); headers and body are templated,
+  a JSON body structurally.
+- **At most once, then the owner looks.** A send or a non-GET request commits `dispatched` (with the send counted) right
+  before it can reach the other side; no answer after that is `uncertain` and is never repeated, after a restart, a
+  Stop run or the deadline alike. Sends go through the channels' outbox, which keeps its own rule (retry only what
+  surely did not go out). A GET changes nothing: it starts over after a restart and tries once more after a network
+  error with no answer. 20 sends per Flow per hour bound a noisy source.
+- **The network is the internet only.** The egress policy agents' computers use (`vmAddressAllowed`) decides, on every
+  address a name resolves to; the connection is pinned to the checked address and checked again on the socket, and
+  redirects are not followed, so neither DNS rebinding nor a 30x reaches loopback, a private network or a metadata
+  service. A test core can let exactly its own loopback service through (`APX_FLOW_HTTP_ALLOW`), by config.
+- **Secrets stay references.** Only `secret://name` in a header's own text, resolved inside the step for the Flow's
+  project; a value the payload brings is never read as a reference. Resolved values are cut from the answer and never
+  stored, logged or shown: the run shows the reference.
+
+A schedule whose last run is still going now skips its time (counted on the Flow, shown on its page) instead of queueing
+behind it; D-168's "owes at most one run" already said a backlog of a schedule is noise. Run now still queues.
+
+Rejected: a confirmation card per run (a Flow is unattended; a card per webhook would be a card nobody answers in time),
+letting the payload or a step's output choose a contact or URL "with an allow-list" (the list would be the revision
+anyway), following redirects with a re-check per hop (one more path to get wrong, for little the owner needs), and a
+separate egress proxy process for the core (the policy and a pinned socket give the same guarantee in process).
+
+The independent security review added: a message no channel has taken yet is withdrawn rather than left to go out
+days later; a Flow's message in a contact's chat is a user-role note for its agent, never the agent's own words; bound
+values can't form links or mentions; consent keys include which secret goes to which URL; non-GET calls get an hourly
+limit (60); JSON-escaped and URL-encoded echoes of a secret are cut. Known limit, not changed here: the CLI's
+"not inside an agent's command" is a client-side courtesy; the core trusts every loopback caller as the owner, for
+every owner method, and relies on D-106's "APX's own API always asks" for agents' shells.
+
+<a id="d-170"></a>
+## D-170 — 2026-10-28 — A Flow's checks branch into cases, and code, SQL and commands run apart, at most once when they change something
+The Flows palette listed SQL and Cmd as coming soon, a check had only yes and no, and the owner asked for a JavaScript
+block and named values. Each new block runs payload data next to something powerful (a shell, a database, a
+JavaScript engine), so the rule is the one D-169 set for sends: the owner decides what runs when publishing, and
+what arrives only ever travels as data.
+
+- **Checks are switches; formulas are data.** A check tries up to 15 cases in order (its input *is* a value, or a
+  formula holds) and goes on by the first, else by `no`. A drawing from before keeps its one value as case `yes` and
+  keeps recording `{matched}`: revisions are immutable (D-167), so nothing is migrated; every reader takes both forms.
+  Formulas and variables use a small expression language parsed and evaluated over JSON in the core (comparisons,
+  logic, arithmetic, a fixed list of functions): never `eval`, never a sandbox for owner code in the core's process.
+  Steps and variables are named in the text, not computed, so validation proves each is an ancestor.
+- **Code runs apart.** A JavaScript step runs in a child Node with the permission model on (no files, processes or
+  workers), no code from strings, a 64 MB heap, an empty environment and a deadline, and inside it in a `vm` context
+  built from nothing of the host. `node:vm` alone is no boundary and Node 24's permission model does not restrict the
+  network: the context is what keeps `require`, `process` and `fetch` out of reach, the process what bounds time,
+  memory and files. Only JSON text crosses either way; the result is capped and untrusted.
+- **SQL binds and is told what it may do.** One statement on a SQLite file inside the Flow's project, in a child
+  process so a runaway query is killed. Values are always bound parameters. `node:sqlite` ignores the permission
+  model, so its authorizer allows reads (and, for a write, inserts, updates, deletes and new tables or indexes) on the
+  main database only; another file (`ATTACH`, `VACUUM INTO`, which asks no authorizer and is refused by its first
+  word), pragmas, triggers and extensions never run. The file is the project's: no link, no climbing out, never APX's
+  own. Postgres and MySQL are left out (a driver per engine and a network path for little the owner asked): SQLite
+  files and the Flow's own tables (Read table, Save to table) cover what Flows need now.
+- **A command is the owner's text; the payload is its environment.** Cmd runs the published command through routines'
+  `runStep` in the project's folder, with `commandEnv` (no credentials, no connection strings) plus the step's
+  variables. What arrives reaches it only as variable values and standard input; a placeholder in the command text is
+  refused at validation, and so are variable names that change how programs run. Two minutes at most, output
+  tail-capped, the exit code readable by a later check when the step goes on after an error.
+- **Changing something happens at most once.** A SQL write and a command commit `dispatched`, with an hourly count
+  (120 writes, 60 commands), right before they start. A statement SQLite refused changed nothing and fails; a write or
+  command cut by the deadline, **Stop run**, a time limit, a signal or a core that died is **Needs a look**, never run
+  again. Reads and code change nothing and start over after a restart.
+- **Publishing approves the folder and the text.** The allow dialog names each command with its folder and each
+  database a step changes; the publish keys hash the real folder and everything the step does, so editing either, or
+  the same step in another folder, asks again.
+
+Rejected: running the owner's JavaScript in a worker or a `vm` in the core (one escape away from everything the core
+holds), interpolating values into SQL or the command with escaping (escaping is per dialect and per shell, binding is
+not), letting a webhook choose the database or the folder, and re-running an uncertain command "because it is
+local".
+
+The independent security review added: a database path that is a link is refused even when it points nowhere yet;
+APX's own files are never a step's database when a project's folder holds APX's home; the approval includes the
+folder; a command a signal ended is uncertain, not "couldn't start"; commands lose connection strings too. Known
+limits: SQLite's defensive mode is not exposed by `node:sqlite` (every pragma is denied instead); the database is
+opened by path a moment after the core checks it; a project's folder moved after publishing is used until the next
+publish.
+
+<a id="d-171"></a>
+## D-171 — 2026-10-28 — Work APX does on its own is a background check set where it lives; routines are the owner's
+The owner found Important mail among their routines, timed in the secretary profile, while Google Calendar's reminders
+had just left the routines for Calendar's own settings (a212a1077). They asked for the mail check to work the same way,
+with its pace chosen in Gmail, and for a rule so every later job follows it.
+
+**The rule.** Periodic work that comes with a feature (an integration's reminders or polling, upkeep APX does for the
+owner) is a **background check** (`engine/background.ts`) on the office clock, not a routine:
+
+- **Where it is set.** In the settings of what it belongs to: an integration's **Configure integration**
+  (`integrations.settings` / `integrations.configure`, its `settings` list naming it), or the screen of the feature.
+  Its value is one `SETTINGS` entry (`domain/setting-keys.ts`), each field falling back alone, off until the owner turns
+  it on unless it is upkeep they never see. An agent changes it with `integrations.configure` through `apx_settings`,
+  the owner's OK first.
+- **How it runs.** `{ id, everyMs, run }` passed to `officeScheduler`'s `checks`. The clock beats every minute: a check
+  whose pace is the owner's (every N minutes) runs each minute and returns at once until its time, within half a beat
+  of slack. A run never overlaps itself; a failure is logged and the next beat tries again. Its state (a cursor, what was
+  told) is a setting of its own, moved only after the work it stands for succeeded, so nothing is lost or told twice.
+  Real time never decides a test: tests call `run(at)` or tick `officeScheduler` with an injected clock.
+- **What it may do.** Cheapest first: ask the outside service (free calls), filter in code, and tell the owner a fixed
+  line (`remind`, as Calendar does) when no judgment is needed. When judgment is needed it admits **one** turn to the
+  super-agent in Home with an `Origin` of its own (`{ kind: "mail" }`) whose framing says the content is outside data,
+  that the owner is not watching and that `SKIP` says nothing; the outside text goes in `untrusted(…)`. Home's answers
+  reach the owner's chat app as any of the super-agent's do, `SKIP` sends nothing. Quiet hours: it waits without
+  moving its cursor, so the first run after sees what came.
+- **What stays a routine.** What the owner writes themselves: a prompt, a command or a message on a schedule they
+  choose, for an agent they choose. Routines show in the routines list, with runs, 👍/👎 and the daily budget. A
+  profile may still ship routines (day open, watch); a feature's own polling never becomes one.
+- **Moving one out of the routines.** A migration carries the owner's switch, pace and cursor into the new setting and
+  deletes the routine with its runs; protocol enums lose the routine action; screens point to where it now lives.
+
+**Calendar under it.** `calendar_reminders` gains `every_min` (1 to 1440, default 5): Calendar is looked at that often,
+but never less often than `lead_min`, since an event starting between two looks would never be told.
+
+**The mail check under it.** Gmail's settings hold `mail_check { enabled, every_min (1 to 1440, default 5),
+important_only }` (`CHECK_EVERY` is the range both share). Each run asks Gmail's history (D-135's cursor, now `mail_seen`), leaves out promotions, social,
+forums, spam, trash and sent (and, if chosen, what Gmail does not mark important), and only with something left admits
+a `mail` turn to the super-agent with the mail as `untrusted("emails")`. Only the owner's own Google client can read the
+inbox (D-130); with APX's the switch is shown off with a line saying so. The routine's own instructions and per-run
+history are not carried over: the check's framing holds D-135's prompt.
+
+**Signature import, beside it.** `email.signature_import` reads the send-as signature Gmail keeps (own client only) and
+returns it fitted to the signature subset (`domain/email-signature-import.ts`): allowed tags and attributes stay,
+layout tags become `div`/`span`, styles, scripts and unsafe links go, and the text form is derived from it. Nothing is
+saved and Gmail is never written: the owner reviews it in the editor and saves.
+
+Rejected: keeping Important mail as a hidden routine (a routine the owner cannot see is a second scheduler), a fixed
+line per mail with no agent (D-135's judgment of what needs the owner is the point of it), and a separate thread for
+the mail turns (its answers would not reach the owner's chat app without a reply route of their own).
+
+<a id="d-172"></a>
+## D-172 — 2026-10-28 — A Flow's AI model step works with full power but alone, as an agent or a bot of the Flow
+The agent step handed the payload to an agent through `threads.send`: a full turn with the agent's instructions,
+memory, tools and the right to delegate, like a task. The owner asked for one "AI model" block whose source is an
+agent or a bot written for the Flow, on the harness, model, effort and permission mode they pick, and said a Flow
+step should be simpler than a task without being capped. The step keeps everything an agent is and drops only what
+makes one run fan out into many:
+
+- **Full tools and memory, no team by default.** The step's chat carries `flow_step` in its context. Unless the step's
+  **Can ask other agents** is on, its turns leave out delegating (`delegate`, sessions), the roster, `list_agents`,
+  `grant_tool`, `agent_set` and the task tools that wake another agent (`task_create`, `task_update`, `task_comment`,
+  `task_close`); reading tasks stays. Everything else (files, shell, browser, memory, MCP) follows the agent's own list
+  and rules. With it on, the step works as the agent does in a chat. A Flow is unattended and has a 10-minute deadline;
+  agents asking agents inside one is the open-ended part, so it is the part the owner turns on.
+- **A bot is a name and a system prompt, nothing else.** It runs as a worker of the super-agent (its instructions in the
+  thread's `worker`, a prompt of its own), never with the super-agent's persona, memory, reach or team: it keeps only
+  the tools that work on the task (the web, files and commands where it works, its own browser, reading tasks), never
+  the owner's chats, mail, calendar, contacts, accounts, MCP servers or settings. Each run gets a new chat, so it has
+  no history; it never delegates.
+- **One ref picks harness, model and effort.** `model` is an `engine/model#effort` ref, set as the chat's own model.
+  A model API runs on APX's loop. A CLI (Claude Code, Codex, an ACP agent) runs the step as its own session in the
+  project's folder (D-043: CLIs never run as an agent's persona); who answers travels as the brief of its first
+  message, and APX's memory does not reach it. Its permission is the session's write policy (ask, auto, read-only);
+  on APX's loop it is the mode (manual, auto, total) over the agent's own, its own rules still applying. Plan and
+  accept-edits are left out: nobody is there to review a plan.
+- **What answered is shown.** `flows.run_get` adds the harness and model of the run each AI step started; the run
+  detail names them beside the bot's or agent's name and opens the chat.
+
+Template fields gained the values a person reaches for: `$apx.project`, `$apx.now` and `$apx.run`, filled by the
+step, never bindings the payload could reach. A command's environment reads `secret://name` like an HTTP header does
+(D-169): in the owner's own text only, resolved in the step, cut from what it printed, shown as the reference, named in
+the allow dialog. The panel's picker offers secrets only in those two fields; a message, a body, SQL values or an AI
+instruction would carry a secret as text.
+
+The independent security review added: the step's limits also apply to the APX tools a CLI session reaches through
+APX's MCP bridge (it found a CLI bot with the super-agent's whole tool set); the bot's tools became a short list to
+keep instead of a list to drop (the super-agent can read every chat, so a payload could have read them through a
+bot); a helper an agent step delegates to works in the step's mode, not the agent's own; a CLI step in a project
+without a folder is refused at validation instead of failing every run. Known limits: a CLI step's brief reaches the
+session framed as outside data, the owner's instructions with it; a CLI's write mode defaults to asking, which waits
+until the run's deadline; a command's output is tail-cut before secrets are scrubbed, so a secret split by the cut, or
+echoed transformed (base64, hex), can survive in the run.
+
+Rejected: capping an agent step's tools to a fixed safe list (the owner asked for full power; the agent's own rules already
+say what it may use), a second "direct model" block beside it (one block; old drawings keep theirs), letting a bot
+delegate (a bot has no team to speak for), and letting a CLI session read APX memory through framing (D-043).
+
+<a id="d-173"></a>
+## D-173 — 2026-10-29 — A Flow saves to the project's named tables, and a variable may hold a secret's reference
+The owner tried the editor and could not use **Read table** and **Save to table**: each Flow had one unnamed table
+with a fixed key, nothing listed what was saved, and a read had to name keys up front. They also found no way to put a
+key of theirs in a variable. Two changes, both on the graph executor only (a drawing that uses either is not the legacy
+shape, `flow-shape.ts`):
+
+- **Tables belong to the project, by name.** `table_write` and `table_read` take an optional `table` (lowercase
+  letters, digits, `_`, `-`; up to 40). Rows live in `flow_tables (project_id, name, key, value, updated_at)`; a table
+  exists once a row is saved in it, so the editor creates one by naming it in a save, and a read later in the drawing
+  is offered that name before any row exists. A save's `key` and a read's `keys` may hold placeholders
+  (`$trigger.email`), filled when the step runs; a missing value fails the step, a key is one line of at most 128
+  characters and never a credential. A read takes one or more keys (`rows` by key and `row`, the first one's value) or
+  `latest: 1–100` (newest first). `flows.tables {project}` lists names, row counts and last change; `flows.rows` takes
+  `table` for its rows, newest first. Limits: 1,000 rows per table, 100 tables per project, 10,000 rows across the
+  install, 32 KiB per value. Without `table` a step keeps the Flow's own table (a definition drawn as a graph), as before.
+- **A variable may hold `secret://name` and nothing else.** It stays that reference everywhere: in the run, in its
+  output, in a message. Where a step reads secrets itself (D-169: an HTTP header; D-172: a command's environment),
+  a `$vars.name` placeholder stands for the reference as the owner's own text, so it resolves, is named in the allow
+  dialog, is scrubbed and is checked for existence like a typed `secret://`. The swap happens on the parsed template
+  (a placeholder part becomes a text part), never by rewriting the raw text, so a placeholder before it can't swallow it.
+  Any other read is refused (`secret_var_text`, naming the variable): a placeholder in a message, a body, SQL values, a
+  command's input, a key or a formula (followed by a dot or a field too), a step's input bound to the variable or to the
+  whole variables step, and the name written in a prompt, an address, a query or a command's text. JavaScript never sees
+  it among its `vars`. A literal with `secret://` beside other text is refused too (`secret_var_shape`), since it would
+  be read as plain text. A formula never yields a reference that resolves: only a
+  literal counts, so a payload can't build one. HTTP headers also read ordinary `$vars`, as other templates do.
+
+Rejected: tables per Flow with a picker of other Flows' tables (the owner thinks in the project's data, not in Flows),
+an explicit create method (a table nobody saved to yet is a name in a drawing), and resolving a secret variable in any
+text that leaves (rule 11: it would put the key in a message or a prompt).
+
+<a id="d-174"></a>
+## D-174 — 2026-10-29 — Agents draw Flow drafts; what runs stays the owner's to publish
+The owner wants to ask for a Flow from any chat and have their super-agent make it, or change one, instead of drawing
+every step themselves. The super-agent does it through `apx_settings`' existing `flows` area (moved to `apx_flow` by [D-181](#d-181)), not a new tool
+(rule 15): `flows.list`, `flows.graph_get` (its steps and connections as compact JSON, no places), `flows.validate`,
+`flows.create {project, name, graph | edits}` and `flows.draft_save {flow, edits}` or `{flow, expectedVersion,
+graph}`. Edits are `add` (a step with only the fields it sets; ids from the kind), `update`, `remove`, `connect`,
+`disconnect` and `tidy`, applied on the latest draft (or what runs) and saved with that version, so a save the owner
+made meanwhile is a conflict, never overwritten; a whole graph needs the `draftVersion` the agent read. Every save
+answers with what keeps the drawing from running, step by step with its code, and puts a `flow` card in the chat
+(the drawing, draft or published, **Open in the editor**). New steps are placed by `placeSteps`
+(`packages/protocol/src/flow-edit.ts`, shared with the panel): right of the step they follow, on the nearest free row;
+a drawing with no places is laid out left to right. The step fields live in the `apx-flows` skill, loaded on demand:
+the prompt does not grow.
+
+**The router decides who reaches a drawing.** `flows.graph_get`, `flows.validate`, `flows.draft_save` and the new
+`flows.create` (an off, table-only Flow with the drawing as its draft, in one transaction) are no longer human-only.
+The owner reaches every Flow; an agent's own tool call (the core sets `ctx.agent`) reaches its project's Flows, or any
+when the agent is global; an outside app is out by its scopes, a channel and a call with no agent behind it (an
+agent's shell through `apx`) are refused. `flows.publish`, `flows.draft_discard`, `flows.set`, `flows.run_now` and
+`flows.cancel_run` stay the owner's. Every draft change (saved, discarded, published, made) emits `flow.draft {flow,
+project, draft_version, by}` so the list, a Flow's detail and the chat card read it again. The open editor is not
+merged with it yet: that comes with the editor's own chat.
+
+**Why a draft can be saved without asking, and when it asks.** Untrusted content (a channel message, a web page,
+another app's agent) can ask the super-agent for a Flow that posts out, calls a URL, runs a command, JS or SQL, or
+reads a secret. A draft does none of it: nothing runs until the owner publishes, which is their act in the editor
+(Save with the Flow on, or turning it on), and publishing still lists every send, call, command and database write
+for their OK (D-169, D-170), secrets included by name (D-173). The independent review found what that card does not
+cover, and each is closed:
+
+- **Text behind an approved destination.** A changed message, HTTP body, JS or AI prompt to a place already allowed
+  adds no new key, and the panel's on switch published the last saved draft unseen. Drafts now record who saved them
+  (`flow_graph_drafts.saved_by`, `draftBy` in the document): the switch never publishes an agent's draft, it opens the
+  editor with "An agent drew these changes: look them over and save them"; the owner's Save makes the draft theirs.
+  Another agent can relay outside words as the team's (D-071), so the `untrusted` card alone was not enough.
+- **Outside content in the turn.** Draft changes, and `flows.graph_get` (it hands the whole drawing, commands,
+  addresses and prompts back to the model), ask the owner (`confirm: "untrusted"`) whenever outside content is in the
+  turn.
+- **An AI step's limits.** How freely it acts (`autonomy`, `write`, `delegate`, D-172) is the owner's (D-060): an
+  agent's draft that sets or changes them is refused. A step the owner limited keeps its `agent`, `bot` and `model`
+  (the limit would otherwise move to another agent) and can't be removed by an agent (removing it and adding another
+  would drop the limit), checked against the draft and, when an agent saved the draft, what runs.
+- `flows.create` revokes any route credential left under the new identifier, as `flows.set` does.
+
+Turning a Flow on through `apx_settings`' `flows.set` keeps its card. Known limits: the open editor does not take an
+agent's later draft (its next save conflicts); `flow.draft` reaches every operator socket with ids only, as other
+events do.
+
+Rejected: a tool of its own for every agent (a new definition in every prompt, and Flows are the owner's settings,
+which the super-agent changes for them; other agents ask it), letting agents publish with a confirmation card (one
+yes would make a drawing the owner never opened run unattended), and keeping drafts owner-only behind
+`callAsOwner` (it exists only for calls that always ask, and a draft should not).
+
+<a id="d-175"></a>
+## D-175 — 2026-10-29 — The owner asks the super-agent from the Flow editor and watches it draw
+D-174 let the super-agent draw Flow drafts from any chat, but the open editor did not take them (its next save was a
+conflict). The owner now asks from inside the editor: **Ask {name}** in its top bar opens a chat with the
+super-agent in a card over the canvas, and the steps it saves appear there as it works.
+
+- **One card at a time.** The chat card takes the step card's place (same `Drawer inset`, same size, a bottom sheet on
+  a phone), so the `cover` that centres a clicked step and fits the view is the same for both; the canvas fit now
+  leaves out whichever card is open. A step chosen replaces the chat (it stays for the next **Ask**); **Ask** replaces
+  the step card. Two cards side by side would leave little canvas to watch, and a step's settings and the chat are
+  never needed together: edits wait while the agent works.
+- **The chat.** A loose thread with the super-agent in the Flow's project, remembered per Flow on this device
+  (`apx.flowChats`, as widget chats are) so **Ask** continues it; the card's ↻ starts a new one. The owner's
+  bubbles show only what they typed. Which Flow it is comes from the core: the editor binds the chat with
+  `threads.flow_editor {thread, editor: {project, flow?} | null}` (owner-only, kept in the thread's context as
+  `flow_editor`; rebound when the Flow gets its id, unbound when the chat closes or another replaces it), and each
+  owner turn there carries a `[flow editor]` line in the turn's input (`engine/flow-editor.ts`): the Flow's name, id,
+  project and draft version, that the owner is watching, and that nothing runs until they save; for a Flow not made
+  yet, its project and to make it there. Never the system prompt (rules 12, 23), never the stored message.
+- **Cards in that chat.** The agent's answer card for the Flow the editor shows (D-174's `flow` part) is one line,
+  "Updated the drawing": the canvas behind is its picture, and "Open in the editor" would point where the owner is.
+  A card for another Flow shows whole.
+- **Unsaved edits.** Before each message the owner's unsaved edits are saved as a draft, so the agent starts from
+  what the owner sees and its edits (applied on the latest draft, D-174) never drop them. A drawing that cannot be
+  saved yet (a step missing a required setting) keeps the message unsent and says which step to finish. Over an
+  agent's draft the owner has not saved from the editor, that save passes `unreviewed: true`: the draft keeps the
+  agent as who drew it, so turning the Flow on still opens it for review (D-174) instead of the owner's implicit save
+  making it theirs. The `[flow editor]` line carries the draft's version, so the agent sees when the owner changed
+  the drawing since it read it.
+- **While it works.** While the chat's turn runs the canvas is the agent's: a note "{name} is editing this flow…",
+  steps can't be moved, joined, added or opened, and Save waits. Each `flow.draft` for the open Flow with `by` set
+  reloads the drawing (`takeAgentDraft`, `flows/agentDraft.ts`): the canvas takes it when it has no unsaved edits,
+  marking new and changed steps for a few seconds (on a phone the fit shows the new ones); unsaved edits (an agent
+  writing from another chat) are kept, and the bar says to reopen the editor to see its change. The owner's own saves
+  (`by` null) are never reloaded.
+- **A new Flow.** The editor already needs a project. A drawing with steps the owner changed is saved first with
+  `flows.create` (one that can't be saved yet waits, as above); an untouched starter or a blank one is not: the
+  `[flow editor]` line says to make the Flow in that project, and the next Flow the super-agent makes there while the editor waits
+  becomes the editor's (its id, name and drawing). Saving first needs at least one complete step, which a blank flow
+  doesn't have.
+- **Review.** The status says "Drawn by {name}: look it over and save" while the draft is an agent's; the owner's
+  Save makes it theirs (and publishes when the Flow is on, with its usual outward check), as before.
+
+Rejected: both cards open side by side (the canvas left is too narrow to watch); writing the context into the
+owner's first message (their bubble would show text they never typed: rule 31), or a per-message field on
+`threads.send` (the binding lasts as long as the editor, not one message); merging the
+owner's unsaved edits with the agent's step by step (two writers on one drawing; saving first is simpler and loses
+nothing); letting the owner's pre-send save make an agent's draft theirs (it would skip D-174's review).
+
+<a id="d-176"></a>
+## D-176 — 2026-10-29 — A project's tables exist on their own, with columns, and are filled outside Flows too
+The owner tried Read and Save and was blocked: a read offered nothing until some Flow had saved a row ("save first"),
+a table had no columns to fill or read, and nowhere showed what a table held. They want to make tables and columns
+freely, from either step or from a place of their own, and have the super-agent fill one without a Flow ("add this
+lead to the leads table") for a Flow to read later.
+
+- **A catalog per project.** `flow_table_defs (project_id, name, columns JSON, created_at, updated_at)` beside the rows
+  in `flow_tables`. A table exists once made (`tables.create`), empty or not; rows keep their JSON values, a row saved
+  as an object has a cell per field, anything else is the cell of a `value` column (`tableCells`). The migration keeps
+  every row and makes a table for each name with rows or named in a drawing (draft or published), its columns from the
+  fields of its rows in the order they first appeared (fields that can't be a column's name stay in the row, unshown).
+- **Methods** (`table-methods.ts`, through the router): `tables.list {project?}`, `tables.get {project, table, limit,
+  cursor}`, and with an idempotency key `tables.create`, `tables.rename`, `tables.remove`, `tables.column_add`,
+  `tables.column_rename` and `tables.column_remove` (both rewrite every row), `tables.write {key, values, replace?}`
+  (changes the cells given and keeps the others; a field with no column adds one) and `tables.delete_rows`. They
+  replace `flows.tables` and `flows.rows`' `table`. Who reaches them is D-174's rule for Flows: the owner every
+  project, an agent's own tool its project (or any when global), an outside app, a channel or an agent's shell none.
+  Column names: letters, digits, `_` and `-`, up to 64, never `rows` or `row`; at most 50 per table.
+- **Steps.** `table_write` takes `columns: [{name, value template}]` or `value` (one value whole; an empty table
+  saved that way takes its columns from what arrives). By column, one placeholder alone keeps its value as it is, an
+  absent one is empty (only the key fails the step when missing), and saving again changes only those columns. A read
+  gives `rows`, `row` and every column of the table at the top level (`$steps.<read>.<column>`), the first row's or
+  empty, so an empty table reads nothing and fails nothing.
+- **A table renamed or removed.** A step naming a table the project doesn't have is `table_missing`, and a save filling
+  a column the table doesn't have is `column_missing`: the drawing can't be published, and a published Flow stops
+  taking events (admission refuses, as for an agent that moved) until the owner picks a table again. The core never
+  rewrites the owner's drawings to follow a rename. If it goes between admission and the step, the step fails with
+  `table_missing`.
+- **The editor and Tables.** Read and Save list every table of the project, make a new one on the spot ("New table")
+  and add columns ("New column") to the chosen one; the "save first" gate is gone. The Flows screen switches between
+  Flows and Tables (`#view=flows&tab=tables&table=<name>`): a table's columns and rows in a grid, rows added, edited
+  and deleted, tables and columns made, renamed and deleted with a confirmation.
+- **The super-agent**, through `apx_settings`' `tables` area: `tables.list` and `tables.get` (rows wrapped as
+  untrusted data, so a change after reading them asks), and `tables.create`, `tables.column_add`, `tables.write`,
+  `tables.delete_rows` as its own calls, asked only while outside content is in the turn (D-174's rule: rows are data
+  in the owner's project, D-106). Renaming or removing a table or a column changes what the owner's Flows read, so
+  those go through the owner's card every time. Field shapes are in the `apx-flows` skill.
+
+Rejected: keeping tables implicit with a "declared in a drawing" list (the owner had no place to see or fill them),
+storing a column type (text, number…: values stay JSON as they arrive), following a rename into published drawings
+(it would change what runs without the owner publishing), and failing a run's step instead of its admission when a
+table is gone (the owner hears of it once, in the editor, instead of in every run).
+
+<a id="d-177"></a>
+## D-177 — 2026-10-29 — A draft keeps a Flow as drawn so far; only what runs must be complete
+The owner asked for **Save draft** beside **Save** in the Flow editor. Save refused a drawing with a step missing a
+setting, and on a Flow that is on it published at once, so work in progress could not be kept without running it. The
+core refused the same drafts: one schema, `FlowGraph`, parsed drafts and what runs, and an empty code, query, command,
+prompt, address or message was `min(1)`.
+
+- **Two shapes, one definition.** `packages/protocol/src/flow-graph.ts` builds every step from one factory with two
+  fillings: `FlowNode`/`FlowGraph` (what runs: publishing, admission, runs, `flows.try_graph`, `flows.outward`, the
+  executor) and `FlowDraftNode`/`FlowDraftGraph`, which lets a setting a step needs be empty (text, a name, an id, an
+  address) and checks everything else as before: ids, kinds, sizes, limits, bindings, connections, places.
+  `flows.draft_save`, `flows.create`, `flows.validate` and the draft in `FlowGraphDocument` take the draft shape; the
+  published drawing stays strict. Both shapes infer the same TypeScript type.
+- **What "complete" means lives once.** `flowStepGap` (`packages/protocol/src/flow-complete.ts`, no zod, so the panel
+  loads it) names the first setting a step still needs, the rules the editor had in `blank` (whitespace counts as
+  empty). A protocol test empties every text of a complete step of each kind and requires that any value the draft
+  shape accepts and the runnable one refuses is one `flowStepGap` names. The core's `flowDraftIssues` reports each such
+  step as `step_incomplete` (step and setting), falling back to the runnable schema for anything stricter (a cron
+  shorter than five fields), before the other checks; `flows.validate` and `flows.publish` use it, so turning a Flow on
+  (which publishes its draft) refuses it too, naming the step. Admission and turning on a published Flow keep
+  `flowGraphIssues` on the published drawing, unchanged.
+- **The editor's one extra ask.** A read or save step without a table uses the Flow's own table (D-173); the core keeps
+  running those, and the executor tests rely on it. The editor has no way to show that table except for the step an old
+  definition was drawn as, so its `stepGap` (`apps/web/src/flows/complete.ts`) also asks for a table there. That is
+  stricter than the core, never looser, so what the editor publishes always passes.
+- **Save draft.** It needs a name and a project (the Flow lives in one) and at least one step, nothing else; it saves
+  with `flows.draft_save` (`flows.create` for a new Flow) and never publishes, also when the Flow is on: "Draft saved.
+  What runs doesn't change." Over an agent's draft it passes `unreviewed: true`, so the review D-174 asks for still
+  waits for **Save**. **Save** keeps its meaning. The leave prompt offers **Save draft**. On a phone the button reads
+  **Draft** and **Exit** becomes an icon on the name's line; a save's status gets a line of its own.
+- **Asking the super-agent** no longer waits for every step to be finished: the unsaved drawing goes as a draft as it
+  is (D-175's `unreviewed` unchanged). An agent's `add` keeps a new step's empty settings instead of dropping them, and
+  its answer lists them as what keeps the drawing from running.
+- **Where a draft shows.** `flows.list` returns `drafts` (version and step kinds) for each Flow whose saved draft is not
+  what runs; the list shows those steps with **Draft**. The Flow's page draws the draft while one waits, marked
+  **Draft**, with **What runs** to switch when something drawn runs; a run picked shows the revision it used. A Flow
+  made by `flows.create` has a table-only definition only so the drawing has a Flow to belong to: it is never shown as
+  its drawing while a draft waits.
+
+Old data needs no migration: every saved draft and revision passed the strict schema, which the draft shape accepts.
+Rejected: a `draft` flag on steps (two meanings for one field), loosening `FlowGraph` and checking completeness only at
+publish (the executor and `flows.try_graph` would have to trust every reader), and a menu for Save draft on a phone
+(two taps for the safe action; the bar fits with a shorter label).
+
+<a id="d-178"></a>
+## D-178 — 2026-10-29 — A Flow has an address of its own, and the owner tests it with one real event
+The owner compared the editor with n8n: the webhook's address should be visible while the Flow is still being drawn,
+with a name they choose, and a play button should wait for one real event and run the drawing as it is, steps lighting
+up and a log filling, without turning the Flow on. The address was the Flow's identifier (`/flows/<id>`, a slug with a
+random tail) and showed only once saved; the only way to see a real event go through was to publish and turn it on.
+
+- **A path of its own.** `flows.path` (unique, case aside; lowercase letters, digits and inner hyphens, at most 64,
+  never `test`) is the public address, `/flows/<path>`; the identifier stays the key everything else uses. A new Flow
+  takes its name's slug (`flowPathOf`, `packages/protocol/src/flow-path.ts`, shared with the panel), `-2`, `-3`… when
+  taken; the owner can choose it before the first save (`flows.create` and `flows.set` take `path`) or rename it later
+  (`flows.path_set`), and `flows.path_check` says whether one is free as they type. A rename stops the old address at
+  once and moves its key with it (`public-credentials.move`), so the caller only changes the URL. The migration sets
+  `path = id` for every Flow, so each address that answered still does (rule 14: a migration, no alias). Route keys stay
+  keyed by address.
+- **A test is one event, while the owner listens.** `flows.test_start {flow, expectedDraftVersion, outward}`
+  (owner-only, effect) checks the saved drawing (the draft, or what runs when there is none) like publishing does
+  (`step_incomplete` first, then bindings and models) and asks the same `outward` keys publishing asks: a test sends,
+  calls, runs and writes for real, so it never starts without the owner's OK for that drawing. The drawing is pinned
+  as a revision marked `test` (`flow_graph_revisions.test`; the same drawing tested again reuses it; never what new
+  events run). A webhook Flow then waits five minutes for one POST to `/flows/test/<path>`; a schedule Flow runs once
+  now, `source: "owner"`. `flows.test_stop` stops waiting. Waiting lives in memory (`flow-tests.ts`): a restart ends it,
+  and the one timer exists only while someone waits, so an idle core holds nothing for it.
+- **The test address is a door only while it is open.** Not waiting, `/flows/test/<anything>` is no route: the
+  listener's bare 404, no body read, whether or not a Flow has that path. Waiting, it takes the production envelope
+  (`{id, data}`, JSON, 64 KiB, the listener's 1 MiB/15 s/rate and concurrency caps), asks for the address's key when
+  it has an entry (one that can't be read now refuses), takes the first valid event and stops waiting before
+  admission, so a second POST finds nothing; a Flow renamed while the body came is not waiting there any more. The
+  event runs only if the pinned revision still holds the drawing approved, text for text. The run is a normal durable run (`flow_events.test`, `test:<uuid>`, the same 10-minute deadline,
+  steps and terminal states) that advances whether the Flow is on or off; it is listed with the Flow's runs marked
+  **Test**, left out of the list's run summary, and never makes a schedule skip its time. Headers worth showing are
+  kept with what arrived, for the log: a test's `content-type`, `content-length`, `user-agent` and `idempotency-key`;
+  production's `content-type` and `idempotency-key`, the only ones its credential gate passes on; never `authorization`.
+- **Live, ids only.** Each checkpoint that moves a step or ends a run emits `flow.run {flow, event, state, test,
+  steps: [{node, state}]}`; the test's own news is `flow.test {flow, state: listening|stopped|expired|received|refused,
+  until, event}`. The panel reads what each step was given and gave back with `flows.run_get` (4,000-character previews,
+  now with `test` and `arrived`), so large values never ride the socket.
+- **The editor.** **Listen for a test event** (**Test now** on a schedule) saves unsaved edits as a draft first, names a
+  step still to finish, asks **Let this flow act for you?** when the drawing does something new, then shows the test
+  address with a countdown and **Stop** under the top bar. While testing the canvas is read-only: no moving, joining,
+  adding or saving, and a step's card shows its input and output. The log at the bottom (`RunLog`, foldable, its height
+  dragged with the shared `ResizeHandle`'s new `top` edge, a sheet on a phone) says what arrived, then each step as it
+  starts and ends. **Back to editing** closes it. The webhook step's card shows both addresses on the public host at
+  all times, the end of the address a button to rename it. The Flow's page shows the same log for any drawn run.
+- **Only `flows.path_set` renames.** `flows.set` refuses a different `path` for a saved Flow, so the super-agent's
+  settings changes never move an address. Saving a new Flow and revoking any key left at its address happen in one
+  transaction.
+- **Try a run** became **Simulate**: it still walks sample data through the drawing without effects, and its name no
+  longer competes with the real test.
+
+Rejected: a random token in the test address (the owner asked for `/flows/test/<path>`; the window, one event, the
+key when the address has one and the owner watching bound it instead), keeping the identifier as the address with an
+alias for a chosen name (two addresses per Flow, and an alias is the shim rule 14 forbids), streaming step values over
+the event bus (a 32 KiB value per step to every socket), letting a test run without the outward OK "because it is only
+a test" (it sends for real), and pinning the draft by reference instead of a revision (an edit during the test would
+change what runs mid-run). Known limit: a Flow whose address has no key yet accepts a test event from whoever knows the
+test address during those five minutes; production never takes one without its key.
+
+
+<a id="d-179"></a>
+## D-179 — 2026-10-29 — Each save of a Flow's drawing leaves a version the owner can look at and bring back
+The owner wants every save of a Flow to leave a revision they can look at later, and go back to one. The core kept only
+the current draft (`flow_graph_drafts`, overwritten on each save) and the published drawings (`flow_graph_revisions`,
+which also hold test pins and are pruned by what runs point at), so a draft saved over another was gone.
+
+- **One history table.** `flow_graph_history (flow_id, entry, at, kind, saved_by, restored_from, revision, steps,
+  graph)`, written inside the save's own transaction by `saveDraft` and `publish` (`domain/flow-graph-history.ts`).
+  Kinds: `draft` (the owner's **Save draft** or **Save**, `flows.create`, an agent's draft), `published` and `restored`.
+  A save whose drawing equals the newest entry's adds nothing; publishing what the owner just saved turns that entry
+  into the published one, so one **Save** is one entry, while publishing an agent's draft adds the owner's entry
+  beside the agent's. `saved_by` is who the drawing is kept as drawn by (the draft's own `saved_by`), so the owner's
+  edits saved over an agent's unreviewed draft stay the agent's. Test pins never enter it. The migration starts each
+  Flow with its published revisions and its waiting draft.
+- **Bounded.** The newest 50 entries per Flow, plus every published entry whose revision a run or what runs still
+  points at (those are already bounded by the revisions' own retention); a Flow's entries go with it (`ON DELETE
+  CASCADE`). Each entry keeps its drawing (at most 128 KiB, as a draft), so a version stays readable after its revision
+  is pruned. Entry numbers grow per Flow and are never reused.
+- **Methods.** `flows.history {flow}` and `flows.history_get {flow, entry}` follow D-174's reach (the owner, an
+  agent's own tool for its project). `flows.history_restore {flow, entry, expectedVersion, confirm: true}` is the
+  owner's (effect, idempotency key): the entry becomes the draft with the version read, a stale one is a conflict, and
+  it never publishes; the owner's **Save** does, as before. An entry an agent drew comes back as that agent's draft, so
+  turning the Flow on still opens it for review (D-174); the history shows the owner as who restored it.
+- **Where it shows.** The Flow page's rail switches between **Runs** and **History**; a version picked is drawn
+  read-only, labelled "Version #n · when · who", with **Restore as draft** (asks first). The editor's top bar has a
+  history button with the same list in a popover; restoring replaces the canvas and says so first when there are
+  unsaved edits. The bar keeps its other buttons: on a phone it already wraps to two lines, and one icon fits.
+- **The super-agent** reads versions through `apx_settings`' `flows.history {flow, entry?}` (asked like
+  `flows.graph_get` while outside content is in the turn, since a version's drawing goes back to the model), to say
+  what changed. Restoring stays the owner's (`OWNER_ONLY`); the fields are in the `apx-flows` skill, not the prompt.
+
+No news entry: restoring is the owner's own act in the panel, not something the super-agent offers to do. Rejected:
+reusing `flow_graph_revisions` with a draft-history table beside it (two tables to page together, and revisions are
+pruned by what runs point at, not by what the owner may want back), storing a published entry by reference to its
+revision (it would vanish when the revision is pruned), a diff per entry instead of the drawing (a version must draw on
+its own), and letting an agent restore (it would move the owner's draft back without them looking).
+
+<a id="d-180"></a>
+## D-180 — 2026-10-29 — A check compares with the same picker as every field; a read picks its columns; a column can be required
+The owner tried a real Flow and found the step fields uneven: a check's **Field** took only a dotted path of what
+arrived (no previous step, no variable), picking **Formula** made it disappear, a case held one "equals", a read listed
+`$steps.<read>.<column>` chips nobody could choose from, a save's whole value mixed a source picker with a path field,
+and nothing said a column must be filled. One pattern for all of them: a label, one field with the `{}` picker, a
+short help line.
+
+- **Comparisons in a case.** A case's `match` gains `{kind: "all" | "any", rules: [{left, op, right, type}]}` (1–10
+  rules): every rule holds, or one does. `left` and `right` are templates, read like a save's column
+  (`domain/flow-compare.ts`): one placeholder alone keeps its value, a field the data lacks is empty, a step with no
+  answer yet can't be told. `type` is how both sides are read: `text` (`equals`, `not_equals`, `contains`,
+  `starts_with`, exact), `number` (`equals`, `not_equals`, `gt`, `lt`, `gte`, `lte`; a side that is no number never
+  holds) or `boolean` (`"true"`/`"false"`); `empty`/`not_empty` read `left` alone. Both sides are step templates, so
+  ancestors, secret variables and placeholders are checked as everywhere else. `flowComparisonGap` names a rule with no
+  field, nothing to compare with, an op its type doesn't offer or a typed value its type can't read, as `flowStepGap`'s
+  `cases`: drafts keep it (D-177), publishing names it.
+- **Nothing stored changes.** `equals` and `expr` cases and the old `equals` check stay valid and run as before; no
+  migration (rule 14), every reader takes all forms. The editor shows an `equals` case as the one comparison it is and
+  saves it as one once edited; a new check starts with one comparison. **Formula** stays as the free-form tab.
+- **A read picks its columns.** `table_read.columns?` (absent: every column, also ones added later) brings only those,
+  at the top level and in each row. One it names that the table no longer has is `column_missing`, as for a save.
+- **A required column.** `flow_table_defs.required` (JSON names; a migration adds it, empty) and
+  `tables.column_required {project, table, column, required}`; `TableInfo.required` lists them, and renaming or
+  removing a column carries it. Every write (Flows, the owner's grid, an agent's `tables.write`) whose resulting row
+  leaves a required cell empty (absent, null, blank, `[]`, `{}`) is refused naming the columns; in a run that step
+  fails with `required_empty` and `output.required`. `flowDraftIssues` names a save by column that fills no value for a
+  required column as `step_incomplete`, and the editor's `stepGap` does too, so Save names it before publishing. A save
+  of one value whole is checked on what arrives. Admission does not refuse a published Flow for it: marking a column
+  required should not stop Flows that do fill it, so the refusal is per run.
+- **The super-agent** reads the shapes in the `apx-flows` skill; marking a column required changes what the owner's
+  Flows may save, so `tables.column_required` waits for the owner's card, like renaming one.
+
+No news entry: these are fields the owner fills in the editor, not something the super-agent offers to do. Rejected:
+kind tabs at the case level (a case like "verified is yes and email contains @" mixes types, so each
+comparison has its own), loose comparison (`"9" < "10"` as text), refusing admission for a required column (it would
+stop every run, also those that fill it), storing columns as objects in the catalog (a migration of every table for
+one flag), and case-insensitive text by default (exact is what the formula did; `lower()` in a formula remains).
+
+<a id="d-181"></a>
+## D-181 — 2026-10-29 — Flows and their tables have a tool of their own, apx_flow
+The owner pointed out that `apx_settings` is for how APX is set up, and Flows are not: they are the owner's work, like
+routines (`routine_list`, `routine_set`) and tasks (`task_*`), which have tools of their own. The chat said
+"Changed the settings" while the super-agent was drawing a Flow. And the approval rules did not fit: every
+`apx_settings` change waits for the owner's card (D-138, D-140), while a Flow draft saves freely and only publishing is
+the owner's (D-174).
+
+So the `flows` and `tables` areas move from `apx_settings` to `apx_flow`, offered only to the super-agent
+(`SUPER_AGENT_TOOLS`) and, like it, kept in channel handoffs and out of a Flow's AI step. This replaces D-174's
+"through `apx_settings`' existing `flows` area, not a new tool". Nothing else about reach changes: the methods, their
+`own` calls, the cards (`ownerSetting` for `flows.set` and table renames or removals) and the router's checks are the
+same. Both tools are one `areaTool` (`tools/settings.ts`) over a table of methods, so the index, fields, card and
+checks behave alike; the area files are `tools/flow-tool-flows.ts`, `flow-tool-drafts.ts` and `flow-tool-tables.ts`.
+The step fields stay in the `apx-flows` skill. Cost: one tool definition of 521 chars in a default turn
+(`rules/PROMPT_SIZE.md`).
+
+**Keeping it current.** Flows grow every day, and an agent that cannot draw a new step is a feature half shipped.
+`tools/flow-tool.test.ts` fails when a `flows.*` or `tables.*` method is in neither `apx_flow`, `OWNER_ONLY` nor
+`FLOW_ELSEWHERE` (reads only the editor needs, with a reason), when `apx_settings` holds one again, and when a step kind
+of `FlowNode` has no row in the skill. The checklist is [Agents reach it](FLOWS.md#agents-reach-it), and AGENTS.md
+rule 33 points at it.
+
+Rejected: keeping the area inside `apx_settings` with a nicer title (the confirmation semantics would still be the
+exception), one tool per method like `routine_set` (each would add a definition to every turn), and tables in a third
+tool (they are the data Flows read and save, and the skill explains them together).
+
+## D-182 — 2026-10-29 — A Flow's triggers are set without cron or a second screen: days and times, GET, and the key in the card
+
+The owner never wants to type cron, and wants a schedule like "Monday at 04:00, 05:00 and 06:00, Wednesday at 09:15".
+The webhook card showed the address twice with two copy buttons and a line saying who can call it is managed in
+Devices, while the only way to get the key callers need was a separate Devices screen that lists enabled Flows only.
+
+- **Several crons in one field.** Different times on different days can't be one five-field cron. Options were a
+  structured schedule in the protocol (days → times), a list field, or limiting the panel to the same times every day.
+  `cron` keeps its type and may hold up to seven crons joined by `;` (one per group of days with the same times and
+  minute), 400 characters at most: every reader (scheduler beat, `flows.next_runs`, validation, the list's next time)
+  goes through `parseCrons`/`nextCrons`, and a single cron is unchanged, so nothing stored moves (rule 14). The panel
+  writes it from **Fixed times** (days down the card, each with its times, quick groups for Monday to Friday, weekend
+  and every day) and **Every…** (counts cron can repeat evenly: 5–30 minutes, 1–12 hours, days of the month, one
+  weekday, 1–12 months), reads it back, and leaves anything else in **Cron** mode. Seconds aren't possible; five
+  minutes stays the shortest gap, now over all the crons together. Past seven crons the card says so.
+- **GET as well as POST.** A webhook step's `methods` (absent = POST) are what its address answers. A GET's event is
+  its query: `id` names it (a new one when absent: such callers usually have no stable id, so no dedup), the rest is
+  data. To read it, the public listener now passes the query (`HookRequest.query`): percent-encoding is allowed there,
+  never in the path; at most 4 KiB, no fragment. The key still goes only in `Authorization`, as PUBLIC_INGRESS.md
+  says.
+- **The key in the card.** `flows.token` / `flows.token_rotate` (owner-only) read and replace a Flow's key by the Flow,
+  whether it is on or off (`public-credentials.issue`, which `public_routes.rotate` now calls too). The owner may write
+  their own key for a service that sends a fixed one (24–200 URL-safe characters); `verify` accepts that shape as well
+  as APX's. Replacing asks first: services using the old key stop at once.
+- **One trigger, switched in place.** A trigger turns into the other kind under the same id (`switchTrigger`), so its
+  connections stay; a name still the default follows the kind.
+- **Save draft says what is left.** A draft may be unfinished (D-177); saving one now names the first issue, as Save
+  does.
+
+No news entry: these are fields of the editor, not something the super-agent offers to do. Rejected: a structured
+schedule object (a migration for every schedule Flow and a second reader in every place a cron is read), a key in the
+query string (it ends up in logs and proxies), and a GET without a key (an address anyone can trigger).
+
 ## D-183 — 2026-10-29 — The isolated computer runs on Linux and Windows too, each with Lima's own driver
 The computer ([D-151](#d-151), [D-152](#d-152)) only ran on macOS with Apple Silicon. `environments/host.ts` now picks
 Lima's driver and pinned build per host: `vz` on macOS 13+ (Apple Silicon or Intel), `qemu` on Linux (x86-64, ARM64)
@@ -2562,8 +3406,40 @@ Windows differs in what it can promise, and the guest is checked for each point,
 - A host agent that died with the core leaves a pid Lima on Windows cannot inspect past: a dead `ha.pid` is dropped,
   a folder from a cut-short setup is cleared, and stopping terminates the distribution when Lima cannot.
 
-<a id="d-184"></a>
-## D-184 — 2026-10-31 — Sync the fork by merging upstream main on an isolated branch
+<a id="d-182"></a>
+## D-182 — 2026-10-30 — Release news live in a Help menu; the super-agent names one thing
+Told all at once (D-117), a release with many entries made the super-agent's message a list owners skimmed past, and
+once read nothing let them go back to it. Now the sidebar foot has a Help menu: the newest entries that apply, then
+every release in a dialog, each entry with what it lets the owner do and a button that asks the super-agent for it
+(the action's prompt, sent to Home), plus the guides, the Discord and feedback. Each entry carries `title` and `about`
+in English and Spanish, written for the owner: the panel shows its own language, and `text` stays what the model is
+told. The super-agent's message is one or two sentences with the thing that matters most in bold, pointing to Help ›
+What's new for the rest; without a model it is one line with the first entry's title in bold and the rest counted.
+The Help button carries a dot while an entry that applies was not there the last time the menu opened on that device
+(kept per device, like the corner cards); a device that never opened it counts the newest release's entries as new.
+
+## D-184 — 2026-10-31 — The super-agent publishes and runs a Flow when the owner asks, each after a card
+
+The owner asked the super-agent to make a test Flow, then "turn it on and try it with a curl". It drew and validated
+the Flow, but could not go further: publishing and running by hand were the owner's, in the editor (D-174), and a
+webhook's key never reaches a model, so the curl it offered could not have worked. Its `flows.set {enabled: true}`
+was also accepted on a Flow never published, which turned on something that runs nothing.
+
+- `flows.publish` and `flows.run_now` move from `OWNER_ONLY` into `apx_flow` (`tools/flow-tool-publish.ts`) as owner
+  calls: each waits for the owner's card, like `flows.set`. The publish card names the Flow, says it will be turned on,
+  and lists what the draft sends, calls, runs and changes (`flowOutward`, the editor's **Let this flow act for you?**)
+  and its AI steps. On approval it reads the draft again, stops if its version is not the one asked about, passes
+  `flows.outward`'s keys to `flows.publish` and turns the Flow on, all as the owner. The run card shows the data whole.
+- A run by hand is how the agent tries a Flow, then reads it with `flows.run_get`; it never asks for the key.
+- `apx_flow`'s `flows.set` refuses to turn on a Flow whose drawing was never published, before anyone is asked.
+- The editor's on switch is unchanged: it still opens an agent's draft for review instead of publishing it. The card
+  is that review when the owner asks in the chat.
+
+Tests, the key, an address and an AI step's autonomy stay the owner's. Rejected: letting the agent read the webhook
+key to call it (a key never reaches a model, D-139), and turning on without publishing (it runs nothing).
+
+<a id="d-185"></a>
+## D-185 — 2026-10-31 — Sync the fork by merging upstream main on an isolated branch
 
 `origin/master` remains the fork's release and runtime update source; `upstream/main` is only integrated manually.
 Periodic upstream integration uses a dedicated sync branch and a merge commit, not a rebase or a stream of unrelated

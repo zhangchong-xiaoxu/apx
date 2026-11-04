@@ -181,7 +181,14 @@ export function createHeadlessBrowser(deps: {
   const listeners = new Map<string, (m: Message) => void>();
   let lastUse = Date.now();
 
-  const info = (t: Tab): TabInfo => ({ tab: t.id, url: t.url, title: t.title, profile: t.profile, control: t.control });
+  const info = (t: Tab): TabInfo => ({
+    tab: t.id,
+    url: t.url,
+    title: t.title,
+    profile: t.profile,
+    control: t.control,
+    consent_epoch: t.page.consentEpoch,
+  });
   const changed = () => deps.onChange([...tabs.values()].map(info));
   const bySession = (s: string | undefined) => [...tabs.values()].find((t) => t.session === s);
 
@@ -212,6 +219,11 @@ export function createHeadlessBrowser(deps: {
     }
     if (!tab) return;
     if (m.method === "Page.loadEventFired") loads.get(tab.id)?.();
+    if (m.method === "Page.navigatedWithinDocument") {
+      tab.page.forget();
+      tab.url = String((m.params as { url?: string }).url ?? tab.url);
+      changed();
+    }
     if (m.method === "Page.frameNavigated" && !(m.params as { frame?: { parentId?: string } }).frame?.parentId) {
       tab.page.forget();
       tab.url = String((m.params as { frame?: { url?: string } }).frame?.url ?? tab.url);
@@ -314,6 +326,7 @@ export function createHeadlessBrowser(deps: {
     pipe = undefined;
     tabs.clear();
     contexts.clear();
+    changed();
   }
 
   const sweep = setInterval(() => {
@@ -510,7 +523,14 @@ export function createHeadlessBrowser(deps: {
           const snap = await t.page.snapshot(p.max_chars);
           // Page text is data, never instructions, wherever it ends up (rule 10).
           const tree = `<untrusted_web source="${t.url}">\n${snap.tree}\n</untrusted_web>`;
-          return { url: t.url, title: t.title, tree, refs: snap.refs, truncated: snap.truncated };
+          return {
+            url: t.url,
+            title: t.title,
+            tree,
+            refs: snap.refs,
+            truncated: snap.truncated,
+            document: snap.document,
+          };
         }
         case "browser.click": {
           const p = browserMethods["browser.click"].params.parse(raw);
@@ -527,6 +547,16 @@ export function createHeadlessBrowser(deps: {
           if (p.submit) await Promise.race([settle(t), new Promise((r) => setTimeout(r, 2000))]);
           await refresh(t);
           return { ok: true, url: t.url };
+        }
+        case "browser.approval_context": {
+          const p = browserMethods["browser.approval_context"].params.parse(raw);
+          return get(p.tab).page.approvalContext(p.origin, p.document);
+        }
+        case "browser.evaluate": {
+          const p = browserMethods["browser.evaluate"].params.parse(raw);
+          const t = drive(p.tab, p.by);
+          const result = await t.page.evaluate(p.script, p.origin, p.document, p.epoch);
+          return { url: t.url, ...result };
         }
         case "browser.screenshot": {
           const p = browserMethods["browser.screenshot"].params.parse(raw);

@@ -2,7 +2,6 @@
 import path from "node:path";
 import {
   type Autonomy,
-  BROWSER_CAP,
   COMPUTER_CAP,
   type HarnessId,
   type MethodName,
@@ -17,7 +16,7 @@ import type { AgentRecord } from "../domain/agents.ts";
 import { memorySettings } from "../domain/memory-settings.ts";
 import { ownerIdentity, ownerTimeZone } from "../domain/owner.ts";
 import { engineOf, harnessOf, isCliRef } from "../domain/refs.ts";
-import { answersChecked, type Origin, type RunRecord, runsOnComputer } from "../domain/runs.ts";
+import { type RunRecord, runsOnComputer } from "../domain/runs.ts";
 import type { Store } from "../domain/store.ts";
 import { previewOf, type Worker, worksInFolder } from "../domain/threads.ts";
 import { computerBriefing, HOME_COMPUTER } from "../environments/briefing.ts";
@@ -35,18 +34,13 @@ import { saveLocalAttachment } from "../services/attachment-files.ts";
 import { askedSkill } from "../skills/picker.ts";
 import type { RuntimeHomes } from "../skills/runtimes.ts";
 import { agentSkills, skillCatalog, skillsFor } from "../skills/skills.ts";
-import { CONTACT_TOOLS, contactToolNames } from "../tools/contact.ts";
-import { channelsOn, STICKER_TOOL, stickersFor } from "../tools/directory.ts";
+import { contactToolNames } from "../tools/contact.ts";
+import { channelsOn } from "../tools/directory.ts";
 import { harnessDir, readOnlyFolders, scratchDir, workDir } from "../tools/folders.ts";
-import { IMESSAGE_TOOLS } from "../tools/imessage.ts";
-import { MCP_CALL, MCP_SEARCH, mcpBridge } from "../tools/mcp-bridge.ts";
-import { inherit, modeOf } from "../tools/policy.ts";
+import { modeOf } from "../tools/policy.ts";
 import { waitingBlock } from "../tools/requests.ts";
 import { UNTRUSTED_MARK, untrusted } from "../tools/result.ts";
 import { type Tool, toSpec } from "../tools/types.ts";
-import { COMPUTER_TOOL } from "../tools/vm.ts";
-import { WEB_TOOLS } from "../tools/web.ts";
-import { callersOf } from "./ancestry.ts";
 import { attachmentsBlock } from "./attachments.ts";
 import {
   type Audience,
@@ -57,12 +51,13 @@ import {
   roomPrompt,
   sealedWeb,
 } from "./audience.ts";
-import { gitChanges } from "./changes.ts";
+import { gitChanges, gitSnapshot, turnChanges } from "./changes.ts";
 import { memoryQuery, recallChats } from "./chat-recall.ts";
 import {
   agentsMdOf,
   CHAT_CHANNELS,
   COMPUTER_WORKSPACE,
+  flowBotPrompt,
   frameInput,
   HISTORY_BUDGET_CHARS,
   type InputBlock,
@@ -83,16 +78,18 @@ import {
 import { type Caller, type DelegateTo, resultCard } from "./delegation.ts";
 import { type Display, openDisplay } from "./display.ts";
 import { createExecutor, type Executor } from "./executor.ts";
+import { flowEditorBlock } from "./flow-editor.ts";
 import type { Hooks } from "./hooks.ts";
 import type { Inputs } from "./inputs.ts";
 import type { Jobs } from "./jobs.ts";
-import { MAX_DEPTH } from "./limits.ts";
+import { lastTalk, unasked } from "./last-talk.ts";
+import type { MailSource } from "./mail-check.ts";
 import type { MemoryIndex } from "./memory-index.ts";
 import { memoryHistory, snapshotOf, visibleMemoryRuns, windowRuns } from "./memory-projection.ts";
 import { ratingNote, sentMeanwhile } from "./nudges.ts";
 import { taskBlock } from "./office.ts";
 import type { Permissions } from "./permissions.ts";
-import { type MailSource, POST_AFTER_DEADLINE_MS, routinePipeline, routineWithCommands, stepsFor } from "./pipeline.ts";
+import { POST_AFTER_DEADLINE_MS, routinePipeline, routineWithCommands, stepsFor } from "./pipeline.ts";
 import { type ProfileRoot, profileBlock } from "./profiles.ts";
 import { resetLabel } from "./provider-limit.ts";
 import { recallFor } from "./recall.ts";
@@ -100,6 +97,7 @@ import { keepContext } from "./received.ts";
 import { closeTurnLog, RESUME_NOTE } from "./recovery.ts";
 import type { RoutineMail } from "./routine-mail.ts";
 import { askedPick, type SkillPicker } from "./skill-pick.ts";
+import { channelKindOf, turnTools } from "./turn-tools.ts";
 
 export type TurnDeps = {
   vm?: import("../environments/computer.ts").Computer | undefined;
@@ -133,7 +131,7 @@ export type TurnDeps = {
   routineMail?: RoutineMail | undefined;
   /** Whether a desktop app is linked as a node (lending its browser), whatever else it lends. */
   desktopLinked?: (() => boolean) | undefined;
-  /** Owner text steered into this turn since the last call. */
+  /** Owner text and results steered into this turn since the last call, ready to read. */
   takeSteered(): string[];
   /** The engine showed a sign of life: an outside engine's idle deadline starts over. */
   alive?: (() => void) | undefined;
@@ -153,31 +151,7 @@ export type ToolCall = <M extends MethodName>(
   as: { run: RunRecord; callId: string; owner?: boolean },
 ) => Promise<Result<M>>;
 
-/** What only a caller may use: a delegate asks no one (DECISIONS.md#d-074). */
-const SESSION_TOOLS = new Set(["delegate", "list_sessions", "stop_session"]);
-const MEMORY_TOOLS = new Set(["remember", "recall", "forget", "search_owner_notes"]);
-/**
- * The owner's turns on WhatsApp keep notes, write to people and rooms, and hand the rest off: a phone chat is no place
- * for tool cards, so other tool work goes to an agent of its own (delegate). A send stays here, since what the owner
- * asked to send cannot be relayed to another agent; its confirmation comes as numbered options.
- */
-const HANDOFF_ONLY = new Set(["whatsapp"]);
-const HANDOFF_TOOLS = new Set([
-  ...MEMORY_TOOLS,
-  "delegate",
-  "list_agents",
-  "read_output",
-  "load_skill",
-  "message_contact",
-  "channel_post",
-  "channel_list",
-  "contact_list",
-  STICKER_TOOL,
-  "apx_settings",
-  "read_chat",
-]);
-
-type Turn = {
+export type Turn = {
   agent: AgentRecord;
   thread: Thread;
   input: NonNullable<RunRecord["input"]>;
@@ -268,6 +242,8 @@ export async function runTurn(deps: TurnDeps, start: RunRecord, signal: AbortSig
     worker: store.threads.context(thread.id).worker,
   };
 
+  // The folder as the turn finds it, so its card shows what this turn changed, not what was already uncommitted.
+  const before = worksInFolder(thread) && thread.cwd ? gitSnapshot(thread.cwd) : undefined;
   let run = store.runs.setState(start, "working");
   store.threads.patch(thread.id, { state: "working" });
   const display = openDisplay(
@@ -388,6 +364,8 @@ export async function runTurn(deps: TurnDeps, start: RunRecord, signal: AbortSig
     const engine = enginePick(deps, turn, start, history);
     if (deps.vm?.hasThread(thread.id) && engine.harness !== "native")
       throw new Error("a computer chat runs on APX's own harness only");
+    // The snapshot is taken while the turn is prepared, and done before anything can change the folder.
+    await before;
     const outcome = await runEngine(deps, engine, {
       io,
       input,
@@ -402,7 +380,7 @@ export async function runTurn(deps: TurnDeps, start: RunRecord, signal: AbortSig
     // An engine keeps its own session: what it read from outside stays in its context for the next turns too.
     if (thread.engine && exec.untrusted && !startedUntrusted)
       store.modelLog.append(thread.id, run.id, [{ role: "user", content: OUTSIDE_IN_SESSION }]);
-    run = await finishRun(store, { run, thread, display, exec, outcome, log: deps.log });
+    run = await finishRun(store, { run, thread, display, exec, outcome, log: deps.log, before });
   } catch (err) {
     run = failRun(deps, { run, turn, display, signal, err });
   }
@@ -474,8 +452,10 @@ async function buildContext(deps: TurnDeps, turn: Turn, run: RunRecord, mode: Au
   // itself: none of an agent's notes, roster, skills or framing either.
   const direct = Boolean(thread.engine);
   const sealed = turn.audience.kind === "contact" || direct;
-  const remembers = !sealed && memorySettings(store).mode !== "off";
   const ctxState = store.threads.context(thread.id);
+  // A bot of a Flow keeps no memory; a Flow step that may not delegate needs no roster (DECISIONS.md#d-172).
+  const step = ctxState.flow_step;
+  const remembers = !sealed && !step?.bot && memorySettings(store).mode !== "off";
   // A public room's turn reads the room's latest messages instead of a history of its own.
   const room = turn.audience.kind === "contact" ? turn.audience.room : undefined;
   const entries = memoryHistory(store, store.modelLog.list(thread.id), agent.id, thread.project_id);
@@ -497,7 +477,10 @@ async function buildContext(deps: TurnDeps, turn: Turn, run: RunRecord, mode: Au
         : undefined;
   // A worker delegates to no one: it needs no roster.
   const rosterChanged =
-    !sealed && !turn.worker && (ctxState.roster_hash !== roster.hash || ctxState.roster_agent !== agent.id);
+    !sealed &&
+    !turn.worker &&
+    (!step || step.delegate) &&
+    (ctxState.roster_hash !== roster.hash || ctxState.roster_agent !== agent.id);
   const available = sealed
     ? []
     : agentSkills(agent, skillsFor(store, { home: deps.home, apps: deps.skillApps }, thread.project_id));
@@ -581,6 +564,7 @@ async function buildContext(deps: TurnDeps, turn: Turn, run: RunRecord, mode: Au
             memory: memoryBlock,
             skills: picked?.block || undefined,
             task: taskBlock(store, thread),
+            flowEditor: ownerTurn ? flowEditorBlock(store, thread.id) : undefined,
             extension: extra ? untrusted("extension_context", { from: extra.from }, extra.text) : undefined,
             waiting: !sealed && ownerTurn && o.kind !== "routine" ? waitingBlock(store, agent.id) : undefined,
             timeZone: ownerTimeZone(store),
@@ -601,6 +585,10 @@ async function buildContext(deps: TurnDeps, turn: Turn, run: RunRecord, mode: Au
             meanwhile:
               thread.kind === "home" && (o.kind === "user" || (o.kind === "channel" && o.role === "owner"))
                 ? sentMeanwhile(store, thread.id, run.id)
+                : undefined,
+            lastTalk:
+              turn.audience.kind === "owner" && unasked(o)
+                ? lastTalk(store, thread, new Date(), ownerTimeZone(store), run.id)
                 : undefined,
           });
   const input: ChatItem & { role: "user" } = turn.input.resume_of
@@ -661,102 +649,12 @@ function sectionsFor(deps: TurnDeps, turn: Turn, mode: Autonomy): Sections {
     computer: allowed ? (vm?.serves(thread.id) ? "chat" : thread.kind === "home" ? "home" : undefined) : undefined,
     onComputer: Boolean(vm?.hasThread(thread.id)),
     write: thread.cwd && thread.write ? thread.write : undefined,
+    // Project agents edit its files from task chats too, not only from a code folder's chat.
+    edits:
+      thread.cwd && thread.write
+        ? thread.write !== "read-only"
+        : !contact && acts && mode !== "plan" && Boolean(thread.project_id ?? agent.project_id),
   };
-}
-
-/** The kind of channel a message came on ("telegram"), for how the answer should look; none for the app. */
-function channelKindOf(store: Store, o: Origin, replyChannel?: string | null) {
-  const channel = replyChannel === null ? undefined : (replyChannel ?? (o.kind === "channel" ? o.channel : undefined));
-  if (!channel) return undefined;
-  return store.settings.read("channels").find((c) => c.id === channel)?.type ?? channel;
-}
-
-const VM_BROWSER_TOOLS = new Set(["browser_open", "browser_snapshot", "browser_text", "browser_click", "browser_type"]);
-/**
- * Host tools a chat on the computer keeps: they read nothing of the Mac's files or screen. APX's own work (tasks,
- * delegation, memory) and web look-ups run in the core as they do elsewhere (DECISIONS.md#d-154).
- */
-const VM_HOST_TOOLS = new Set([
-  "make_image",
-  ...MEMORY_TOOLS,
-  ...SESSION_TOOLS,
-  "list_agents",
-  "read_output",
-  "task_create",
-  "task_get",
-  "task_list",
-  "task_update",
-  "task_comment",
-  "task_close",
-  "web_search",
-  "web_read",
-]);
-
-/** The tools this turn may use: the agent's, narrowed by whoever asked for it up the chain; a contact's, by their flags. */
-async function turnTools(deps: TurnDeps, turn: Turn) {
-  const inVm = deps.vm?.hasThread(turn.thread.id);
-  // Offered only to an agent the owner allowed: one without it never asks to use it (DECISIONS.md#d-154).
-  const computerOn = Boolean(deps.vm?.serves(turn.thread.id) && deps.vm.permitted(turn.agent.id, turn.thread.id));
-  const sealed = turn.audience.kind === "contact";
-  const callers = callersOf(deps.store, turn.thread.id);
-  // MCP tools are reached through mcp_search and mcp_call; their servers start only when one is first used.
-  const servers = !sealed && !inVm && deps.mcpTools ? (deps.mcpServers?.(turn.thread) ?? []) : [];
-  let loading: Promise<Tool[]> | undefined;
-  const mcpLate = () => {
-    if (inVm) return Promise.resolve([]);
-    loading ??= (deps.mcpTools?.(turn.thread) ?? Promise.resolve([]))
-      .catch(() => [])
-      .then((all) => all.filter((t) => policy.allows(t.name) && (!only || only.has(t.name) || only.has(MCP_CALL))));
-    return loading;
-  };
-  const bridge = servers.length ? mcpBridge(servers, mcpLate) : [];
-  // With memory off, the tools that read or write it are not offered; iMessage's only once the owner turned it on; a
-  // tool with `when` (an account's) only where it says.
-  const memoryOn = memorySettings(deps.store).mode !== "off";
-  const imessageOn = deps.store.settings.read("imessage").on;
-  // Offered only on a turn from a channel with stickers to send; the tool reads that channel itself.
-  const stickersHere = stickersFor(deps.store, turn.input.origin, 1).length > 0;
-  const offered = deps.tools.filter(
-    (t) =>
-      (t.name === COMPUTER_TOOL
-        ? computerOn
-        : t.name === STICKER_TOOL
-          ? stickersHere
-          : !inVm || t.name === "shell" || VM_BROWSER_TOOLS.has(t.name) || VM_HOST_TOOLS.has(t.name)) &&
-      (memoryOn || !MEMORY_TOOLS.has(t.name)) &&
-      (imessageOn || !IMESSAGE_TOOLS.has(t.name)) &&
-      (!t.needsCap || (inVm && t.needsCap === BROWSER_CAP) || Boolean(deps.hasCap?.(t.needsCap))) &&
-      (!t.when || t.when(turn.thread)),
-  );
-  // A contact's turn gets only what the owner allowed for that person (nothing by default); the owner's turns never
-  // see the contact-only tools.
-  const forContact =
-    turn.audience.kind === "contact"
-      ? new Set([...contactToolNames(turn.audience.person), ...(turn.web ? WEB_TOOLS : []), STICKER_TOOL])
-      : new Set<string>();
-  const narrowed = inherit(
-    turn.agent,
-    callers,
-    sealed
-      ? offered.filter((t) => forContact.has(t.name))
-      : [...offered.filter((t) => !CONTACT_TOOLS.has(t.name)), ...bridge],
-  );
-  // The mode it acts in comes from the one place every permission question asks; its callers narrow its tools.
-  const policy = { ...narrowed, agent: deps.permissions.agentIn(turn.agent, turn.thread.id) };
-  // A worker asks no one, and keeps to the tools its caller named for it (when it named any).
-  const named = turn.worker?.tools?.length ? new Set(turn.worker.tools) : undefined;
-  const o = turn.input.origin;
-  // The answer to the owner's words the super-agent checked is still their turn on that chat (DECISIONS.md#d-144).
-  const ownerOnChannel = (o.kind === "channel" && o.role === "owner") || answersChecked(o);
-  const replyChannel = turn.input.reply_to === null ? null : turn.input.reply_to?.channel;
-  const handoff = ownerOnChannel && HANDOFF_ONLY.has(channelKindOf(deps.store, o, replyChannel) ?? "");
-  const only = handoff ? new Set([...HANDOFF_TOOLS].filter((n) => !named || named.has(n))) : named;
-  const tools = policy.tools.filter(
-    (t) =>
-      ((callers.length < MAX_DEPTH && !turn.worker) || !SESSION_TOOLS.has(t.name)) &&
-      (!only || only.has(t.name) || (t.name === MCP_SEARCH && only.has(MCP_CALL))),
-  );
-  return { policy, tools, mcpLate };
 }
 
 /** "2.1.1 (commit 75d71df)"; a checkout's placeholder version reads as a development build. */
@@ -793,7 +691,10 @@ function systemFor(
   const projectId = turn.thread.project_id ?? turn.agent.project_id;
   if (turn.worker) {
     const project = projectId ? store.projects.get(projectId) : undefined;
-    const text = workerPrompt(turn.worker, turn.agent, lang, project, skills, scratch, told);
+    const bot = store.threads.context(turn.thread.id).flow_step?.bot;
+    const text = bot
+      ? flowBotPrompt(turn.worker, lang, project, skills, scratch, told)
+      : workerPrompt(turn.worker, turn.agent, lang, project, skills, scratch, told);
     return {
       text,
       parts: systemParts(text, [
@@ -918,7 +819,16 @@ export function turnShare(total: Usage, before: Usage | undefined, resumed: bool
 /** The answer is in: final text (or an honest notice), the code changes card, usage, and the thread back to idle. */
 async function finishRun(
   store: Store,
-  t: { run: RunRecord; thread: Thread; display: Display; exec: Executor; outcome: TurnOutcome; log: Log },
+  t: {
+    run: RunRecord;
+    thread: Thread;
+    display: Display;
+    exec: Executor;
+    outcome: TurnOutcome;
+    log: Log;
+    /** The folder's snapshot when the turn started (changes.ts), when there was one. */
+    before?: Promise<string | undefined> | undefined;
+  },
 ): Promise<RunRecord> {
   const { display, thread, outcome } = t;
   display.close();
@@ -944,7 +854,8 @@ async function finishRun(
     );
   }
   if (worksInFolder(thread) && thread.cwd) {
-    const changes = await gitChanges(thread.cwd);
+    const from = await t.before;
+    const changes = from ? await turnChanges(thread.cwd, from) : await gitChanges(thread.cwd);
     if (changes && !display.message.parts.some((p) => p.type === "changes" && p.edits && !p.scratch))
       display.upsert((p) => p.type === "changes" && !p.scratch, changes);
   }

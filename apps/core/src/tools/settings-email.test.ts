@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import { ApxClient } from "@apx/protocol/client";
+import { signatureFor } from "../domain/email-signature-settings.ts";
 import { SPANISH_TITLES } from "../engine/tool-titles.ts";
 import { waitFor } from "../testkit/platform.ts";
 import { settingsCore } from "./settings.test-support.ts";
@@ -25,7 +26,7 @@ before(async () => {
     id: "email",
     channel: {
       type: "email",
-      agent_id: "roby",
+      agent_id: "superagent",
       enabled: false,
       email: {
         address: smtp.sender,
@@ -41,6 +42,21 @@ after(async () => {
 });
 
 const all = async () => (await h.env.client.call("email.signatures_get", {})).signatures;
+
+test("default signature settings require approval and preserve account signatures", async () => {
+  const before = await all();
+  const global = { enabled: true, text: "Global" };
+  const change = { method: "email.signature_default_set", params: { signature: global, expected: null } };
+  assert.match((await h.ask({ method: "email.signature_default_get" })).answer, /"signature":null/);
+  await h.ask(change, "deny");
+  assert.equal((await h.env.client.call("email.signature_default_get", {})).signature, null);
+  const approved = await h.ask(change, "approve");
+  assert.match(approved.detail, /Change the default email signature/);
+  assert.deepEqual((await h.env.client.call("email.signature_default_get", {})).signature, global);
+  assert.deepEqual(await all(), before);
+  await h.ask({ method: "email.signature_default_set", params: { signature: null, expected: global } }, "approve");
+  assert.equal((await h.env.client.call("email.signature_default_get", {})).signature, null);
+});
 
 test("signature settings discover identities, require approval, and preserve other mailboxes", async () => {
   const index = await h.ask({ method: "email.signatures_get" });
@@ -113,12 +129,17 @@ test("sealed contacts cannot read signature settings or request their modificati
   const thread = h.env.core.store.threads.create({
     kind: "channel",
     title: person.name,
-    agent_ids: ["roby"],
+    agent_ids: ["superagent"],
     channel: { id: "test", conversation: person.id, person_id: person.id },
   });
   const before = await all();
   for (const call of [
     { method: "email.signatures_get" },
+    { method: "email.signature_default_get" },
+    {
+      method: "email.signature_default_set",
+      params: { signature: { enabled: true, text: "Forged global" }, expected: null },
+    },
     { method: "email.signature_upsert", params: { signature: { ...gmail, text: "Forged" }, expected: gmail } },
   ]) {
     await h.env.client.call("threads.send", { thread: thread.id, text: JSON.stringify(call) });
@@ -157,12 +178,12 @@ test("signature count limit rejects creation without losing existing entries", a
 
 test("even Total requires owner approval, and an edit during approval fails closed", async () => {
   const client = h.env.client;
-  await client.call("agents.update", { agent: "roby", autonomy: "total" });
+  await client.call("agents.update", { agent: "superagent", autonomy: "total" });
   const concurrent = { ...gmail, text: "Concurrent owner edit" };
   try {
     const thread = await client.call("threads.create", {
       kind: "loose",
-      agent_id: "roby",
+      agent_id: "superagent",
       title: "Signature approval",
     });
     await client.call("threads.send", {
@@ -187,7 +208,7 @@ test("even Total requires owner approval, and an edit during approval fails clos
     assert.deepEqual(await all(), [smtp, concurrent]);
     await client.call("email.signature_upsert", { signature: gmail, expected: concurrent });
   } finally {
-    await client.call("agents.update", { agent: "roby", autonomy: null });
+    await client.call("agents.update", { agent: "superagent", autonomy: null });
   }
 });
 
@@ -228,4 +249,40 @@ test("idempotent retry cannot overwrite a later signature edit", async () => {
   await client.call("email.signature_upsert", { signature: latest, expected: edited });
   await client.call("email.signature_upsert", params, options);
   assert.deepEqual(await all(), [smtp, latest]);
+});
+
+test("signature tools report corrupt persistence and approved partial edits cannot replace it", async () => {
+  const store = h.env.core.store;
+  const before = await all();
+  const defaultBefore = store.settings.read("email_signature_default");
+  try {
+    store.settings.write("email_signature_default", { enabled: true, text: "Global" });
+    for (const corrupt of [
+      "[",
+      JSON.stringify([
+        { ...gmail, enabled: false },
+        { ...smtp, enabled: "false" },
+      ]),
+    ]) {
+      store.settings.set("email_signatures", corrupt);
+      for (const params of [{}, key(gmail)]) {
+        const read = await h.ask({ method: "email.signatures_get", params });
+        assert.match(read.answer, /Stored email signatures are invalid/);
+        assert.equal(read.detail, "");
+      }
+      for (const call of [
+        { method: "email.signature_upsert", params: { signature: smtp, expected: null } },
+        { method: "email.signature_remove", params: { key: key(gmail), expected: gmail } },
+      ]) {
+        const approved = await h.ask(call, "approve");
+        assert.match(approved.answer, /Stored email signatures are invalid/);
+        assert.equal(store.settings.get("email_signatures"), corrupt);
+        assert.equal(signatureFor(store, "gmail", gmail.account, gmail.sender), undefined);
+        assert.equal(signatureFor(store, "smtp", smtp.account, smtp.sender), undefined);
+      }
+    }
+  } finally {
+    store.settings.write("email_signatures", before);
+    store.settings.write("email_signature_default", defaultBefore);
+  }
 });

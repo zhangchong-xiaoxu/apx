@@ -5,7 +5,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { CallModel, Routine } from "@apx/protocol";
-import { inQuietHours, noticePrefs } from "../domain/notices.ts";
+import { quietNow } from "../domain/notices.ts";
 import type { RunRecord } from "../domain/runs.ts";
 import { freshSignals, signalLines, watchSignals } from "../domain/signals.ts";
 import type { Store } from "../domain/store.ts";
@@ -15,6 +15,7 @@ import { spawnCommand, stopTree } from "../processes.ts";
 import { workDir } from "../tools/folders.ts";
 import { untrusted } from "../tools/result.ts";
 import type { Display } from "./display.ts";
+import type { MailSource } from "./mail-check.ts";
 import type { RoutineMail } from "./routine-mail.ts";
 import { takeTeamNews } from "./team-news.ts";
 
@@ -27,52 +28,28 @@ export const STEP_OUTPUT_CHARS = 8000;
 /** Where the owner's prompt takes the pre-command's output (its first one); without it, after the prompt. */
 const PRE_SLOT = "{{pre_output}}";
 
-export type StepResult = { output: string; exit: number | null; timedOut: boolean };
-
-/** A mail as a mail routine sees it: who, what, and Gmail's labels (IMPORTANT, CATEGORY_PROMOTIONS…). */
-export type MailArrival = {
-  id: string;
-  from: string;
-  subject: string;
-  date: string;
-  snippet: string;
-  labels: string[];
+/** `output` is both streams as they came; `stdout` and `stderr` each on its own, all tail-capped. */
+/** `signal`: it ran and a signal ended it (not when it could not start, nor when this stopped it). */
+export type StepResult = {
+  output: string;
+  exit: number | null;
+  timedOut: boolean;
+  stdout?: string;
+  stderr?: string;
+  signal?: string;
 };
 
-/** The owner's Gmail for a mail routine; `readable` is false while it cannot be read (not connected, send-only). */
-export type MailSource = {
-  readable(project: string | undefined): boolean;
-  historyId(): Promise<string>;
-  /** What reached the inbox after `from`, and where to ask from next; undefined when that point is too old. */
-  arrived(from: string): Promise<{ next: string; mail: MailArrival[] } | undefined>;
-};
-
-/** Gmail's tabs a mail routine never reads: ads, social networks, mailing lists, spam. */
-const UNREAD_TABS = new Set(["CATEGORY_PROMOTIONS", "CATEGORY_SOCIAL", "CATEGORY_FORUMS", "SPAM", "TRASH", "SENT"]);
-
-/** The mail worth a look, one line each, for the routine's agent to judge. */
-export function mailLines(mail: MailArrival[]): string {
-  return mail
-    .map((m) =>
-      JSON.stringify({
-        id: m.id,
-        from: m.from,
-        subject: m.subject,
-        date: m.date,
-        snippet: m.snippet.slice(0, 300),
-        ...(m.labels.includes("IMPORTANT") ? { gmail_important: true } : {}),
-      }),
-    )
-    .join("\n");
-}
-
-/** Runs one owner command in this system's shell in `cwd`; resolves with its (tail-capped) output whatever happens. */
+/**
+ * Runs one owner command in this system's shell in `cwd`; resolves with its (tail-capped) output whatever happens.
+ * `stdin`, when given, is what the command reads, then closed.
+ */
 export function runStep(
   command: string,
-  o: { cwd: string; env: Record<string, string>; signal: AbortSignal; timeoutMs?: number },
+  o: { cwd: string; env: Record<string, string>; signal: AbortSignal; timeoutMs?: number; stdin?: string },
 ): Promise<StepResult> {
   return new Promise((resolve) => {
     let out = "";
+    const streams = { stdout: "", stderr: "" };
     let timedOut = false;
     let settled = false;
     let stopping = false;
@@ -80,25 +57,44 @@ export function runStep(
     const env = Object.fromEntries(Object.entries(o.env).map(([k, v]) => [k, v.replaceAll("\0", "")]));
     const token = env.APX_ROUTINE_MAIL_TOKEN;
     const redact = (text: string) => (token ? text.replaceAll(token, "[redacted]") : text);
-    const done = (exit: number | null, extra = "") => {
+    const done = (exit: number | null, extra = "", signal?: string) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
       o.signal.removeEventListener("abort", stop);
-      resolve({ output: redact(out + extra).slice(-STEP_OUTPUT_CHARS), exit, timedOut });
+      resolve({
+        output: redact(out + extra).slice(-STEP_OUTPUT_CHARS),
+        exit,
+        timedOut,
+        stdout: redact(streams.stdout).slice(-STEP_OUTPUT_CHARS),
+        stderr: redact(streams.stderr).slice(-STEP_OUTPUT_CHARS),
+        ...(signal ? { signal } : {}),
+      });
     };
     let child: ReturnType<typeof spawnCommand>;
     try {
-      child = spawnCommand(command, { cwd: o.cwd, env, stdio: ["ignore", "pipe", "pipe"] });
+      child = spawnCommand(command, {
+        cwd: o.cwd,
+        env,
+        stdio: [o.stdin === undefined ? "ignore" : "pipe", "pipe", "pipe"],
+      });
     } catch (err) {
-      resolve({ output: redact(err instanceof Error ? err.message : String(err)), exit: null, timedOut: false });
+      const output = redact(err instanceof Error ? err.message : String(err));
+      resolve({ output, exit: null, timedOut: false, stdout: "", stderr: output });
       return;
     }
-    const keep = (b: Buffer) => {
-      out = redact(out + b.toString("utf8")).slice(-STEP_OUTPUT_CHARS * 2);
+    const keep = (stream: "stdout" | "stderr") => (b: Buffer) => {
+      const text = b.toString("utf8");
+      out = (out + text).slice(-STEP_OUTPUT_CHARS * 2);
+      streams[stream] = (streams[stream] + text).slice(-STEP_OUTPUT_CHARS * 2);
     };
-    child.stdout?.on("data", keep);
-    child.stderr?.on("data", keep);
+    child.stdout?.on("data", keep("stdout"));
+    child.stderr?.on("data", keep("stderr"));
+    if (o.stdin !== undefined) {
+      // A command that never reads its input, or stops early, closes the pipe: that is not its failure.
+      child.stdin?.on("error", () => {});
+      child.stdin?.end(o.stdin);
+    }
     // Its own process group: stopping it also stops what it started. Something that left the group (setsid) may
     // still hold the pipes, so the step ends now instead of waiting for them to close.
     function stop() {
@@ -118,7 +114,7 @@ export function runStep(
     else o.signal.addEventListener("abort", stop, { once: true });
     // Once stopping, the step ends when the whole tree is gone, with why, not when the shell closes.
     child.on("error", (err) => !stopping && done(null, `\n${err.message}`));
-    child.on("close", (code) => !stopping && done(code));
+    child.on("close", (code, signal) => !stopping && done(code, "", signal ?? undefined));
   });
 }
 
@@ -218,7 +214,7 @@ export function routinePipeline(o: {
    */
   const watch = (result: StepResult | undefined) => {
     const now = new Date();
-    if (inQuietHours(noticePrefs(o.store), now)) {
+    if (quietNow(o.store, now)) {
       o.store.routines.modelCalled(o.run.id, false);
       return { call: false, prompt: (t: string) => t };
     }
@@ -244,7 +240,7 @@ export function routinePipeline(o: {
    * instructions. In the owner's quiet hours it waits, like a watch: the first run after tells all of it.
    */
   const relay = (result: StepResult | undefined) => {
-    const news = inQuietHours(noticePrefs(o.store), new Date()) ? undefined : takeTeamNews(o.store);
+    const news = quietNow(o.store) ? undefined : takeTeamNews(o.store);
     o.store.routines.modelCalled(o.run.id, Boolean(news));
     if (!news) return { call: false, prompt: (t: string) => t };
     const block = untrusted("team_news", { count: String(news.count) }, news.lines);
@@ -252,36 +248,6 @@ export function routinePipeline(o: {
       call: true,
       prompt: (t: string) => `${result ? withPreOutput(t, result) : t}\n\n${block}`,
     };
-  };
-
-  /**
-   * A mail routine: its agent is called only when mail outside Gmail's ads, social and lists tabs reached the inbox
-   * since the last run; it reaches the agent as data. The first run starts from now; in the owner's quiet hours it
-   * waits, and the first run after sees what came.
-   */
-  const mail = async (result: StepResult | undefined) => {
-    const none = { call: false, prompt: (t: string) => t };
-    const source = o.mail;
-    if (!source?.readable(routine.project_id) || inQuietHours(noticePrefs(o.store), new Date())) {
-      o.store.routines.modelCalled(o.run.id, false);
-      return none;
-    }
-    const key = `mail_seen:${routine.id}`;
-    try {
-      const from = o.store.settings.get(key);
-      const got = from ? await source.arrived(from) : undefined;
-      o.store.settings.set(key, got ? got.next : await source.historyId());
-      const worth = (got?.mail ?? []).filter((m) => !m.labels.some((l) => UNREAD_TABS.has(l)));
-      o.store.routines.modelCalled(o.run.id, worth.length > 0);
-      if (!worth.length) return none;
-      const block = untrusted("emails", { count: String(worth.length) }, mailLines(worth));
-      return { call: true, prompt: (t: string) => `${result ? withPreOutput(t, result) : t}\n\n${block}` };
-    } catch (err) {
-      // Gmail did not answer: nothing is lost, the next run asks from the same point.
-      display.notice("warn", "routine.mail", `Gmail: ${err instanceof Error ? err.message : String(err)}`);
-      o.store.routines.modelCalled(o.run.id, false);
-      return none;
-    }
   };
 
   return {
@@ -294,7 +260,6 @@ export function routinePipeline(o: {
       const result = pre;
       if (routine.action === "watch") return watch(result);
       if (routine.action === "relay") return relay(result);
-      if (routine.action === "mail") return mail(result);
       const goOn = result ? callsModel(routine.call_model, result) : true;
       if (routine.action !== "agent") {
         o.store.routines.modelCalled(o.run.id, false);

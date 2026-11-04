@@ -1,4 +1,5 @@
 import { noticeEn } from "@apx/protocol/notices";
+import type { ApprovalKey } from "./approvals-en.ts";
 import type { ComputerKey } from "./computer-en.ts";
 import { enChannels } from "./en-channels.ts";
 import { enChat } from "./en-chat.ts";
@@ -12,7 +13,10 @@ import { enResources } from "./en-resources.ts";
 import { enSetup } from "./en-setup.ts";
 import { enTeam } from "./en-team.ts";
 import { enTelemetry } from "./en-telemetry.ts";
+import type { enFlow } from "./flow-en.ts";
+import type { enIngress } from "./ingress-en.ts";
 import type { ReceivedKey } from "./received-en.ts";
+import type { enSecretary } from "./secretary-en.ts";
 import type { SysUsageKey } from "./sysusage-en.ts";
 import type { enThreadDialogs } from "./thread-dialogs-en.ts";
 
@@ -63,6 +67,10 @@ export const en = {
   "common.done": "Done",
   "common.refresh": "Refresh",
   "common.retry": "Retry",
+  "common.browserPermissionsLoading": "Loading browser permissions…",
+  "common.browserPermissionsFailed": "Could not show browser permissions. Reload to try again.",
+  "common.optionsLoading": "Loading options…",
+  "common.optionsFailed": "These options could not be shown. Reload to try again.",
   "common.running": "Running",
   "common.search": "Search",
   "common.soon": "Soon",
@@ -191,6 +199,16 @@ export const en = {
   "topbar.search": "Search or jump to…",
   "update.pill": "Update · {n}",
   "update.pillVersion": "APX {v} · Update",
+  "help.label": "Help",
+  "help.labelNew": "Help · there is news",
+  "help.whatsNew": "What's new",
+  "help.changelog": "All the news",
+  "help.guides": "Guides",
+  "help.discord": "Join Discord",
+  "help.feedback": "Send feedback",
+  "help.release": "APX {v}",
+  "help.ask": "Ask {name}:",
+  "help.allChanges": "Every change on GitHub",
   "update.whatsNew": "See what's new",
   "update.whatsNewTitle": "What's new in APX {v}",
   "update.coreBehind": "Core out of date",
@@ -224,6 +242,7 @@ export const en = {
   "update.now": "Update now",
   "update.updating": "Updating. This can take a few minutes.",
   "update.restarting": "Restarting APX with the new version…",
+  "update.restartStalled": "APX did not restart. Quit APX and open it again to finish the update.",
   "update.done": "Updated. Restart APX to use the new version.",
   "update.failed": "The update stopped and nothing changed in what runs now. What happened:",
   "update.cardTitle": "APX {v} is out",
@@ -298,6 +317,7 @@ export const en = {
   "nav.label": "Navigation",
   "nav.inbox": "Inbox",
   "nav.tasks": "Tasks",
+  "nav.flows": "Flows",
   "nav.itemOptions": "Options for {name}",
   "nav.open": "Open",
   "project.unregister": "Unregister project",
@@ -339,6 +359,7 @@ export const en = {
   "nav.apps": "Apps",
   "nav.computers": "Computers",
   "nav.resources": "Resources",
+  "nav.files": "Files",
   "account.you": "You",
   "account.menuOf": "Account: {name}",
   "account.lead": "Who you are, for the panel and for your agents. It stays on your machine.",
@@ -355,26 +376,6 @@ export const en = {
   "account.nameHint": "How the panel shows you and how your agents know you.",
   "account.cloud": "Cloud account",
   "account.cloudHint": "Sync across devices and share with your team.",
-  "input.confirmTitle": "Needs your OK",
-  "input.actionTitle": "Accept this action?",
-  "input.accept": "Accept",
-  "input.accepted": "Accepted",
-  "input.askedAction": "Proposed an action",
-  "input.questionTitle": "Question for you",
-  "input.approve": "Approve",
-  "input.deny": "Decline",
-  "input.approved": "Approved",
-  "input.denied": "Declined",
-  "input.answered": "Answered",
-  "input.expired": "Expired",
-  "input.withdrawn": "Withdrawn",
-  "input.asked": "Asked to use {tool}",
-  "input.askedQuestion": "Asked you a question",
-  "input.anAction": "an action",
-  "input.answerPlaceholder": "Type your answer and press Enter",
-  "input.send": "Send",
-  "input.skip": "Skip",
-  "input.skipped": "(skipped)",
   "error.respond": "Could not send your answer: {error}",
   "running.label": "Processes",
   "running.aria": "{working} running, {waiting} waiting, {background} in the background",
@@ -421,6 +422,8 @@ export const en = {
   "turn.from.command": "Command ended",
   "turn.from.goOn": "Go on after the pause",
   "turn.from.stalledTask": "Resume a stalled task",
+  "turn.from.mail": "New mail",
+  "turn.from.taskContinue": "Go on with the task",
   "turn.from.other": "Next turn",
   "turn.queuedAfter": "Queued after the current turn",
   "running.empty": "Nothing running right now.",
@@ -584,7 +587,12 @@ export const en = {
   "app.remove": "Unpin from Apps",
   "share.copied": "Link copied.",
   "share.copyFailed": "Could not copy the link.",
-  "share.hint": "Private by default. With the link, anyone can view it without editing.",
+  "share.hint":
+    "Private by default. Publishing makes the HTML readable by anyone with its link. Public pages cannot access APX state, private files or actions.",
+  "share.tunnelHint":
+    "Copy and open require a public address (Settings › Devices). Enabling it also exposes previously shared HTML; review its content first.",
+  "share.linkUnavailable":
+    "Public link unavailable. Check the public address in Settings › Devices and allow new tabs.",
   "share.private": "Private",
   "share.anyone": "Anyone with the link",
   "share.copy": "Copy link",
@@ -777,6 +785,7 @@ export const en = {
   "link.go.settings": "Open Settings",
   "link.go.settingsSection": "Open Settings › {name}",
   "link.go.task": "Open the task “{name}” over the chat",
+  "link.go.flow": "Open the flow",
   "link.go.tasks": "Open the task board",
   "link.go.resources": "Open Resources › {name}",
   "link.go.inbox": "Open the inbox",
@@ -845,13 +854,17 @@ export const en = {
   "project.autonomy.manual.hint":
     "Asks your OK for everything that changes something, and before reading outside the project.",
   "project.autonomy.auto.hint":
-    "Reads any folder, writes and runs commands in the project without asking. Asks before messages, payments, deleting and writing outside the project.",
+    "Reads any folder, writes and runs commands in the project without asking. Asks before messages, payments, deleting and writing outside your projects.",
   "project.autonomy.accept_edits.hint": "Like Auto, but asks before any command that changes something.",
   "project.autonomy.plan.hint": "Reads and proposes changes; changes nothing until you switch the mode.",
   "project.autonomy.total.hint": "Asks you nothing, in any folder but APX's. Only for projects you fully trust.",
   "project.settings.folder": "Folder",
   "project.settings.folderHint": "Chats that work in the folder use it, and its .apc/ holds the agents and settings.",
   "project.settings.folderMissing": "The folder is not on disk right now (moved, or a drive that is not mounted).",
+  "project.settings.folderWaiting":
+    "This folder has not opened for APX yet. If your Mac asks whether “node” can access it, choose Allow: APX reads the folder as soon as it can.",
+  "project.settings.folderDenied":
+    "APX is not allowed to open this folder. On a Mac, turn on “node” in System Settings › Privacy & Security › Files and Folders, then restart APX.",
   "project.settings.agentsMdLong": "AGENTS.md past the limit",
   "project.settings.agentsMdLongBody":
     "It has {chars} characters, more than the {limit} agents get whole: they get its start and its end, are told which lines are left out and read them when they need them.",
@@ -1062,6 +1075,9 @@ export const en = {
   "logs.noMatch": "No line matches",
   "logs.showing": "Showing the newest {n} lines",
   "logs.older": "Show older lines",
+  "appearance.textSize": "Text size",
+  "appearance.textSizeHint":
+    "Interface and chat text on this device. 100% is normal. Images, embedded apps, terminals and browser zoom stay unchanged.",
   "appearance.font": "Interface font",
   "appearance.fontHint": "Menus, sidebars and panels.",
   "appearance.fontLabel": "Font",
@@ -1434,7 +1450,7 @@ export const en = {
   "quick.openApp": "Open in the app",
   "config.desktop": "Desktop",
   "desktop.memoryHint":
-    "APX is using {total}. Above 4 GB it tells you which process uses the most. Idle tabs close after 30 minutes.",
+    "APX is using {total}. Above 4 GB it tells you which process uses the most. Idle tabs close after {minutes} minutes.",
   "desktop.memory.core": "Core (agents, channels, data)",
   "desktop.memory.main": "APX (main)",
   "desktop.memory.gpu": "GPU",
@@ -1765,14 +1781,14 @@ export const en = {
   "nudge.open": "Open Interruptions",
   "routines.anchor": "Always arrives",
   "routines.maxSteps": "Steps per run",
-  "routines.maxStepsHint": "How many model calls each run may make before it must answer (5 to 200). Empty: 60.",
+  "routines.maxStepsHint": "How many model calls each run may make before it must answer (5 to 200). Empty: {steps}.",
   "routines.anchorHint":
     "On: its news always arrives, even at night or past the daily cap (for a morning or evening brief). Off: it goes through your interruption budget.",
-  "nudge.where": "Where notices go",
+  "nudge.where": "Chat app for notices",
   "nudge.whereHint":
-    "A channel, or your phone's push (pair it in Devices; the APX app registers it, or paste an ntfy address there).",
+    "The app and your paired phones always get them (pair one in Devices). Pick a chat app to get them there too, or none.",
   "nudge.whereAuto": "The first channel that knows you",
-  "nudge.wherePhone": "{name} (push)",
+  "nudge.whereNone": "None, only in the app",
   "devices.push.expo": "Push",
   "devices.push.unifiedpush": "Push (ntfy)",
   "devices.pushUrl": "Push address for {name}",
@@ -1789,11 +1805,11 @@ export const en = {
   "super.talk": "How it reaches you",
   "super.where": "Where it writes to you",
   "super.whereHint":
-    "Its routines, the OKs it needs and reminders arrive there. If that channel can't deliver one, it tries the next one that knows you.",
+    "The app, on this computer and your phone, always tells you. Pick a chat app for its routines, the OKs it needs and reminders too; if it can't deliver one, it tries the next that knows you.",
   "prof.lead":
     "What your super-agent is for. A profile gives it a role, routines on their own schedule and the settings they read; switch it any time. Its routines live in Routines too.",
   "prof.none": "None",
-  "prof.noneHint": "It answers when you write and does nothing on its own.",
+  "prof.noneHint": "No profile routines. Secretary capabilities keep their own switches.",
   "prof.installed": "Installed",
   "prof.install": "Install profile",
   "prof.installHint": "A folder on this machine with an apx-profile.json: its role, routines and settings.",
@@ -1845,9 +1861,13 @@ export const en = {
 /** Every key the panel may show: these, and those of the packs loaded with their screens (messages.ts PACKS). */
 export type MessageKey =
   | keyof typeof en
+  | ApprovalKey
   | ComputerKey
   | ReceivedKey
   | SysUsageKey
   | OnboardingKey
   | keyof typeof enEmailSignatures
-  | keyof typeof enThreadDialogs;
+  | keyof typeof enThreadDialogs
+  | keyof typeof enIngress
+  | keyof typeof enFlow
+  | keyof typeof enSecretary;

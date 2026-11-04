@@ -18,16 +18,17 @@ test("tarea: equipo del proyecto, menciones, respuesta, estados y comentario sep
       if (system.startsWith("You are Builder")) {
         if (afterTool) return say("Review completed. @roby please check.");
         // Assigned, Builder starts in its chat for the task; asked to review, it moves the task and says so.
-        return said.includes("please review")
-          ? callTool("review", "task_update", { task: taskId, status: "review" })
-          : say("On it.");
+        if (said.includes("please review"))
+          return callTool("review", "task_update", { task: taskId, status: "review" });
+        // The next part APX starts on its own while the task is in progress: nothing more to do yet.
+        return say(said.includes("still in progress") ? "Still waiting for the review request." : "On it.");
       }
       return say("@owner please approve the review.");
     }),
   });
   try {
     await env.client.call("setup.finish", {});
-    await env.client.call("agents.update", { agent: "roby", name: "Roby" });
+    await env.client.call("agents.update", { agent: "superagent", name: "Roby" });
     await env.client.call("owner.set", { name: "Alex" });
     await env.client.call("agents.create", { slug: "andy", name: "Andy" });
     const folder = path.join(env.home, "northwind");
@@ -108,7 +109,7 @@ test("tarea: equipo del proyecto, menciones, respuesta, estados y comentario sep
     await expect(drawer).toBeVisible();
     await comment.fill("@");
     const mentions = drawer.getByRole("listbox", { name: "Mencionar agente" });
-    await expect(mentions.getByRole("option")).toHaveText(["Roby@roby", "Builder@builder"]);
+    await expect(mentions.getByRole("option")).toHaveText(["Roby@superagent", "Builder@builder"]);
     await page.keyboard.press("ArrowDown");
     await page.keyboard.press("Enter");
     await expect(comment).toHaveValue("@builder ");

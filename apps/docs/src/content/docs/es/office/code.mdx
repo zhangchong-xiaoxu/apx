@@ -36,7 +36,7 @@ libertad.
 
 ### Dónde una tarea cambia código
 
-**En la rama de desarrollo posterior a 2.11.0**, antes de cambiar código para una tarea, el agente sigue la elección
+**Desde 2.11.1**, antes de cambiar código para una tarea, el agente sigue la elección
 guardada del proyecto: trabajar en el checkout o en un worktree de Git. Si ninguna nota del proyecto lo indica,
 te pregunta: **Worktree now**, **Worktree always**, **Here now**, **Here always** u **Other**. Una respuesta “always”
 se guarda para ese proyecto; “now” vale solo para esta elección. Esas opciones llegan con esos nombres en inglés.
@@ -52,7 +52,7 @@ agente, no una garantía de que Git ya haya integrado o limpiado los cambios aut
 | Política | Qué significa |
 |---|---|
 | **Pregunta antes de cambiar** (`ask`) | La de siempre. Las ediciones y los comandos pasan por las aprobaciones de la [autonomía](/es/concepts/autonomy/) del agente. Codex no puede preguntar en medio de un turno, así que con esta política solo lee. |
-| **Edita libremente** (`auto`) | Las sesiones de Claude Code y Codex editan archivos dentro de la carpeta sin preguntar (nunca la config de git, `.apc/` ni `AGENTS.md`). Los comandos siguen la autonomía del agente. |
+| **Edita libremente** (`auto`) | Las sesiones de Claude Code y Codex editan archivos dentro de la carpeta sin preguntar (nunca `.apc/` ni `AGENTS.md`, y nada en `.git`, con ninguna autonomía: git se usa con comandos). Los comandos siguen la autonomía del agente. |
 | **Sólo lectura** (`read-only`) | Solo lee. Lo que necesitaría tu OK se rechaza. |
 
 ### Trabajar en la carpeta desde cualquier chat
@@ -114,8 +114,11 @@ su propia sesión, con historial y todo, y desde ahí vive también en APX.
 - Claude Code carga solo tu configuración de usuario, no los archivos `.claude/settings` de un repositorio (que
   podrían habilitar herramientas salteando las aprobaciones de APX). APX lee el `CLAUDE.md` de la carpeta por su
   cuenta y lo suma al prompt.
-- Codex en un chat con **Edita libremente** corre en sólo lectura (y explica por qué) mientras el agente pregunte
-  antes de actuar o la sesión haya leído contenido de afuera; con autonomía total sí escribe.
+- Codex en un chat con **Edita libremente** escribe en su carpeta cuando el agente está en Auto, Acepta ediciones o
+  Total, lea lo que lea la sesión, salvo que las reglas del agente pidan preguntar antes de escribir o lo apaguen; en
+  Manual o Plan corre en sólo lectura (y explica por qué), salvo que sus reglas lo dejen escribir solo. Una sesión que
+  otro agente delegó con **Pregunta antes de cambiar** queda en sólo lectura para Codex aun en Total, porque no puede
+  preguntar.
 - Una vez que una sesión de motor lee contenido de afuera (una página web, un mensaje), el resto de esa sesión se
   trata como no confiable, igual que la de un agente de APX.
 </Aside>

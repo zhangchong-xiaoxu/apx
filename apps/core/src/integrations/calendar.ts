@@ -15,7 +15,13 @@ type GEvent = {
   hangoutLink?: string;
   start?: { dateTime?: string; date?: string };
   end?: { dateTime?: string; date?: string };
-  attendees?: Array<{ email?: string; responseStatus?: string; optional?: boolean; organizer?: boolean }>;
+  attendees?: Array<{
+    email?: string;
+    responseStatus?: string;
+    optional?: boolean;
+    organizer?: boolean;
+    self?: boolean;
+  }>;
   organizer?: { email?: string };
 };
 
@@ -32,6 +38,8 @@ export type CalendarEvent = {
   status?: string;
   meet?: string;
   link?: string;
+  /** The owner said they will not go. */
+  declined?: boolean;
 };
 
 export function flattenEvent(e: GEvent): CalendarEvent {
@@ -51,6 +59,7 @@ export function flattenEvent(e: GEvent): CalendarEvent {
     ...(e.status && e.status !== "confirmed" ? { status: e.status } : {}),
     ...(e.hangoutLink ? { meet: e.hangoutLink } : {}),
     ...(e.htmlLink ? { link: e.htmlLink } : {}),
+    ...(e.attendees?.some((a) => a.self && a.responseStatus === "declined") ? { declined: true } : {}),
   };
 }
 
@@ -146,6 +155,8 @@ export function calendarApi(g: Google) {
       meet?: boolean | undefined;
       time_zone?: string | undefined;
       calendar: string;
+      /** Email the guests about it; without it the change is only on the owner's calendar. */
+      notify?: boolean | undefined;
     }) {
       const changesGuests = Boolean(o.add_attendees?.length || o.remove_attendees?.length);
       const current = changesGuests || o.meet ? await g.call<GEvent>(ID, eventUrl(g, o.calendar, o.id)) : undefined;
@@ -162,8 +173,7 @@ export function calendarApi(g: Google) {
       const addMeet = Boolean(o.meet && current && !current.hangoutLink);
       const data = await g.call<GEvent>(ID, eventUrl(g, o.calendar, o.id), {
         method: "PATCH",
-        // Attendees already invited hear about a change of time or place.
-        query: { sendUpdates: "all", ...(addMeet ? { conferenceDataVersion: 1 } : {}) },
+        query: { sendUpdates: o.notify ? "all" : "none", ...(addMeet ? { conferenceDataVersion: 1 } : {}) },
         body: {
           ...(o.title !== undefined ? { summary: o.title } : {}),
           ...(o.description !== undefined ? { description: o.description } : {}),
@@ -177,9 +187,12 @@ export function calendarApi(g: Google) {
       return flattenEvent(data);
     },
 
-    /** Cancels an event; its attendees are told. */
-    async cancel(o: { id: string; calendar: string }) {
-      await g.call(ID, eventUrl(g, o.calendar, o.id), { method: "DELETE", query: { sendUpdates: "all" } });
+    /** Cancels an event; its attendees are told only with `notify`. */
+    async cancel(o: { id: string; calendar: string; notify?: boolean | undefined }) {
+      await g.call(ID, eventUrl(g, o.calendar, o.id), {
+        method: "DELETE",
+        query: { sendUpdates: o.notify ? "all" : "none" },
+      });
     },
   };
 }

@@ -94,7 +94,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.usage {
+.chatusage {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
@@ -103,30 +103,30 @@
   gap: 14px;
   padding: 16px;
 }
-.usage__context {
+.chatusage__context {
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
-.usage__contexttext {
+.chatusage__contexttext {
   font-size: var(--apx-text-sm);
   color: var(--apx-fg);
 }
-.usage__bar {
+.chatusage__bar {
   height: 4px;
   border-radius: 2px;
   background: var(--apx-fill);
   overflow: hidden;
 }
-.usage__bar > span {
+.chatusage__bar > span {
   display: block;
   height: 100%;
   background: var(--apx-accent);
 }
-.usage__kv {
+.chatusage__kv {
   margin: 0;
 }
-.usage__row {
+.chatusage__row {
   display: flex;
   justify-content: space-between;
   gap: 12px;
@@ -134,19 +134,19 @@
   border-bottom: 1px solid var(--apx-border);
   font-size: var(--apx-text-sm);
 }
-.usage__row dt {
+.chatusage__row dt {
   color: var(--apx-fg-muted);
 }
-.usage__row dd {
+.chatusage__row dd {
   margin: 0;
   font-family: var(--apx-meta-font);
   text-align: right;
 }
-.usage__label {
+.chatusage__label {
   font-size: var(--apx-text-xs);
   color: var(--apx-fg-subtle);
 }
-.usage__runs {
+.chatusage__runs {
   margin: 0;
   padding: 0;
   list-style: none;
@@ -154,17 +154,17 @@
   flex-direction: column;
   gap: 6px;
 }
-.usage__run {
+.chatusage__run {
   display: flex;
   align-items: center;
   gap: 10px;
   font-size: var(--apx-text-xs);
   color: var(--apx-fg-muted);
 }
-.usage__when {
+.chatusage__when {
   flex: 1;
 }
-.usage__dur {
+.chatusage__dur {
   font-variant-numeric: tabular-nums;
 }
 .share__url {
@@ -216,8 +216,8 @@
 /* The page under an open drawer makes room for it, so the list sits beside the detail; a narrow page keeps ~480px
    of list and lets the drawer cover the rest. */
 @media (min-width: 768px) {
-  .page:has(.drawer),
-  .project__body:has(.drawer) {
+  .page:has(.drawer:not(.drawer--inset)),
+  .project__body:has(.drawer:not(.drawer--inset)) {
     padding-right: min(584px, max(0px, 100% - 480px));
   }
 }
@@ -236,6 +236,30 @@
     width: auto;
     border: 0;
     border-radius: 0;
+  }
+}
+/* Over a canvas: a card inside its parent, a bottom sheet on a phone. */
+.drawer.drawer--inset {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  bottom: 12px;
+  left: auto;
+  z-index: 6;
+  width: min(400px, calc(100% - 24px));
+  border: 1px solid var(--apx-border);
+  border-radius: 16px;
+}
+@media (max-width: 640px) {
+  .drawer.drawer--inset {
+    top: auto;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    width: auto;
+    height: 60%;
+    border-width: 1px 0 0;
+    border-radius: 16px 16px 0 0;
   }
 }
 
@@ -352,7 +376,7 @@
   border-radius: var(--apx-radius-pill);
   background: var(--apx-fill);
   color: var(--apx-fg-muted);
-  font-size: 11px;
+  font-size: calc(11px * var(--apx-text-scale, 1));
 }
 .wchanges__error {
   margin: 8px 12px;
@@ -367,7 +391,7 @@
   border-top: 1px solid var(--apx-border);
   overflow-x: auto;
   font-family: var(--apx-font-mono);
-  font-size: 12px;
+  font-size: calc(12px * var(--apx-text-scale, 1));
   line-height: 1.55;
 }
 .diff__line {
@@ -546,7 +570,7 @@
   border-radius: var(--apx-radius-pill);
   background: var(--apx-fill);
   color: var(--apx-fg-muted);
-  font-size: 11px;
+  font-size: calc(11px * var(--apx-text-scale, 1));
 }
 .term__status {
   flex: none;
@@ -567,7 +591,7 @@
   border-top: 1px solid var(--apx-border);
   background: var(--apx-fill);
   font-family: var(--apx-font-mono);
-  font-size: 12px;
+  font-size: calc(12px * var(--apx-text-scale, 1));
   line-height: 1.5;
   white-space: pre-wrap;
   word-break: break-word;

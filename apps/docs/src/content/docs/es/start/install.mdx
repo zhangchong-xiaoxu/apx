@@ -1,6 +1,6 @@
 ---
 title: Instalar
-description: Instalá APX como app de escritorio, en un servidor o VPS, o desde el código fuente.
+description: Instalá APX, el espacio de trabajo para agentes de IA, en macOS, Windows o Linux, en un servidor o VPS, o desde el código fuente.
 sidebar:
   order: 2
 ---
@@ -10,8 +10,9 @@ import InstallCommand from "../../../../components/InstallCommand.astro";
 import Terminal from "../../../../components/Terminal.astro";
 
 APX es un proceso en segundo plano, el **core**, más las apps que le hablan. Elegí cómo querés correrlo: la app de
-escritorio trae su propio core, una instalación de servidor corre el core sin pantalla, y desde el código corrés todo
-tal cual está.
+escritorio trae su propio core, una [instalación de servidor](/es/devices/server/) corre el core sin pantalla, y desde
+el código corrés todo tal cual está. Después de instalar, seguí los [Primeros pasos](/es/start/first-steps/) para
+conectar un modelo y configurar tu primer proyecto.
 
 <Aside type="note" title="Actualizaciones">
 Salen versiones seguido y APX se actualiza solo. Tus datos quedan en `~/.apx/v2` entre actualizaciones, y los archivos
@@ -193,7 +194,7 @@ están; APX solo les suma `AGENTS.md` y `.apc/`.
 - ~/.apx/v2/
   - apx.db todo el estado: agentes, hilos, tareas, memoria, configuración (SQLite)
   - core.env el token del core, el host y la dirección pública, si los configurás
-  - secrets.json los valores secretos, donde no se usa el llavero del sistema
+  - secrets.json los valores secretos, solo donde no hay llavero del sistema
   - skills/ tus skills globales
   - extensions/
   - projects/ el lado de APX de cada proyecto, como sus widgets
@@ -203,8 +204,9 @@ están; APX solo les suma `AGENTS.md` y `.apc/`.
   - app/ el core instalado, en instalaciones de servidor
 </FileTree>
 
-En macOS, los valores secretos van a tu llavero de sesión (Keychain); en el resto, a `secrets.json` con permisos solo
-para vos.
+Los valores secretos van a tu llavero de sesión (Keychain) en macOS, a tu llavero (Secret Service) en Linux y a
+`secrets.dpapi`, sellado con DPAPI, en Windows. Solo un servidor sin llavero los guarda en `secrets.json`, que solo
+podés leer vos. Mirá [Configuración](/es/reference/configuration/).
 
 ## Actualizaciones
 
@@ -226,8 +228,9 @@ los commits, así que ese chat está en inglés. Una instalación nueva arranca 
 chat.
 
 Cuando una versión trae algo que tu super-agente ahora puede hacer por vos (por ejemplo, actualizar tus widgets), te
-lo cuenta una vez, con sus palabras y en tu idioma, por tu canal preferido, con un botón por cada cosa que ofrece. Solo
-ese mensaje llama a un modelo, y solo cuando algo te aplica; a una instalación nueva no se le cuenta nada.
+lo cuenta una vez, con sus palabras y en tu idioma, en su chat de la app (marcado como no leído). Si elegiste una app
+de chat para los avisos, el mensaje llega ahí también, con un botón por cada cosa que ofrece; si no, lo leés en la app.
+Solo ese mensaje llama a un modelo, y solo cuando algo te aplica; a una instalación nueva no se le cuenta nada.
 `APX_NEWS=off` lo apaga, y `apx news` lista lo que hay.
 
 ## Desinstalar

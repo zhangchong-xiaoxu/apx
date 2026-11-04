@@ -3,9 +3,9 @@
 import type { Task, Thread } from "@apx/protocol";
 import type { AgentRecord } from "../domain/agents.ts";
 import type { Origin, RunRecord } from "../domain/runs.ts";
+import { HOME_THREAD_ID } from "../domain/seed.ts";
 import type { Store } from "../domain/store.ts";
-import { systemNote } from "../harness/native.ts";
-import { pausedNotice } from "./breaker.ts";
+import { keepWhilePaused } from "./breaker.ts";
 import { frameInput } from "./context.ts";
 import type { AdmitFn } from "./engine.ts";
 
@@ -49,7 +49,8 @@ function reportOf(store: Store, task: Task, closer: string, note: unknown, fresh
   );
 }
 
-type Recipient = { agent: AgentRecord; thread: Thread; run?: RunRecord | undefined };
+/** `watch`: the super-agent, told of a task it did not create so it tells the owner; `by` is who created it. */
+type Recipient = { agent: AgentRecord; thread: Thread; run?: RunRecord | undefined; by?: string };
 
 function recipients(store: Store, task: Task, closer: string, created: Record<string, unknown>): Recipient[] {
   const out: Recipient[] = [];
@@ -67,6 +68,13 @@ function recipients(store: Store, task: Task, closer: string, created: Record<st
       add(from.thread, from.run);
   }
   if (task.created_by !== closer) add(created.from_thread, created.from_run, task.created_by);
+  // The super-agent hears of every task its team closes, so the owner does: unless it gave or closed it itself.
+  const boss = store.agents.list().find((a) => a.kind === "secretary");
+  const home = store.threads.get(HOME_THREAD_ID);
+  if (boss && home && closer !== boss.id && task.created_by !== boss.id && !out.some((r) => r.agent.id === boss.id)) {
+    const by = task.created_by === "owner" ? "the owner" : (store.agents.get(task.created_by)?.name ?? task.created_by);
+    out.push({ agent: boss, thread: home, by });
+  }
   return out;
 }
 
@@ -101,21 +109,14 @@ export function reportClose(
     : undefined;
   const text = reportOf(store, task, closer.id, close.event.data.note, freshSince);
   let first: RunRecord | undefined;
-  for (const { thread, agent, run } of targets) {
-    const paused = pausedNotice(store, thread.id, closer.name);
-    if (paused) {
-      store.modelLog.append(thread.id, undefined, [
-        systemNote(`A task you handed off was closed while agents were paused:\n${frameInput(origin, text)}`),
-      ]);
-      store.messages.add({ thread_id: thread.id, author: { kind: "system" }, parts: [paused] });
-      store.threads.mergeContext(thread.id, { kept: agent.id });
-      continue;
-    }
+  for (const { thread, agent, run, by } of targets) {
+    const note = `A task you handed off was closed while agents were paused:\n${frameInput(origin, text)}`;
+    if (keepWhilePaused(store, { thread_id: thread.id, agent_id: agent.id, who: closer.name, note })) continue;
     const reported = admit({
       thread_id: thread.id,
       agent_id: agent.id,
       trigger: "a2a_result",
-      origin,
+      origin: by ? { ...origin, by } : origin,
       text,
       depth: run?.depth ?? 0,
     });

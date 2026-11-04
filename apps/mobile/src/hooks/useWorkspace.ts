@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { APP_CLIENT } from "../appInfo";
 import { newChatThread, parseNewChat } from "../chat/newChat";
 import type { Creds } from "../creds";
+import { textOrder } from "../format";
 import { t } from "../i18n";
 import { showLiveNotice } from "../notifications";
 import {
@@ -13,11 +14,14 @@ import {
   type NoticePrefs,
   type RoutineRun,
   type Schedule,
+  type SharedFile,
+  type SharedKind,
   type TaskEvent,
 } from "../protocol";
 import { taskComments } from "../tasks/comments";
 import { DEFAULT_COLUMNS, type TaskColumn, type TaskPatch } from "../tasks/fields";
 import { continueSession } from "./continueSession";
+import { keepSame, RELOADS } from "./keepSame";
 
 export type Agent = {
   id: string;
@@ -50,7 +54,8 @@ export type Thread = {
   archived?: boolean;
   pinned?: boolean;
   engine?: string;
-  channel?: { id: string; conversation: string };
+  /** A contact's chat on a channel: the channel instance and the person on the other side. */
+  channel?: { id: string; conversation: string; person_id?: string };
   state: string;
   preview: string;
   unread: number;
@@ -110,7 +115,8 @@ export type PendingInput = {
   detail?: string;
   options?: string[];
   /** How long an approval may last, when the core offers more than once. */
-  approval_scopes?: Array<"once" | "session" | "always">;
+  approval_scopes?: Array<"once" | "session" | "always" | "tab" | "turn">;
+  tool?: string;
   state: string;
 };
 export type Routine = {
@@ -132,6 +138,8 @@ export type Routine = {
 };
 /** A channel (Telegram bot, WhatsApp line…) as the phone lists it. */
 export type Channel = { id: string; type: string; label: string; enabled: boolean; agent_id: string };
+/** Someone APX talks to on a channel; `addresses` say which channels know them. */
+export type Person = { id: string; name: string; role: string; addresses: Array<{ channel: string }> };
 /** One running or finished piece of work, as jobs.list gives it. */
 export type Job = {
   id: string;
@@ -187,6 +195,7 @@ export type Workspace = {
   sessions: Record<string, NativeSession[]>;
   jobs: { running: Job[] };
   channels: Channel[];
+  persons: Person[];
   /** How many notes the office remembers (memory.settings), when known. */
   memories?: number;
   /** The owner's name as set in APX ("" until loaded or when unset). */
@@ -207,6 +216,7 @@ export const emptyWorkspace: Workspace = {
   sessions: {},
   jobs: { running: [] },
   channels: [],
+  persons: [],
   owner: "",
 };
 
@@ -230,10 +240,7 @@ export function useWorkspace(creds: Creds) {
         include_subthreads: true,
         include_archived: true,
       });
-      setData((d) => ({
-        ...d,
-        threads: r.threads ?? [],
-      }));
+      setData((d) => keepSame(d, { ...d, threads: r.threads ?? [] }));
       setOnline(true);
       setError("");
       setLoading(false);
@@ -247,22 +254,37 @@ export function useWorkspace(creds: Creds) {
   const loadSecondary = useCallback(async () => {
     const get = <T>(method: string, params?: Record<string, unknown>) =>
       rpc<T>(client, method, params).catch(() => undefined);
-    const [projects, agents, open, done, dropped, inbox, pending, routines, engines, jobs, owner, channels, memory] =
-      await Promise.all([
-        get<{ projects: Project[] }>("projects.list", { include_unregistered: true }),
-        get<{ agents: Agent[] }>("agents.list", {}),
-        get<{ tasks: Task[]; columns: TaskColumn[] }>("tasks.list", { state: "open", limit: 200 }),
-        get<{ tasks: Task[] }>("tasks.list", { state: "done", limit: 25 }),
-        get<{ tasks: Task[] }>("tasks.list", { state: "dropped", limit: 25 }),
-        get<{ notifications: Notice[]; unread: number }>("notifications.list", { limit: 100 }),
-        get<{ inputs: PendingInput[] }>("runs.pending", {}),
-        get<{ routines: Routine[] }>("routines.list", {}),
-        get<{ engines: Engine[] }>("engines.status", {}),
-        get<Workspace["jobs"]>("jobs.list", { finished: 12 }),
-        get<{ name: string }>("owner.get", {}),
-        get<{ channels: Channel[] }>("channels.list", {}),
-        get<{ total: number }>("memory.settings", {}),
-      ]);
+    const [
+      projects,
+      agents,
+      open,
+      done,
+      dropped,
+      inbox,
+      pending,
+      routines,
+      engines,
+      jobs,
+      owner,
+      channels,
+      memory,
+      contacts,
+    ] = await Promise.all([
+      get<{ projects: Project[] }>("projects.list", { include_unregistered: true }),
+      get<{ agents: Agent[] }>("agents.list", {}),
+      get<{ tasks: Task[]; columns: TaskColumn[] }>("tasks.list", { state: "open", limit: 200 }),
+      get<{ tasks: Task[] }>("tasks.list", { state: "done", limit: 25 }),
+      get<{ tasks: Task[] }>("tasks.list", { state: "dropped", limit: 25 }),
+      get<{ notifications: Notice[]; unread: number }>("notifications.list", { limit: 100 }),
+      get<{ inputs: PendingInput[] }>("runs.pending", {}),
+      get<{ routines: Routine[] }>("routines.list", {}),
+      get<{ engines: Engine[] }>("engines.status", {}),
+      get<Workspace["jobs"]>("jobs.list", { finished: 12 }),
+      get<{ name: string }>("owner.get", {}),
+      get<{ channels: Channel[] }>("channels.list", {}),
+      get<{ total: number }>("memory.settings", {}),
+      get<{ persons: Person[] }>("contacts.list", {}),
+    ]);
     // Each engine's sessions, or undefined where the list did not load (it keeps the one it had).
     let native: Array<[string, NativeSession[] | undefined]> | undefined;
     if (engines?.engines) {
@@ -276,25 +298,28 @@ export function useWorkspace(creds: Creds) {
       );
       native = installed.map((engine, i) => [engine.id, lists[i]?.sessions]);
     }
-    setData((d) => ({
-      ...d,
-      projects: projects?.projects ?? d.projects,
-      agents: agents?.agents ?? d.agents,
-      tasks: open ? [...open.tasks, ...(done?.tasks ?? []), ...(dropped?.tasks ?? [])] : d.tasks,
-      columns: open?.columns.length ? open.columns : d.columns,
-      notices: inbox?.notifications ?? d.notices,
-      unread: inbox?.unread ?? d.unread,
-      inputs: pending?.inputs ?? d.inputs,
-      routines: routines?.routines ?? d.routines,
-      engines: engines?.engines ?? d.engines,
-      sessions: native
-        ? Object.fromEntries(native.map(([id, list]) => [id, list ?? d.sessions[id] ?? []]))
-        : d.sessions,
-      jobs: jobs ?? d.jobs,
-      owner: owner?.name ?? d.owner,
-      channels: channels?.channels ?? d.channels,
-      memories: memory?.total ?? d.memories,
-    }));
+    setData((d) =>
+      keepSame(d, {
+        ...d,
+        projects: projects?.projects ?? d.projects,
+        agents: agents?.agents ?? d.agents,
+        tasks: open ? [...open.tasks, ...(done?.tasks ?? []), ...(dropped?.tasks ?? [])] : d.tasks,
+        columns: open?.columns.length ? open.columns : d.columns,
+        notices: inbox?.notifications ?? d.notices,
+        unread: inbox?.unread ?? d.unread,
+        inputs: pending?.inputs ?? d.inputs,
+        routines: routines?.routines ?? d.routines,
+        engines: engines?.engines ?? d.engines,
+        sessions: native
+          ? Object.fromEntries(native.map(([id, list]) => [id, list ?? d.sessions[id] ?? []]))
+          : d.sessions,
+        jobs: jobs ?? d.jobs,
+        owner: owner?.name ?? d.owner,
+        channels: channels?.channels ?? d.channels,
+        persons: contacts?.persons ?? d.persons,
+        memories: memory?.total ?? d.memories,
+      }),
+    );
   }, [client]);
 
   const refresh = useCallback(async () => {
@@ -360,12 +385,12 @@ export function useWorkspace(creds: Creds) {
                 ),
               }));
           }
-          // Throttle rather than resetting on every streamed token, which can starve updates.
-          if (!syncTimer)
+          // Throttled, and only for what the lists show: a reload per streamed step kept the phone busy.
+          if (!syncTimer && RELOADS.has(event.type))
             syncTimer = setTimeout(() => {
               syncTimer = undefined;
               void refresh();
-            }, 500);
+            }, 1500);
         });
         await refresh();
         await socket.closed;
@@ -400,6 +425,36 @@ export function useWorkspace(creds: Creds) {
         "threads.get",
         { thread: threadId },
       );
+    },
+    [client],
+  );
+
+  /** Marks chats read; the list drops their counts at once. */
+  const readThreads = useCallback(
+    async (ids: readonly string[]) => {
+      const done = new Set(ids);
+      setData((d) => ({
+        ...d,
+        threads: d.threads.map((thread) => (done.has(thread.id) ? { ...thread, unread: 0 } : thread)),
+      }));
+      await Promise.all(ids.map((id) => rpc(client, "threads.read", { thread: id })));
+    },
+    [client],
+  );
+  /** Renames, pins or archives a chat; the list follows at once. */
+  const updateThread = useCallback(
+    async (id: string, patch: { title?: string | null; pinned?: boolean; archived?: boolean }) => {
+      const thread = await rpc<Thread>(client, "threads.update", { thread: id, ...patch });
+      setData((d) => ({ ...d, threads: d.threads.map((item) => (item.id === id ? thread : item)) }));
+    },
+    [client],
+  );
+  /** Deletes a chat for good, with its sessions. */
+  const deleteThread = useCallback(
+    async (id: string) => {
+      const { deleted } = await rpc<{ deleted: string[] }>(client, "threads.delete", { thread: id });
+      const gone = new Set([id, ...deleted]);
+      setData((d) => ({ ...d, threads: d.threads.filter((item) => !gone.has(item.id)) }));
     },
     [client],
   );
@@ -506,7 +561,7 @@ export function useWorkspace(creds: Creds) {
         comments: taskComments(conversation?.messages ?? []),
         // The teammates asked on it are part of its work too, in the order they happened.
         sessions: [...result.sessions, ...(result.consults ?? [])].sort((a, b) =>
-          a.updated_at.localeCompare(b.updated_at),
+          textOrder(a.updated_at, b.updated_at),
         ),
         usage: result.usage ?? [],
       };
@@ -604,6 +659,18 @@ export function useWorkspace(creds: Creds) {
     [client],
   );
 
+  /** Files shared in chats, a page at a time (see media.shared). */
+  const sharedFiles = useCallback(
+    async (params: { kind?: SharedKind; query?: string; offset: number; limit: number }) =>
+      rpc<{ items: SharedFile[]; more: boolean; counts: Record<SharedKind, number> }>(client, "media.shared", params),
+    [client],
+  );
+  /** A video's first frame as base64 JPEG, when the core can make one. */
+  const videoPoster = useCallback(
+    async (media_id: string) => (await rpc<{ data?: string }>(client, "media.poster", { media_id })).data,
+    [client],
+  );
+
   /** What `apx status` tells about the core, plus how many devices are paired. */
   const serverInfo = useCallback(async () => {
     const [health, devices] = await Promise.all([
@@ -689,6 +756,9 @@ export function useWorkspace(creds: Creds) {
     client,
     refresh,
     openThread,
+    readThreads,
+    updateThread,
+    deleteThread,
     readNotice,
     respond,
     toggleRoutine,
@@ -712,6 +782,8 @@ export function useWorkspace(creds: Creds) {
     fileTree,
     readFile,
     fileMedia,
+    sharedFiles,
+    videoPoster,
     createChat,
     newSession,
     makeChat,

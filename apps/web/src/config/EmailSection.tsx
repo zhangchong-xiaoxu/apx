@@ -1,4 +1,5 @@
 import type { ChannelEmail, ChannelInfo, MailServer } from "@apx/protocol";
+import { SUPER_AGENT_ID } from "@apx/protocol/client";
 import { Badge, Button, Icons, Input, Select, SettingRow, Switch, TagInput } from "@apx/ui";
 import { useEffect, useState } from "react";
 import { KindTile } from "../channels/KindIcon.tsx";
@@ -8,6 +9,7 @@ import { notify } from "../data/notices.ts";
 import { useData } from "../data/state.ts";
 import { useT } from "../i18n/index.ts";
 import { Behavior, Deliveries, Notices, Pairing, People, STATUS } from "./ChannelParts.tsx";
+import { EmailSignatures } from "./EmailSignatures.tsx";
 
 /** Known providers: their servers, and the address domains that point to them. */
 const PROVIDERS = {
@@ -95,6 +97,7 @@ function useMailForm(initial?: ChannelEmail) {
 
 function MailForm({ form }: { form: ReturnType<typeof useMailForm> }) {
   const t = useT();
+  const agentName = useData((s) => Object.values(s.agents).find((a) => a.kind === "secretary")?.name);
   const providers: Provider[] = [...(Object.keys(PROVIDERS) as Provider[]), "other"];
   return (
     <>
@@ -146,7 +149,7 @@ function MailForm({ form }: { form: ReturnType<typeof useMailForm> }) {
         <Input
           aria-label={t("em.name")}
           autoComplete="off"
-          placeholder="Roby"
+          placeholder={agentName}
           value={form.name}
           onChange={(e) => form.setName(e.currentTarget.value)}
         />
@@ -197,36 +200,81 @@ export function EmailSection() {
     return () => clearInterval(id);
   }, []);
   const t = useT();
-  const channel = channels.find((c) => c.type === "email");
+  const [selected, setSelected] = useState("");
+  const [adding, setAdding] = useState(false);
+  const accounts = channels.filter((c) => c.type === "email");
+  const channel = accounts.find((c) => c.id === selected) ?? accounts[0];
+  const connecting = adding || !channel;
   return (
     <>
-      {ready && (channel ? <Connected channel={channel} /> : <Setup />)}
-      {channel && (
+      {accounts.length > 0 && (
+        <SettingRow title={t("em.account")}>
+          <Select
+            label={t("em.account")}
+            value={channel?.id ?? ""}
+            onValueChange={(id) => {
+              if (id) setSelected(id);
+              setAdding(false);
+            }}
+            options={accounts.map((c) => ({ value: c.id, label: `${c.label} · ${c.email?.address ?? c.id}` }))}
+          />
+          <Button size="sm" variant="secondary" leadingIcon={<Icons.Plus size={14} />} onClick={() => setAdding(true)}>
+            {t("em.addAccount")}
+          </Button>
+        </SettingRow>
+      )}
+      {ready &&
+        (connecting ? (
+          <>
+            <Setup
+              onConnected={(id) => {
+                setSelected(id);
+                setAdding(false);
+              }}
+            />
+            {channel && (
+              <Button variant="ghost" onClick={() => setAdding(false)}>
+                {t("common.cancel")}
+              </Button>
+            )}
+          </>
+        ) : (
+          <Connected key={channel.id} channel={channel} />
+        ))}
+      {!connecting && channel?.email && (
+        <EmailSignatures
+          target={{ transport: "smtp", account: channel.id, sender: channel.email.address, label: channel.label }}
+        />
+      )}
+      {!connecting && channel && (
         <Pairing
           channelId={channel.id}
           itsMe={{ title: t("tg.itsMe", { channel: "Email" }), hint: t("tg.itsMeHint", { channel: "Email" }) }}
         />
       )}
-      {channel && <Notices />}
-      {channel && <People channelId={channel.id} />}
-      {channel && <Deliveries channelId={channel.id} />}
+      {!connecting && channel && <Notices />}
+      {!connecting && channel && <People channelId={channel.id} />}
+      {!connecting && channel && <Deliveries channelId={channel.id} />}
     </>
   );
 }
 
-function Setup() {
+function Setup({ onConnected }: { onConnected(id: string): void }) {
+  const [id] = useState(() => `email-${crypto.randomUUID().replaceAll("-", "").slice(0, 24)}`);
   const t = useT();
   const agents = useData((s) => s.agents);
   const secretary = Object.values(agents).find((a) => a.kind === "secretary");
   const form = useMailForm();
   const [password, setPassword] = useState("");
-  const [agent, setAgent] = useState(secretary?.id ?? "roby");
+  const [agent, setAgent] = useState(secretary?.id ?? SUPER_AGENT_ID);
   const [busy, setBusy] = useState(false);
   const connect = async () => {
     setBusy(true);
-    await saveChannel(
-      "email",
+    const saved = await saveChannel(
+      id,
       {
+        type: "email",
+        label: form.address.trim().slice(0, 60),
         agent_id: agent,
         enabled: true,
         strangers: "pair",
@@ -237,6 +285,7 @@ function Setup() {
       password,
     );
     setBusy(false);
+    if (saved) onConnected(id);
   };
   return (
     <div className="tgsetup">
@@ -276,6 +325,7 @@ function Connected({ channel }: { channel: ChannelInfo }) {
   const [changingPassword, setChangingPassword] = useState(false);
   const email = channel.email;
   const draft: ChannelDraft = {
+    label: channel.label,
     agent_id: channel.agent_id,
     enabled: channel.enabled,
     strangers: channel.strangers,

@@ -24,6 +24,11 @@ import type { Handlers } from "./router.ts";
 /** A folder typed as ~/… is the owner's home. */
 const expand = (v: string) => (v.startsWith("~/") ? `${os.homedir()}${v.slice(1)}` : v);
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
+/** The integrations with settings of their own, and what they hold. */
+const SETTINGS_OF: Partial<Record<string, Array<"signature" | "reminders" | "mail">>> = {
+  gmail: ["mail", "signature"],
+  "google-calendar": ["reminders"],
+};
 const ASANA = { id: "asana", label: "Asana", description: "Tasks and projects of your workspace." };
 
 export function integrationHandlers(deps: {
@@ -70,6 +75,7 @@ export function integrationHandlers(deps: {
       connected: on,
       coming: false,
       off_in: on ? offIn(e.id, projects) : [],
+      ...(SETTINGS_OF[e.id] ? { settings: SETTINGS_OF[e.id] } : {}),
       oauth: {
         redirect_uri: google.redirectUri(),
         ...(account ? { account } : {}),
@@ -77,6 +83,12 @@ export function integrationHandlers(deps: {
         ...(google.clientOf(e.id) ? { client: google.clientOf(e.id) } : {}),
       },
     };
+  };
+  /** What an integration's settings hold; Gmail's signature has methods of its own (email.signature_*). */
+  const settingsOf = (id: string) => {
+    if (id !== "asana" && !isGoogleId(id) && !CATALOG.some((x) => x.id === id)) throw notFound(`integration ${id}`);
+    if (id === "google-calendar") return { reminders: store.settings.read("calendar_reminders") };
+    return id === "gmail" ? { mail: store.settings.read("mail_check") } : {};
   };
   return {
     "integrations.list": () => {
@@ -215,6 +227,19 @@ export function integrationHandlers(deps: {
       } catch (e) {
         throw badRequest(message(e));
       }
+    },
+    "integrations.settings": ({ id }) => settingsOf(id),
+    "integrations.configure": ({ id, reminders, mail }) => {
+      settingsOf(id);
+      if (reminders) {
+        if (id !== "google-calendar") throw badRequest(`${id} has no event reminders`);
+        store.settings.write("calendar_reminders", { ...store.settings.read("calendar_reminders"), ...reminders });
+      }
+      if (mail) {
+        if (id !== "gmail") throw badRequest(`${id} has no mail check`);
+        store.settings.write("mail_check", { ...store.settings.read("mail_check"), ...mail });
+      }
+      return settingsOf(id);
     },
     "integrations.disconnect": ({ id }) => {
       if (id === "asana") {

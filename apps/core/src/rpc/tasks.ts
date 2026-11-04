@@ -3,7 +3,7 @@
 // task, and the owner's comment that @mentions its agent asks it there (its answer comes back as a comment) and anyone
 // else in a consult shown on the task as a card (task-work.ts). A task an agent creates from a chat about a task is its
 // subtask; an agent answering another one gives nobody work (DECISIONS.md#d-079).
-import type { Author, Task } from "@apx/protocol";
+import { type Author, SUPER_AGENT_ID, type Task } from "@apx/protocol";
 import { publicRun } from "../domain/runs.ts";
 import { HOME_THREAD_ID } from "../domain/seed.ts";
 import type { Store } from "../domain/store.ts";
@@ -24,7 +24,7 @@ import { ancestors } from "../engine/ancestry.ts";
 import { agentTrip, trip } from "../engine/breaker.ts";
 import type { Engine } from "../engine/engine.ts";
 import { ownerMentionProblem } from "../engine/office.ts";
-import { checkSelfHandoff } from "../engine/task-handoff.ts";
+import { checkSelfHandoff, runLineage } from "../engine/task-handoff.ts";
 import { awaitAgent } from "../engine/task-inbox.ts";
 import { reportClose } from "../engine/task-report.ts";
 import {
@@ -72,9 +72,11 @@ export function taskHandlers(
   const answering = (ctx: CallContext): string | undefined => {
     const thread = ctx.agent && store.threads.get(ctx.agent.thread_id);
     if (thread?.kind !== "a2a") return undefined;
-    // A consult is the owner asking on a task, so the work they ask for may be handed out (DECISIONS.md#d-079).
-    if (store.threads.context(thread.id).consult) return undefined;
-    const caller = thread.agent_ids.find((id) => id !== ctx.agent?.id);
+    // A consult the owner opened may hand out the work they ask for (DECISIONS.md#d-120); one an agent's @mention
+    // opened is that agent asking (DECISIONS.md#d-132).
+    const consult = store.threads.context(thread.id).consult;
+    if (consult && !consult.asker) return undefined;
+    const caller = consult?.asker?.agent ?? thread.agent_ids.find((id) => id !== ctx.agent?.id);
     return (caller && store.agents.get(caller)?.name) || "the agent that asked you";
   };
   /** The task the agent's chat is about (its own task chat, a consult on a task, or a session under one). */
@@ -143,6 +145,30 @@ export function taskHandlers(
       start_at?: string;
     },
   ) => {
+    if (
+      ctx.agent &&
+      candidate.assignee &&
+      candidate.description?.trim() &&
+      !candidate.proposed &&
+      !startsLater(candidate)
+    ) {
+      const source = { id: ctx.agent.run_id, thread_id: ctx.agent.thread_id };
+      const delegated = runLineage(store, source)
+        .flatMap((id) => store.runs.children(id))
+        .find((run) => {
+          const thread = store.threads.get(run.thread_id);
+          return (
+            run.agent_id === candidate.assignee &&
+            !run.input?.task_independent &&
+            thread?.project_id === candidate.project_id &&
+            !store.threads.context(run.thread_id).worker
+          );
+        });
+      if (delegated)
+        throw conflict(
+          "this teammate already received a delegation in this turn: continue its existing session, not a second task executor",
+        );
+    }
     if (
       !ctx.agent ||
       candidate.assignee !== ctx.agent.id ||
@@ -247,7 +273,7 @@ export function taskHandlers(
       });
       // The task's conversation: the assignee answers there, or the super-agent until someone is assigned.
       const home = store.threads.get(HOME_THREAD_ID);
-      const agent = p.assignee ?? home?.agent_ids[0] ?? "roby";
+      const agent = p.assignee ?? home?.agent_ids[0] ?? SUPER_AGENT_ID;
       const sources = assets.prepare(p.attachments, ctx);
       const created = assets.write((attach) => {
         const thread = store.threads.create({ kind: "task", title: p.title, agent_ids: [agent], project_id: project });
@@ -299,6 +325,11 @@ export function taskHandlers(
       const checker = reviewerOf(reviewer, target);
       if (c.proposed === false && agentScope(ctx)) throw unauthorized("only the owner accepts a proposed task");
       const accepting = Boolean(cur.proposed) && c.proposed === false;
+      // Handing it to another agent follows the rules of giving it new: deep or back up the chain, it is a proposal.
+      const forced =
+        ctx.agent && c.assignee && c.assignee !== cur.assignee && !cur.proposed
+          ? proposalReason(store, cur.parent_id, c.assignee, ctx.agent.id)
+          : undefined;
       // Its agent stays only if it can work there.
       const keeper = c.assignee !== undefined ? c.assignee : cur.assignee;
       if (checker && checker === keeper) throw badRequest("reviewer: the agent doing it does not review its own work");
@@ -317,7 +348,8 @@ export function taskHandlers(
         Boolean(cur.start_at) &&
         !startsLater({ ...cur, start_at: dueOf(start_at) ?? undefined }) &&
         store.threads.byTask(cur.id).length === 0;
-      const starting = !unassign && keeper && (keeper !== cur.assignee || completing || unscheduled || accepting);
+      const starting =
+        !forced && !unassign && keeper && (keeper !== cur.assignee || completing || unscheduled || accepting);
       if (starting) {
         refuseHandOn(ctx);
         checkTransfer(ctx, {
@@ -337,6 +369,7 @@ export function taskHandlers(
           task,
           {
             ...c,
+            ...(forced ? { proposed: true } : {}),
             ...(moving ? { project_id: target ?? null } : {}),
             ...(unassign ? { assignee: null } : {}),
             ...(tags !== undefined ? { tags: tagsOf(tags) ?? [] } : {}),
@@ -354,6 +387,7 @@ export function taskHandlers(
           startTaskWork(store, engine.admit, updated, updated.assignee, askerOf(ctx), { transfer: true });
         return updated;
       });
+      if (forced) noticeTaskProposed(store, changed);
       // Put in review (or given another checker while in review): whoever checks it hears now.
       const reviewing = changed.state === "open" && changed.status === "review";
       // An agent answering another one (or inside a review) asks no reviewer: no loop of reviews.

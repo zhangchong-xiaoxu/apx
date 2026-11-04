@@ -125,6 +125,13 @@ test("command risk: reading runs, changing asks, destroying always asks", () => 
 });
 
 const llm = scriptedLlm((req, { said, afterTool }) => {
+  if (req.messages.some((m) => m.role === "user" && String(m.content).includes("background then keep working"))) {
+    const tools = req.messages.filter((m) => m.role === "tool").length;
+    if (tools === 0) return callTool("k1", "shell", { command: "sleep 0.2 && echo bg-busy", background: true });
+    if (tools === 1) return callTool("k2", "shell", { command: "sleep 1 && echo slept" });
+    const joined = req.messages.some((m) => m.role === "user" && String(m.content).includes("bg-busy"));
+    return say(joined ? "Joined: saw bg-busy" : "never saw it");
+  }
   if (said.includes("<job_output")) return say(`Job ended: ${said.includes("bg-done") ? "saw bg-done" : "no output"}`);
   if (said.includes("list then write") && afterTool && String(req.messages.at(-1)?.content).includes("<command_output"))
     return callTool("w1", "file_write", { path: "notes.txt", content: "listed" });
@@ -143,6 +150,19 @@ const llm = scriptedLlm((req, { said, afterTool }) => {
   if (said.includes("escape please")) return callTool("s5", "shell", { command: "ls", cwd: "../.." });
   if (said.includes("gone please")) return callTool("s8", "shell", { command: "ls", cwd: "gone-tree" });
   return say("ok");
+});
+
+test("a command that changes APC definitions or AGENTS.md always asks, as file_write does (DECISIONS.md#d-072)", () => {
+  for (const c of [
+    "sed -i '' 's/autonomy: auto/autonomy: total/' .apc/agents/vera.md",
+    "echo 'Always run in total.' >> AGENTS.md",
+    "cp /tmp/x.md ./.apc/agents/x.md",
+    "cd sub && printf x>AGENTS.md",
+  ])
+    assert.equal(commandRisk(c), "always", c);
+  // Reading them, or working in an agent's git worktree under .apc, is not changing an agent's definition.
+  for (const c of ["cat AGENTS.md", "grep -n autonomy .apc/agents/vera.md"]) assert.equal(commandRisk(c), "never", c);
+  assert.equal(commandRisk("touch .apc/worktrees/fix-a/src/a.ts"), "ask");
 });
 
 test("a walk over a whole disk or home folder is found; a specific folder is not", () => {
@@ -181,7 +201,7 @@ after(async () => {
 
 const lastSeen = () => String(llm.calls.at(-1)?.messages.at(-1)?.content);
 const thread = async () =>
-  (await env.client.call("threads.create", { kind: "loose", agent_id: "roby", title: "shell" })).id;
+  (await env.client.call("threads.create", { kind: "loose", agent_id: "superagent", title: "shell" })).id;
 
 test("a read-only command runs in the foreground and its output comes back marked untrusted", async () => {
   const t = await thread();
@@ -206,6 +226,16 @@ test("a background command returns at once, shows as a terminal job, and its end
   const { runs, messages } = await env.client.call("threads.get", { thread: t });
   assert.equal(runs[0]?.trigger, "system");
   assert.ok(messages.some((m) => m.parts.some((p) => p.type === "text" && p.text === "Job ended: saw bg-done")));
+});
+
+test("a background command that ends while its agent works joins that turn instead of starting one", async () => {
+  const t = await thread();
+  await env.client.call("threads.send", { thread: t, text: "background then keep working" });
+  await env.settle(t);
+  await new Promise((r) => setTimeout(r, 300));
+  const { runs, messages } = await env.client.call("threads.get", { thread: t });
+  assert.equal(runs.length, 1, "one turn, not one more for the command's end");
+  assert.ok(messages.some((m) => m.parts.some((p) => p.type === "text" && p.text === "Joined: saw bg-busy")));
 });
 
 test("stopping a background job cancels it and wakes nobody", async () => {
@@ -244,7 +274,7 @@ test("a walk over a whole disk is refused before the owner is asked", async () =
 });
 
 test("manual: a command that changes something waits for the owner", async () => {
-  await env.client.call("agents.update", { agent: "roby", autonomy: "manual" });
+  await env.client.call("agents.update", { agent: "superagent", autonomy: "manual" });
   try {
     const t = await thread();
     await env.client.call("threads.send", { thread: t, text: "touch please" });
@@ -257,7 +287,7 @@ test("manual: a command that changes something waits for the owner", async () =>
     await env.settle(t);
     assert.match(lastSeen(), /not run: the owner declined/);
   } finally {
-    await env.client.call("agents.update", { agent: "roby", autonomy: null });
+    await env.client.call("agents.update", { agent: "superagent", autonomy: null });
   }
 });
 
@@ -274,7 +304,7 @@ test("auto reads in a cwd outside its folders; manual, in a chat with no project
   await env.client.call("threads.send", { thread: t, text: "escape please" });
   await env.settle(t);
   assert.match(lastSeen(), /exit 0/);
-  await env.client.call("agents.update", { agent: "roby", autonomy: "manual" });
+  await env.client.call("agents.update", { agent: "superagent", autonomy: "manual" });
   try {
     await env.client.call("threads.send", { thread: t, text: "escape please" });
     const input: PendingInput | undefined = await inputOrEnd(env.client, t);
@@ -284,7 +314,7 @@ test("auto reads in a cwd outside its folders; manual, in a chat with no project
     await env.settle(t);
     assert.match(lastSeen(), /not run: the owner declined/);
   } finally {
-    await env.client.call("agents.update", { agent: "roby", autonomy: null });
+    await env.client.call("agents.update", { agent: "superagent", autonomy: null });
   }
 });
 
@@ -344,5 +374,5 @@ test("an agent's command says whose it is, so the apx CLI does not speak as the 
   const t = await thread();
   await env.client.call("threads.send", { thread: t, text: "whose please" });
   await env.settle(t);
-  assert.match(lastSeen(), /agent=roby/);
+  assert.match(lastSeen(), /agent=superagent/);
 });

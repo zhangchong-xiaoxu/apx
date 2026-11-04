@@ -371,6 +371,12 @@ You have three open things in Acme Store:
 
     <BlobEyes />
     <script>
+      import { bindInstallationCopy } from "../install-copy.mjs";
+      import { fillLatest } from "../latest-release";
+      import { startReveal } from "../web/reveal";
+      import { startHorizon } from "./horizon";
+      import { startTermDemo } from "./term-demo";
+
       const nav = document.getElementById("nav");
       const onScroll = () => nav?.classList.toggle("scrolled", scrollY > 8);
       addEventListener("scroll", onScroll, { passive: true });
@@ -385,16 +391,7 @@ You have three open things in Acme Store:
       });
 
       for (const b of document.querySelectorAll<HTMLButtonElement>("[data-copy]")) {
-        b.addEventListener("click", async () => {
-          await navigator.clipboard?.writeText(b.dataset.copy ?? "");
-          const label = b.querySelector(".copy");
-          if (!label) return;
-          const was = label.textContent;
-          label.textContent = b.dataset.done ?? "✓";
-          setTimeout(() => {
-            label.textContent = was;
-          }, 1400);
-        });
+        bindInstallationCopy(window, b);
       }
 
       // The hero's install line follows the reader's system; the icons switch it.

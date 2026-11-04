@@ -7,8 +7,8 @@
 import { type ChannelInfo, type CoreEvent, noticeText, type Part } from "@apx/protocol";
 import type { Bus } from "../bus.ts";
 import type { AuxAbout } from "../domain/aux-calls.ts";
-import { type OutboxRow, ownerActsOn, type Presentation } from "../domain/channels.ts";
-import { inQuietHours, noticePrefs } from "../domain/notices.ts";
+import type { Presentation } from "../domain/channels.ts";
+import { appOnly, followsOwner, noticePrefs } from "../domain/notices.ts";
 import type { NewNotification } from "../domain/notifications.ts";
 import { OWNER_ID } from "../domain/persons.ts";
 import type { RunRecord } from "../domain/runs.ts";
@@ -28,8 +28,9 @@ import { guardReply } from "./guard.ts";
 import { createHeld } from "./held.ts";
 import { createInbound } from "./inbound.ts";
 import { createInputCards } from "./input-cards.ts";
-import { buttonId, inputPresentation } from "./notices.ts";
+import { buttonId } from "./notices.ts";
 import { createOutgoing } from "./outgoing.ts";
+import { createOwnerNotices } from "./owner-notices.ts";
 import { createPoster } from "./post.ts";
 import { createRecovery } from "./recover.ts";
 import { createRooms, quietMentions, roomMentions } from "./rooms.ts";
@@ -83,8 +84,6 @@ export function createChannels(deps: {
   attention: (n: NewNotification) => void;
   /** Waits before starting again a channel that failed to start; the last one repeats. */
   retryMs?: readonly number[];
-  /** A paired device's push, when the owner picked it as where notices go; false when it has none. */
-  pushOwner?: (deviceId: string, text: string) => boolean;
   /** A cheap model's one-shot answer: whether an uncalled message in a "useful" room deserves an answer. */
   judge?: (system: string, user: string, about: AuxAbout) => Promise<string | undefined>;
   /** A model that reads images naming what a picture shows (a sticker's meaning); none: stickers stay unnamed. */
@@ -137,79 +136,23 @@ export function createChannels(deps: {
     },
     configured: (id) => configs().some((c) => c.id === id),
     media: (id) => deps.services.read(id),
-    failed: (o) => ownerFallback(o),
+    failed: (o) => notices.ownerFallback(o),
   });
 
-  /**
-   * Something for the owner, on their preferred channel or another that knows them (the outbox waits while it is not
-   * running); in quiet hours it arrives without sound. False when no channel knows the owner.
-   */
-  function notifyOwner(body: Presentation, kind: OutboxRow["kind"] = "notice", threadId?: string): boolean {
-    const prefs = noticePrefs(store);
-    const refused = new Set(body.refused_by);
-    // The owner's phone, when they picked it: a push instead of a channel message (a channel if it has no push).
-    if (!refused.size && prefs.channel?.startsWith("device:") && deps.pushOwner?.(prefs.channel.slice(7), body.text))
-      return true;
-    const order = [...live.values()]
-      .filter((l) => !refused.has(l.config.id))
-      .sort(
-        (a, b) =>
-          Number(b.config.id === prefs.channel) - Number(a.config.id === prefs.channel) ||
-          Number(b.status === "running") - Number(a.status === "running"),
-      );
-    for (const l of order) {
-      const addr = store.persons.ownerAddress(l.config.id);
-      if (!addr) continue;
-      delivery.enqueue({
-        channel: l.config.id,
-        conversation: addr.external_id,
-        thread_id: threadId,
-        kind,
-        body: {
-          ...shownOn(l.config.id, body),
-          ...(inQuietHours(prefs) ? { silent: true } : {}),
-        },
-      });
-      return true;
-    }
-    return false;
-  }
-
-  /**
-   * Something for the owner as a channel shows it: buttons only where the owner may answer there, so where the platform cannot vouch for them and
-   * for a card only the app answers they give way to where it is answered (DECISIONS.md#d-144).
-   */
-  function shownOn(channel: string, body: Presentation): Presentation {
-    const appOnly = body.input_id ? store.inputs.get(body.input_id)?.app_only : undefined;
-    const type = configs().find((c) => c.id === channel)?.type;
-    if (!body.buttons?.length || (ownerActsOn(type) && !appOnly)) return body;
-    const { buttons: _b, ...rest } = body;
-    return { ...rest, text: `${body.text}\n\n${channelTexts(store).inApp}` };
-  }
-
-  /**
-   * A notice, confirmation or pairing request for the owner that their channel refused goes to the next channel that
-   * knows them; with none left, the app's tray says it never arrived.
-   */
-  function ownerFallback(o: OutboxRow): void {
-    if (o.kind === "reply" || store.persons.byAddress(o.channel, o.conversation)?.id !== OWNER_ID) return;
-    const { skip: _skip, refused_by = [], ...body } = o.body;
-    if (notifyOwner({ ...body, refused_by: [...refused_by, o.channel] }, o.kind, o.thread_id)) return;
-    const texts = channelTexts(store);
-    deps.attention({
-      kind: "channel",
-      level: "error",
-      title: texts.noticeLostTitle,
-      body: texts.noticeLost([...refused_by, o.channel].join(", "), o.error ?? "", o.text.slice(0, 200)),
-      thread_id: o.thread_id,
-    });
-  }
+  const notices = createOwnerNotices({
+    store,
+    live: () => live.values(),
+    configs,
+    delivery: () => delivery,
+    attention: deps.attention,
+  });
+  const { notifyOwner, tell, shownOn, cardFor } = notices;
 
   const rooms = createRooms({
     store,
     log,
     call: deps.call,
-    notifyOwner: (body) => notifyOwner(body),
+    tell,
     judge: deps.judge,
     ...(deps.roomBurstMs !== undefined ? { burstMs: deps.roomBurstMs } : {}),
     now: () => clock().getTime(),
@@ -227,8 +170,7 @@ export function createChannels(deps: {
   const suggestions = createSuggestions({
     store,
     log,
-    notifyOwner,
-    attention: deps.attention,
+    tell,
     draft: deps.draft,
     post: poster.post,
     sendAsOwner: outgoing.sendAsOwner,
@@ -260,7 +202,7 @@ export function createChannels(deps: {
     services: deps.services,
     delivery,
     configs,
-    notifyOwner,
+    tell,
     attention: deps.attention,
     ownAccount: (id) => Boolean(live.get(id)?.adapter.caps.ownAccount),
     rooms,
@@ -297,8 +239,7 @@ export function createChannels(deps: {
     const cancel = followUpTimers.after(Math.max(0, after * 1000 - waited), () => {
       escalations.delete(part.input_id);
       if (stopped || store.inputs.get(part.input_id)?.state !== "pending" || announced.has(part.input_id)) return;
-      const body = { ...inputPresentation(part, channelTexts(store)), input_id: part.input_id };
-      if (notifyOwner(body, "input", threadId)) announced.add(part.input_id);
+      if (notifyOwner(cardFor(part), "input", threadId)) announced.add(part.input_id);
     });
     escalations.set(part.input_id, cancel);
   }
@@ -326,19 +267,30 @@ export function createChannels(deps: {
   const replyTo = (runId: string, action = false) => {
     const run = store.runs.get(runId);
     if (!run || (!action && !speaksOnChannel(run.thread_id))) return undefined;
+    // With no chat app for notices, what the owner did not ask stays in the app (DECISIONS.md#d-161, #d-163).
+    if (unaskedInAppOnly(run)) return undefined;
     if (run.input && "reply_to" in run.input) return run.input.reply_to ?? undefined;
     const origin = run.input?.origin;
     if (origin?.kind === "channel") return { channel: origin.channel, conversation: origin.conversation };
     return store.threads.context(run.thread_id).reply_to;
   };
 
+  function unaskedInAppOnly(run: RunRecord): boolean {
+    const thread = store.threads.get(run.thread_id);
+    if (!thread || audienceOf(store, thread).kind !== "owner") return false;
+    return appOnly(noticePrefs(store)) && !followsOwner(run.input?.origin);
+  }
+
   /**
-   * Whose answers go out on a channel: a contact's chat, and among the owner's chats only Home, the super-agent's. Other
-   * chats reach the owner's phone only with what needs them (a question, an OK), never their whole conversation.
+   * Whose answers go out on a channel: a contact's chat, and among the owner's chats only Home, the super-agent's, or
+   * the owner's own chat for that channel when they asked for one there. Other chats reach the owner's phone only with
+   * what needs them (a question, an OK), never their whole conversation (DECISIONS.md#d-129).
    */
   function speaksOnChannel(threadId: string): boolean {
     const thread = store.threads.get(threadId);
-    return Boolean(thread && (audienceOf(store, thread).kind !== "owner" || thread.kind === "home"));
+    if (!thread) return false;
+    if (thread.kind === "home" || audienceOf(store, thread).kind !== "owner") return true;
+    return thread.kind === "channel" && thread.channel?.person_id === OWNER_ID;
   }
 
   /**
@@ -360,7 +312,7 @@ export function createChannels(deps: {
       if (s.tool !== "pass_request" || s.state !== "ok" || !/^(passed on|updated)/.test(s.result ?? "")) continue;
       const rest = [s.args.when, s.args.details].filter((v) => typeof v === "string" && v).join("\n");
       const text = texts.passedOn(audience.name, String(s.args.kind), String(s.args.summary ?? ""), rest);
-      notifyOwner({ text: text.slice(0, 1500) }, "notice", run.thread_id);
+      tell({ text: text.slice(0, 1500) }, { title: audience.name, body: text.slice(0, 300), thread_id: run.thread_id });
     }
   }
 
@@ -385,8 +337,7 @@ export function createChannels(deps: {
     if (!out && run.state === "failed" && room) {
       // A public room never sees what went wrong inside APX; the owner does.
       const text = channelTexts(store).roomFailed(`#${room.name}`, why);
-      notifyOwner({ text }, "notice", run.thread_id);
-      deps.attention({ kind: "channel", level: "error", title: `#${room.name}`, body: text, thread_id: run.thread_id });
+      tell({ text }, { level: "error", title: `#${room.name}`, thread_id: run.thread_id });
       return;
     }
     if (!out && run.state === "failed") {
@@ -394,8 +345,7 @@ export function createChannels(deps: {
         // A contact never sees what went wrong inside APX; the owner does.
         out = channelTexts(store).contactFailed;
         const text = channelTexts(store).contactFailedOwner(audience.name, why);
-        notifyOwner({ text }, "notice", run.thread_id);
-        deps.attention({ kind: "channel", level: "error", title: audience.name, body: text, thread_id: run.thread_id });
+        tell({ text }, { level: "error", title: audience.name, thread_id: run.thread_id });
       } else out = channelTexts(store).failed(why);
     }
     // What the agent attached (send_file, make_image) goes with the answer; a file left behind is a promise broken.
@@ -514,7 +464,7 @@ export function createChannels(deps: {
       conversation: to.conversation,
       thread_id: threadId,
       kind: "input",
-      body: shownOn(to.channel, { ...inputPresentation(part, channelTexts(store)), input_id: part.input_id }),
+      body: shownOn(to.channel, cardFor(part)),
     });
   }
 
@@ -531,9 +481,7 @@ export function createChannels(deps: {
       // An answer with no turn listening rewrites the whole message.
       for (const p of e.message.parts) if (p.type === "input") cards.settled(p.input_id, p.state);
     } else if (e.type === "message.created" && e.message.author.kind === "system") {
-      // Agents stopped by the breaker: the owner hears it wherever they are.
-      const paused = e.message.parts.find((p) => p.type === "notice" && p.code === "breaker.paused");
-      if (paused?.type === "notice") notifyOwner({ text: paused.text }, "notice", e.message.thread_id);
+      // A pause at the owner's own limit is told in the app only (engine/attention.ts), never on a channel.
       // A delegate APX keeps going on with is no news for the owner's phone: only a stop or a report is (DECISIONS.md#d-116).
       const limit = e.message.parts.find(
         (p) => p.type === "notice" && p.code === "delegation.limit" && !String(p.vars?.variant).startsWith("continued"),
@@ -555,19 +503,7 @@ export function createChannels(deps: {
       String(notice.vars?.variant).startsWith("stopped") && typeof session === "string"
         ? [{ id: buttonId.goOn(session), label: channelTexts(store).goOn }]
         : undefined;
-    const thread = store.threads.get(threadId);
-    const to = thread && thread.kind === "home" ? store.threads.context(threadId).reply_to : undefined;
-    if (to && live.has(to.channel)) {
-      delivery.enqueue({
-        channel: to.channel,
-        conversation: to.conversation,
-        thread_id: threadId,
-        kind: "notice",
-        body: { text, ...(buttons ? { buttons } : {}), ...(inQuietHours(noticePrefs(store)) ? { silent: true } : {}) },
-      });
-      return;
-    }
-    notifyOwner({ text, ...(buttons ? { buttons } : {}) }, "notice", threadId);
+    notices.notifyOnChat({ text, ...(buttons ? { buttons } : {}) }, threadId, (channel: string) => live.has(channel));
   }
 
   // ── lifecycle ─────────────────────────────────────────────────────────
@@ -708,10 +644,11 @@ export function createChannels(deps: {
   }
 
   /** A request to a channel's public address: its running adapter answers it; anything else is not found. */
-  async function webhook(id: string, req: HookRequest): Promise<HookResponse> {
+  async function webhook(id: string, req: HookRequest, signal?: AbortSignal): Promise<HookResponse> {
     const l = live.get(id);
     if (!l?.adapter.webhook) return { status: 404 };
-    return l.adapter.webhook(req);
+    if (signal?.aborted) return { status: 503 };
+    return l.adapter.webhook(req, signal);
   }
 
   return {

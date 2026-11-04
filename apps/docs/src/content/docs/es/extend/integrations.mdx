@@ -83,7 +83,7 @@ Cada parte de Google se conecta por separado, así elegís a qué llegan tus age
 
 | Parte | Qué pueden hacer los agentes | Te pregunta antes |
 |---|---|---|
-| Google Calendar | Leer eventos, buscar huecos libres, crear y cambiar eventos, sumar o quitar invitados, agregar Meet, cancelar | Invitar gente y cancelar |
+| Google Calendar | Leer eventos, buscar huecos libres, crear y cambiar eventos, sumar o quitar invitados, agregar Meet, cancelar | Todo lo que les manda un mail a los invitados (una invitación, avisarles un cambio o una cancelación), y cancelar |
 | Gmail | Enviar mails. Con tu propio cliente: además buscar y leer mails y escribir borradores | Enviar siempre pregunta; escribir un borrador pregunta |
 | Google Drive | Escribir Docs y compartirlos; buscarlos y leerlos. Con tu propio cliente: buscar y leer todo tu Drive (Docs, Sheets, Slides, archivos de texto) | Compartir |
 
@@ -91,7 +91,23 @@ El acceso de APX le pide a Google solo lo que puede verificarse sin una auditor�
 correo ni el resto de tu Drive. Para leer mails, conectá tu casilla en **Canales › Email**; para todo Gmail y Drive, usá
 tu propio OAuth client.
 
-Un evento solo en tu calendario se crea sin preguntar. Eventos, mails y archivos les llegan a los agentes como datos de
+**Avisarme de mis eventos**, en **Configurar integración** en la página de Google Calendar, te avisa de cada
+evento poco antes de que empiece (**Con cuánta anticipación**: 30 minutos por defecto, de 5 minutos a 7 días): a qué hora, en cuánto, qué es y dónde
+o el link de la reunión, en una línea en tu canal. Los eventos de todo el día y los que rechazaste quedan afuera, cada
+evento se avisa una vez (otra vez si se mueve) y no se llama a ningún modelo. **Cada cuánto mirar el calendario** elige
+cada cuánto APX le pregunta a Google (cada 5 minutos por defecto, de 1 minuto a 24 horas), nunca más espaciado que la
+anticipación, para que ningún evento quede entre dos miradas. Está apagado hasta que lo prendés; tus
+horas de silencio guardan los avisos hasta que terminan.
+
+**Avisarme de los mails nuevos**, en **Configurar integración** en la página de Gmail, hace que APX mire lo que llegó a
+tu bandeja (**Cada cuánto revisar**: cada 5 minutos por defecto, de 1 minuto a 24 horas). Publicidad, redes y listas
+quedan afuera, y con **Solo los importantes** también todo lo que Gmail no marca como importante. Preguntarle a Gmail
+no cuesta nada; solo cuando llegó algo que vale la pena tu super-agente lo lee, como datos de afuera, y te dice en una
+o dos líneas qué te necesita, o no dice nada. Necesita Gmail conectado con tu propio cliente de Google, está apagado
+hasta que lo prendés y espera durante tus horas de silencio: la primera revisión después ve lo que llegó.
+
+Un evento solo en tu calendario se crea sin preguntar. Mover un evento o sacar invitados cambia solo tu calendario; a
+los invitados les llega un mail solo cuando el agente pide avisarles, y eso primero lo confirmás vos. Eventos, mails y archivos les llegan a los agentes como datos de
 afuera, nunca como instrucciones. Con tu propio cliente, Google muestra "Google no verificó esta app": elegí
 **Avanzado** y seguí.
 Si no sabés si una creación se completó, revisá Asana antes de repetirla: APX no reintenta las escrituras automáticamente.

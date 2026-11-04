@@ -9,6 +9,12 @@ import { channelsRepo } from "./channels.ts";
 import { clientsRepo } from "./clients.ts";
 import { devicesRepo } from "./devices.ts";
 import { extensionsRepo } from "./extensions.ts";
+import { flowGraphRunsRepo } from "./flow-graph-runs.ts";
+import { flowGraphsRepo } from "./flow-graphs.ts";
+import { flowSchedulesRepo } from "./flow-schedules.ts";
+import { flowSendsRepo } from "./flow-sends.ts";
+import { flowTablesRepo } from "./flow-tables.ts";
+import { flowsRepo } from "./flows.ts";
 import { inputsRepo } from "./inputs.ts";
 import { jobsRepo } from "./jobs.ts";
 import { mediaRepo } from "./media.ts";
@@ -24,6 +30,7 @@ import { routinesRepo } from "./routines.ts";
 import { runContextsRepo } from "./run-contexts.ts";
 import { runsRepo } from "./runs.ts";
 import { harnessSessionsRepo, idempotencyRepo, settingsRepo } from "./settings.ts";
+import { sharedFilesRepo } from "./shared-files.ts";
 import { sql } from "./sql.ts";
 import { stickersRepo } from "./stickers.ts";
 import { suggestionsRepo } from "./suggestions.ts";
@@ -47,6 +54,12 @@ export function createStore(db: Db, bus: Bus) {
   };
   return {
     tx: q.tx,
+    flows: flowsRepo(db),
+    flowGraphs: flowGraphsRepo(db),
+    flowGraphRuns: flowGraphRunsRepo(db),
+    flowSchedules: flowSchedulesRepo(db),
+    flowTables: flowTablesRepo(db),
+    flowSends: flowSendsRepo(db),
     projects: projectsRepo(q, teamChanged),
     agents: agentsRepo(q, teamChanged),
     threads: threadsRepo(q, bus, approvals.endSession),
@@ -62,6 +75,7 @@ export function createStore(db: Db, bus: Bus) {
     memories: memoriesRepo(q),
     memoryWork: memoryWorkRepo(q),
     media: mediaRepo(q),
+    sharedFiles: sharedFilesRepo(q),
     taskAttachments: taskAttachmentsRepo(q),
     persons: personsRepo(q),
     suggestions: suggestionsRepo(q),

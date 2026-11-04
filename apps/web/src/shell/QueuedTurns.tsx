@@ -22,6 +22,8 @@ export function turnName(t: T, from: JobFrom | undefined): string {
       return t("turn.from.routine", { name });
     case "surface":
       return t("turn.from.surface", { name });
+    case "mail":
+      return t("turn.from.mail");
     case "job":
     case "terminal":
       return t("turn.from.command");
@@ -29,6 +31,8 @@ export function turnName(t: T, from: JobFrom | undefined): string {
       return t("turn.from.goOn");
     case "stalled_task":
       return t("turn.from.stalledTask");
+    case "task_continue":
+      return t("turn.from.taskContinue");
     default:
       return t("turn.from.other");
   }

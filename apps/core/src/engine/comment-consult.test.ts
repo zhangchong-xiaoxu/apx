@@ -11,6 +11,12 @@ const llm = scriptedLlm((req, { system, said, afterTool }) => {
   const id = taskId(JSON.stringify(req.messages));
   if (system.startsWith("You are Vera") && said.includes("Check the totals") && !afterTool)
     return callTool("c1", "task_comment", { task: id, text: "@scout do the totals include taxes?" });
+  if (system.startsWith("You are Vera") && said.startsWith("Recount") && !afterTool)
+    return callTool("c5", "task_comment", {
+      // Vera's earlier chats name other tasks: this one is found by its title.
+      task: env.core.store.tasks.list({ limit: 50 }).find((t) => t.title === "Recount")?.id,
+      text: "@scout make it a task for Roby to recount them.",
+    });
   if (system.startsWith("You are Vera") && said.includes("Scout answered your question"))
     return say("Thanks, going on.");
   if (system.startsWith("You are Scout") && said.includes("include taxes") && !afterTool)
@@ -19,6 +25,12 @@ const llm = scriptedLlm((req, { system, said, afterTool }) => {
     return callTool("c3", "task_comment", { task: id, text: "@scout keep the animation first" });
   if (system.includes("main secretary") && said.includes("Scout answered your question"))
     return say("Go on with that, Scout.");
+  if (system.startsWith("You are Scout") && said.includes("make it a task") && !afterTool)
+    return callTool("c4", "task_create", {
+      title: "Recount the totals",
+      description: "Recount the monthly totals.",
+      assignee: "superagent",
+    });
   if (system.startsWith("You are Scout") && said.includes("animation first")) return say("Noted: animation first.");
   if (system.startsWith("You are Scout")) return say("Yes: the totals include taxes.");
   return say(afterTool ? "Asked." : "On it.");
@@ -62,7 +74,8 @@ test("an agent's @mention on its task asks that teammate, and the answer comes b
   assert.match(JSON.stringify(heard?.parts), /include taxes/);
   // Scout's own @vera from inside the consult asked no one: still the one consult, and Vera's chat had two turns.
   assert.equal(store.threads.sessions(task.thread_id).length, 1);
-  assert.equal(store.runs.list(chat()?.id ?? "").length, 2);
+  // Parts APX goes on with on its own (engine/task-continue.ts) are not turns anyone asked for.
+  assert.equal(store.runs.list(chat()?.id ?? "").filter((r) => r.input?.origin.kind !== "task_continue").length, 2);
   const card = (await env.client.call("threads.get", { thread: task.thread_id })).messages
     .flatMap((m) => m.parts)
     .find((p) => p.type === "subthread");
@@ -74,7 +87,7 @@ test("the answer to a question asked from the owner's chat goes to the asker's c
   const task = await env.client.call("tasks.create", { title: "Acme reel", description: "A short reel about Acme." });
   await env.client.call("threads.send", { thread: "home", text: `Tell Scout on ${task.id}: animation first.` });
   await waitFor(() => store.threads.sessions(task.thread_id).some((t) => t.agent_ids[0] === "scout"), "the consult");
-  const chat = () => store.threads.byTask(task.id).find((t) => t.agent_ids[0] === "roby");
+  const chat = () => store.threads.byTask(task.id).find((t) => t.agent_ids[0] === "superagent");
   await waitFor(
     () => store.runs.list(chat()?.id ?? "").some((r) => r.trigger === "a2a" && r.state === "completed"),
     "the secretary hears the answer in its chat for the task",
@@ -92,4 +105,25 @@ test("the answer to a question asked from the owner's chat goes to the asker's c
     .list(chat()?.id ?? "", 50)
     .find((m) => JSON.stringify(m.parts).includes("Scout answered your question"));
   assert.match(JSON.stringify(heard?.parts), /animation first/);
+});
+
+test("a teammate an agent asked on a task starts no task work: the agent that asked assigns it", async () => {
+  const store = env.core.store;
+  const task = await env.client.call("tasks.create", {
+    title: "Recount",
+    description: "Recount the monthly report.",
+    assignee: "vera",
+  });
+  await waitFor(() => store.threads.sessions(task.thread_id).length > 0, "a consult on the task");
+  const [consult] = store.threads.sessions(task.thread_id);
+  await env.settle(consult?.id ?? "");
+  const refused = store.messages
+    .list(consult?.id ?? "", 50)
+    .map((m) => JSON.stringify(m.parts))
+    .find((t) => t.includes("you are answering"));
+  assert.match(refused ?? "", /answering Vera/, "the refusal names the agent that asked, which assigns it");
+  assert.ok(
+    !store.tasks.list({ limit: 500 }).some((t) => t.title === "Recount the totals"),
+    "no task handed out from the answer",
+  );
 });

@@ -8,22 +8,33 @@ import type { Channels } from "../channels/manager.ts";
 import { autoApproves } from "../channels/stickers.ts";
 import { normalJid } from "../channels/whatsapp.ts";
 import { publicOutbox } from "../domain/channels.ts";
-import { noticePrefs, saveNoticePrefs } from "../domain/notices.ts";
+import { dayStart } from "../domain/hours.ts";
+import { appOnly, noticePrefs, saveNoticePrefs } from "../domain/notices.ts";
+import { ownerTimeZone } from "../domain/owner.ts";
 import { OWNER_ID } from "../domain/persons.ts";
+import { ownerAsked } from "../domain/runs.ts";
 import type { Sticker } from "../domain/stickers.ts";
 import type { Store } from "../domain/store.ts";
+import { previewOf } from "../domain/threads.ts";
+import type { Nudges } from "../engine/nudges.ts";
 import { badRequest, CallError, errorMessage, notFound } from "../errors.ts";
 import type { Handlers } from "./router.ts";
 
 /** How long a send waits for the platform's answer before saying it is still queued (the tools have 15 s). */
 const SETTLE_MS = 8_000;
 
-export function channelHandlers(store: Store, channels: Channels) {
+export function channelHandlers(store: Store, channels: Channels, nudges: Pick<Nudges, "offer">) {
   /** A message an agent sent, with how it went: an agent must not say it went when the platform refused it. */
   const withDelivery = async ({ outbox, ...sent }: ReturnType<Channels["postInRoom"]>) => ({
     ...sent,
     delivery: await channels.settled(outbox, SETTLE_MS),
   });
+  /** The run is the owner's own request (their message, or their answer in a run they asked for). */
+  const askedByOwner = (runId: string) =>
+    ownerAsked(
+      store.runs.get(runId)?.input?.origin,
+      (id) => store.runs.get(store.inputs.get(id)?.run_id ?? "")?.input?.origin,
+    );
   /** A kept sticker as the app shows it (none when its file is gone). */
   const shown = ({ created_at: _c, hash: _h, ...s }: Sticker) => {
     const media = store.media.get(s.media_id);
@@ -62,12 +73,40 @@ export function channelHandlers(store: Store, channels: Channels) {
     },
     // Open to agents (the owner's, never a contact's turn): their way to write to a contact for the owner.
     "channels.message": async ({ person, text, channel, files, omit_signature }, ctx) => {
-      let sent: ReturnType<typeof channels.messageContact>;
-      try {
-        sent = channels.messageContact(person, text, { channel, by: ctx.agent?.id, files, omit_signature });
-      } catch (err) {
-        throw badRequest(errorMessage(err));
-      }
+      let sent: ReturnType<typeof channels.messageContact> | undefined;
+      const send = () => {
+        try {
+          sent = channels.messageContact(person, text, { channel, by: ctx.agent?.id, files, omit_signature });
+        } catch (err) {
+          throw badRequest(errorMessage(err));
+        }
+        return true;
+      };
+      // An agent writing to the owner unasked goes through their notice budget, as notify_owner does (DECISIONS.md#d-035).
+      if (person === OWNER_ID && ctx.agent && !askedByOwner(ctx.agent.run_id)) {
+        const thread = store.threads.get(ctx.agent.thread_id);
+        // With the app only chosen, it goes as any unasked notice: the tray, never a chat app (DECISIONS.md#d-161).
+        const inApp = appOnly(noticePrefs(store));
+        const state = nudges.offer({
+          kind: `agent:${ctx.agent.id}`,
+          text,
+          thread_id: thread?.id,
+          project_id: thread?.project_id,
+          ...(inApp ? {} : { send }),
+        });
+        if (inApp) {
+          store.notifications.add({
+            kind: "agent",
+            level: "info",
+            title: store.agents.get(ctx.agent.id)?.name ?? ctx.agent.id,
+            body: previewOf(text),
+            ...(thread ? { thread_id: thread.id } : {}),
+          });
+          return { withheld: state === "held" || state === "dropped" ? state : "app_only" };
+        }
+        if (state === "held" || state === "dropped") return { withheld: state };
+      } else send();
+      if (!sent) throw badRequest("the owner has no chat app to write to");
       return withDelivery(sent);
     },
     // Open to agents like channels.message: their way to post in a public room for the owner.
@@ -135,11 +174,10 @@ export function channelHandlers(store: Store, channels: Channels) {
 
     "notices.get": () => noticePrefs(store),
     "notices.log": ({ limit }) => {
-      const dayStart = new Date();
-      dayStart.setHours(0, 0, 0, 0);
+      const since = dayStart(new Date(), ownerTimeZone(store)).toISOString();
       return {
         items: store.nudges.list(limit),
-        today: { sent: store.nudges.countedSince(dayStart.toISOString()), cap: noticePrefs(store).budget_per_day },
+        today: { sent: store.nudges.countedSince(since), cap: noticePrefs(store).budget_per_day },
       };
     },
     "notices.feedback": ({ id, feedback }) => {

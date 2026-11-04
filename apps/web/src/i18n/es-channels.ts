@@ -192,6 +192,8 @@ export const esChannels: Partial<Record<MessageKey, string>> = {
   "channel.whatsapp.name": "WhatsApp",
   "channel.telegram.name": "Telegram",
   "channel.discord.name": "Discord",
+  "em.account": "Cuenta de email",
+  "em.addAccount": "Agregar cuenta de email",
   "em.lead": "Una casilla para el agente: lee el mail que llega y responde en el mismo hilo.",
   "em.step1": "Dale al agente una casilla propia (una cuenta nueva de Gmail u Outlook, o una de tu dominio).",
   "em.step2":
@@ -296,43 +298,7 @@ export const esChannels: Partial<Record<MessageKey, string>> = {
   "im.answer": "Contestar chats",
   "im.answerHint":
     "Las personas que te escriben por iMessage reciben respuesta de tu agente, una vez que las aprobás. Tus propios mensajes nunca se contestan.",
-  "hooks.title": "Dirección pública",
-  "hooks.lead":
-    "Este canal entrega sus mensajes a una dirección web, así que APX necesita una que se pueda alcanzar desde internet. Sólo se publica la puerta de webhooks: nunca el panel ni la API.",
-  "hooks.how": "Cómo se publica",
-  "hooks.off": "Apagada",
-  "hooks.offBody": "Sin dirección pública: este canal no puede recibir mensajes.",
-  "hooks.tailscale": "Tailscale",
-  "hooks.tailscaleBody":
-    "Tailscale Funnel da una dirección https fija en el puerto 8443. Gratis; Funnel tiene que estar permitido para este equipo en tu tailnet.",
-  "hooks.ngrok": "ngrok",
-  "hooks.ngrokBody":
-    "APX arranca ngrok por vos. Una cuenta gratis suele mantener la misma dirección; si ngrok da una nueva, esta pantalla te avisa.",
-  "hooks.custom": "Propia",
-  "hooks.customBody": "Tu propia dirección https, delante del puerto de webhooks (un proxy o un servidor tuyo).",
-  "hooks.tsMissing": "Tailscale no está instalado en esta computadora.",
-  "hooks.tsDisconnected": "Tailscale está instalado pero no conectado (o MagicDNS está apagado).",
-  "hooks.ngrokMissing": "ngrok no está instalado: instalalo y corré “ngrok config add-authtoken <tu token>” una vez.",
-  "hooks.domain": "Dominio reservado",
-  "hooks.domainHint": "Opcional: tu dominio de ngrok mantiene la misma dirección entre reinicios.",
-  "hooks.ownUrl": "Tu dirección",
-  "hooks.ownUrlHint": "Tiene que reenviar a 127.0.0.1:{port} en esta computadora.",
-  "hooks.address": "La dirección de este canal",
-  "hooks.addressHint": "Pegala en la plataforma como messaging endpoint o URL del webhook.",
-  "hooks.copy": "Copiar",
-  "hooks.copied": "Dirección copiada",
-  "hooks.notUp": "Todavía no está activa",
-  "hooks.mayChange":
-    "Esta dirección de ngrok es nueva: pegala en la plataforma. Si ngrok da otra después de un reinicio, te lo vuelve a avisar acá.",
   "hooks.failed": "No se pudo cambiar la dirección pública: {error}",
-  "hooks.err.funnel_failed":
-    "Tailscale Funnel no arrancó: quizás haya que habilitarlo para esta computadora en la política del tailnet.",
-  "hooks.err.ngrok_timeout": "ngrok no dio una dirección a tiempo.",
-  "hooks.err.ngrok_failed":
-    "ngrok no pudo abrir la dirección. ¿Tiene la sesión iniciada (“ngrok config add-authtoken <tu token>”)?",
-  "hooks.err.ngrok_stopped": "ngrok se detuvo. APX lo vuelve a arrancar solo.",
-  "hooks.err.failed": "No se pudo armar la dirección pública.",
-  "hooks.errDetail": "Lo que dijo: {detail}",
   "tm.lead":
     "Hablá con tus agentes desde Microsoft Teams, en chats personales y en los canales que listes. Teams entrega a una dirección pública, que configurás abajo.",
   "tm.step1":

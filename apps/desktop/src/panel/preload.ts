@@ -3,6 +3,12 @@ import { contextBridge, ipcRenderer } from "electron";
 
 type Bounds = { x: number; y: number; width: number; height: number };
 
+// Kept from the window's own reports (sent at load and on every change), so a late reader gets it too.
+let fullScreen = false;
+ipcRenderer.on("window:fullscreen", (_e, full: unknown) => {
+  if (typeof full === "boolean") fullScreen = full;
+});
+
 contextBridge.exposeInMainWorld("apxDesktop", {
   /** darwin | win32 | linux — panel pads the unified title bar for traffic lights / overlay. */
   platform: process.platform,
@@ -39,6 +45,14 @@ contextBridge.exposeInMainWorld("apxDesktop", {
     const on = () => listener();
     ipcRenderer.on("artifact:file-opened", on);
     return () => ipcRenderer.removeListener("artifact:file-opened", on);
+  },
+  isFullScreen: () => fullScreen,
+  onFullScreen: (listener: (full: boolean) => void) => {
+    const on = (_e: unknown, full: unknown) => {
+      if (typeof full === "boolean") listener(full);
+    };
+    ipcRenderer.on("window:fullscreen", on);
+    return () => ipcRenderer.removeListener("window:fullscreen", on);
   },
   onOpenThread: (listener: (threadId: string) => void) => {
     const on = (_e: unknown, id: unknown) => {
@@ -77,8 +91,8 @@ contextBridge.exposeInMainWorld("apxDesktop", {
   updateStatus: (check?: boolean): Promise<unknown> => ipcRenderer.invoke("desktop:update-status", check === true),
   /** Downloads the newer app and leaves it ready for the next restart (or opens it for the owner to drag in). */
   installUpdate: (): Promise<unknown> => ipcRenderer.invoke("desktop:update-install"),
-  /** Quits and opens the newer app that is ready. */
-  restartToUpdate: () => ipcRenderer.send("desktop:update-restart"),
+  /** Quits and opens the newer app that is ready; an answer that comes back says why it could not. */
+  restartToUpdate: (): Promise<unknown> => ipcRenderer.invoke("desktop:update-restart"),
   /** The app's update changed (found, downloading, ready), wherever it was started (the panel or the app menu). */
   onUpdateStatus: (listener: (status: unknown) => void) => {
     const on = (_e: unknown, s: unknown) => listener(s);

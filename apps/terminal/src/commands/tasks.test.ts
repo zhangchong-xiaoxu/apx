@@ -76,9 +76,9 @@ test("commitments separate what the owner owes from what other people owe", asyn
 
 test("edit sends only the fields given", () => {
   assert.deepEqual(taskEditOf("tsk_1", { title: "New title" }), { task: "tsk_1", title: "New title" });
-  assert.deepEqual(taskEditOf("tsk_1", { agent: "roby", due: "2026-10-09", tags: " a, b ,," }), {
+  assert.deepEqual(taskEditOf("tsk_1", { agent: "superagent", due: "2026-10-09", tags: " a, b ,," }), {
     task: "tsk_1",
-    assignee: "roby",
+    assignee: "superagent",
     due_at: "2026-10-09",
     tags: ["a", "b"],
   });
@@ -143,4 +143,18 @@ test("settle sends the outcome, the new date and the note; an unknown outcome pr
   ]);
   await assert.rejects(tasks(client, ["settle", "tsk_1", "later"], {}), /apx tasks settle <id>/);
   assert.equal(calls.length, 2);
+});
+
+test("inside an agent's command, closing a task as the owner is refused: the agent closes with task_close", async () => {
+  const { client, calls } = recordingClient({});
+  const inherited = process.env.APX_AGENT;
+  process.env.APX_AGENT = "builder";
+  try {
+    for (const sub of ["done", "drop", "reopen"])
+      await assert.rejects(tasks(client, [sub, "tsk_1"], {}), /use task_close/);
+  } finally {
+    if (inherited === undefined) delete process.env.APX_AGENT;
+    else process.env.APX_AGENT = inherited;
+  }
+  assert.deepEqual(calls, [], "nothing was closed");
 });

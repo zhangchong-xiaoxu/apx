@@ -17,7 +17,8 @@ import { actionsOf, reportCard } from "./delegation.ts";
 import type { AdmitFn } from "./engine.ts";
 import { mentioned, mentionsOwner, taskCommentAttention } from "./office.ts";
 import { outcomeOf } from "./run-outcome.ts";
-import { checkSelfHandoff, markHandoff } from "./task-handoff.ts";
+import { continueTask } from "./task-continue.ts";
+import { checkSelfHandoff, markHandoff, runLineage } from "./task-handoff.ts";
 import { answersOwner, ownerTurnEnded } from "./task-inbox.ts";
 import { closedIn, reportClose } from "./task-report.ts";
 
@@ -158,6 +159,17 @@ export function startTaskWork(
   const source = self ? store.threads.get(asker.thread_id) : undefined;
   const work = ask(store, admit, task, agentId, text, asker, author, sessionFor(store, task, agentId, source));
   if (self) markHandoff(store, task, asker, work);
+  const sourceRun = asker.kind === "agent" ? store.runs.get(asker.run_id) : undefined;
+  if (asker.kind === "agent" && sourceRun && !sourceRun.ended_at) {
+    const previous = store.threads.context(asker.thread_id).task_dispatches;
+    const source = { id: asker.run_id, thread_id: asker.thread_id };
+    const tasks = previous && runLineage(store, source).includes(previous.run) ? previous.tasks : [];
+    const dispatch = { task: task.id, agent: agentId, project: task.project_id };
+    const kept = tasks.filter((t) => t.task !== task.id || t.agent !== agentId || t.project !== task.project_id);
+    store.threads.mergeContext(asker.thread_id, {
+      task_dispatches: { run: asker.run_id, tasks: [...kept, dispatch] },
+    });
+  }
   return work;
 }
 
@@ -385,7 +397,15 @@ export function startScheduled(store: Store, admit: AdmitFn, now: Date): RunReco
         store.threads.byTask(t.id).length === 0,
     )
     .slice(0, PICKUP_AT_ONCE)
-    .flatMap((t) => startTaskWork(store, admit, t, t.assignee ?? "", askerOfCreation(store, t), { now }) ?? []);
+    .flatMap((t) => startLater(store, admit, t, now) ?? []);
+}
+
+/**
+ * A task started by the office clock (its start time, the hourly pickup), not at its giver's word: as the one who gave
+ * it, so an agent's task spends its chain's budget and never starts as if the owner had asked (DECISIONS.md#d-082).
+ */
+function startLater(store: Store, admit: AdmitFn, task: Task, now?: Date): RunRecord | undefined {
+  return startTaskWork(store, admit, task, task.assignee ?? "", askerOfCreation(store, task), now ? { now } : {});
 }
 
 /** Who gave the task, for a start that comes later: the owner, or the agent and chat it was created from. */
@@ -580,6 +600,7 @@ export function afterWorkTurn(store: Store, admit: AdmitFn, run: RunRecord): voi
     addComment(store, task, { kind: "agent", id: run.agent_id }, text, run.agent_id);
   // Closed in this turn: whoever created the task hears now, with the answer just posted as its report.
   if (closed) reportClose(store, admit, task.id);
+  else continueTask(store, admit, run);
 }
 
 /** When a task was last given to its agent (its creation with one, or the last assignment). */
@@ -619,7 +640,5 @@ export function pickUpTasks(store: Store, admit: AdmitFn): RunRecord[] {
       (a, b) =>
         PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority] || (a.due_at ?? "￿").localeCompare(b.due_at ?? "￿"),
     );
-  return waiting
-    .slice(0, PICKUP_AT_ONCE)
-    .flatMap((t) => startTaskWork(store, admit, t, t.assignee ?? "", { kind: "owner" }) ?? []);
+  return waiting.slice(0, PICKUP_AT_ONCE).flatMap((t) => startLater(store, admit, t) ?? []);
 }

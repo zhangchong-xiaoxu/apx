@@ -35,7 +35,7 @@ and the write policy, so you always know where it is working and how freely.
 
 ### Where a task changes code
 
-**On the development branch after 2.11.0**, before changing code for a task, the agent follows the project's saved
+**Since 2.11.1**, before changing code for a task, the agent follows the project's saved
 choice of working in the checkout or in a Git worktree. If no project note says which, it asks: **Worktree now**,
 **Worktree always**, **Here now**, **Here always**, or **Other**. An “always” answer is saved for that project;
 “now” applies to this choice only. This chooses the working location, not a different write policy or autonomy level.
@@ -50,7 +50,7 @@ instructions to the agent, not a guarantee that Git changes have been merged or 
 | Policy | What it means |
 |---|---|
 | **Asks before changes** (`ask`) | The default. Edits and commands go through the usual approvals of the agent's [autonomy](/concepts/autonomy/). Codex cannot ask mid-turn, so under this policy it only reads. |
-| **Edits freely** (`auto`) | Claude Code and Codex sessions edit files inside the folder without asking (never git's config, `.apc/` or `AGENTS.md`). Commands still follow the agent's autonomy. |
+| **Edits freely** (`auto`) | Claude Code and Codex sessions edit files inside the folder without asking (never `.apc/` or `AGENTS.md`, and nothing in `.git`, at any autonomy: git runs through commands). Commands still follow the agent's autonomy. |
 | **Read-only** (`read-only`) | Only reads. Anything that would need your OK is refused. |
 
 ### Working in the folder from any chat
@@ -111,8 +111,10 @@ picks up its own session, history included, and from then on it lives in APX too
 <Aside type="note" title="What APX keeps in check">
 - Claude Code loads only your own user settings, not a repository's `.claude/settings` files (which could allow tools
   past APX's approvals). APX reads the folder's `CLAUDE.md` itself and adds it to the prompt.
-- Codex in an **Edits freely** chat runs read-only (and says why) while the agent asks before acting or the session
-  has read outside content; total autonomy still writes.
+- Codex in an **Edits freely** chat writes in its folder when the agent is on Auto, Accept edits or Total, whatever
+  the session read, unless the agent's own rules ask before writing or turn it off; on Manual or Plan it runs
+  read-only (and says why), unless its rules let it write on its own. A session another agent delegated with
+  **Asks before changes** stays read-only for Codex even on Total, since it cannot ask.
 - Once an engine session reads outside content (a web page, a message), the rest of that session is treated as
   untrusted, as an APX agent's would be.
 </Aside>

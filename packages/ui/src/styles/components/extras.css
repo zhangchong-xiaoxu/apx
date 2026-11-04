@@ -177,13 +177,16 @@
 /* ── SettingRow ────────────────────────────────────────────────────────────── */
 .apx-setting {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 24px;
+  column-gap: 24px;
+  row-gap: 8px;
   padding: 12px 0;
   border-top: 1px solid var(--apx-border);
 }
+/* The text keeps room to read: a control too wide to sit beside it on a narrow screen goes under it. */
 .apx-setting__text {
-  flex: 1;
+  flex: 1 1 180px;
   min-width: 0;
 }
 .apx-setting__title {
@@ -203,8 +206,13 @@
 /* Stacked: a control that needs the width (a paragraph to write) goes under the text. */
 .apx-setting--stacked {
   flex-direction: column;
+  flex-wrap: nowrap;
   align-items: stretch;
   gap: 8px;
+}
+/* In a column the row's 180px basis would be a height: the text takes only what it needs. */
+.apx-setting--stacked > .apx-setting__text {
+  flex: none;
 }
 .apx-setting--stacked > .apx-setting__control {
   flex: auto;
@@ -304,7 +312,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: 4px 12px;
-  font-size: 12px;
+  font-size: calc(12px * var(--apx-text-scale, 1));
   color: var(--apx-fg-muted);
 }
 .apx-meter__key {

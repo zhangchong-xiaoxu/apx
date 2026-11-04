@@ -5,6 +5,7 @@ export { ActionGroup, type ActionGroupProps, type ActionItem } from "./component
 export { ActivityPill, type ActivityPillProps } from "./components/ActivityPill";
 export { AgentAvatar, type AgentAvatarProps } from "./components/AgentAvatar";
 export { AgentChip, type AgentChipProps } from "./components/AgentChip";
+export { AgentGrid, type AgentGridOption, type AgentGridProps } from "./components/AgentGrid";
 export { AgentNode, type AgentNodeProps, type AgentNodeStat } from "./components/AgentNode";
 export { type ApxLook, type ApxMode, ApxProvider, type ApxProviderProps, useApx } from "./components/ApxProvider";
 export { Avatar, type AvatarProps } from "./components/Avatar";
@@ -41,6 +42,13 @@ export {
 } from "./components/EngineIcon";
 export { EntityCard, type EntityCardProps } from "./components/EntityCard";
 export { Field, type FieldProps } from "./components/Field";
+export {
+  FlowStep,
+  type FlowStepProps,
+  type FlowStepState,
+  FlowStepTile,
+  type FlowStepTone,
+} from "./components/FlowStep";
 export { Help, type HelpItem, type HelpProps } from "./components/Help";
 export { IconButton, type IconButtonProps } from "./components/IconButton";
 export { Input, type InputProps } from "./components/Input";
@@ -62,6 +70,7 @@ export {
   type QuoteRenderer,
 } from "./components/MarkdownView";
 export { MasterDetail, type MasterDetailProps } from "./components/MasterDetail";
+export { type MediaKind, MediaLoader, type MediaLoaderProps, mediaKindOf } from "./components/MediaLoader";
 export { Menu, type MenuEntry, type MenuProps } from "./components/Menu";
 export { Message, type MessageProps } from "./components/Message";
 export { MessageMeta, type MessageMetaProps } from "./components/MessageMeta";
@@ -71,6 +80,7 @@ export { PickRow, type PickRowProps } from "./components/PickRow";
 export { Popover, type PopoverProps } from "./components/Popover";
 export { ProjectTile, type ProjectTileProps, type TileTone } from "./components/ProjectTile";
 export { ResizeHandle, type ResizeHandleProps } from "./components/ResizeHandle";
+export { type RunBar, type RunBarState, RunBars, type RunBarsProps } from "./components/RunBars";
 export { SearchField, type SearchFieldProps } from "./components/SearchField";
 export { SectionLabel, type SectionLabelProps } from "./components/SectionLabel";
 export { SegmentedControl, type SegmentedControlProps, type SegmentedOption } from "./components/SegmentedControl";
@@ -88,6 +98,12 @@ export { SystemNote, type SystemNoteProps } from "./components/SystemNote";
 export { type TabItem, Tabs, type TabsProps } from "./components/Tabs";
 export { Tag, type TagProps } from "./components/Tag";
 export { TagInput, type TagInputProps } from "./components/TagInput";
+export {
+  TemplateField,
+  type TemplateFieldProps,
+  type TemplateGroup,
+  type TemplateValue,
+} from "./components/TemplateField";
 export { Textarea, type TextareaProps } from "./components/Textarea";
 export { Tooltip, type TooltipProps } from "./components/Tooltip";
 export { VoiceNote, type VoiceNoteProps } from "./components/VoiceNote";

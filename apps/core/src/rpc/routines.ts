@@ -1,10 +1,13 @@
 // Routines, for the owner only: an agent's scheduled work and its history.
+
+import type { FlowStepKey } from "../domain/flow-graph-runs.ts";
 import { checkSchedule } from "../domain/schedule.ts";
 import type { Store } from "../domain/store.ts";
 import {
   activeProfile,
   applyProfile,
   changedRoutines,
+  fill,
   installProfile,
   listProfiles,
   type ProfileRoot,
@@ -12,6 +15,9 @@ import {
   profileSchedules,
   removeProfile,
   restoreProfileRoutine,
+  scheduleOf,
+  textIn,
+  valuesFor,
 } from "../engine/profiles.ts";
 import type { Scheduler } from "../engine/routines.ts";
 import { badRequest, errorMessage, notFound } from "../errors.ts";
@@ -32,6 +38,50 @@ export function routineHandlers(store: Store, scheduler: Scheduler, profileRoots
   };
   return {
     "routines.list": ({ project }) => ({ routines: store.routines.list(project) }),
+    "secretary.set": ({ action, id, enabled, prompt }) =>
+      store.tx(() => {
+        const agent = store.agents.list().find((a) => a.kind === "secretary");
+        if (!agent) throw notFound("super-agent");
+        const existing = id
+          ? store.routines.get(id)
+          : store.routines.list(null).find((r) => r.action === action && r.agent_id === agent.id);
+        if (id && (!existing || existing.action !== action))
+          throw badRequest("capability changed; refresh its settings");
+        if (existing)
+          return store.routines.update(existing.id, {
+            ...existing,
+            enabled,
+            prompt: prompt ?? existing.prompt,
+            next_run_at:
+              enabled === existing.enabled
+                ? existing.next_run_at
+                : enabled
+                  ? scheduler.nextFor(existing.schedule)
+                  : undefined,
+          }) as NonNullable<typeof existing>;
+        const active = activeProfile(store);
+        const profiles = listProfiles(profileRoots);
+        const manifest =
+          profiles.find((p) => p.id === active.id && p.routines.some((r) => r.action === action)) ??
+          profiles.find((p) => p.id === "secretary");
+        const spec = manifest?.routines.find((r) => r.action === action);
+        if (!manifest || !spec) throw notFound("capability defaults");
+        const values = valuesFor(manifest, active.values);
+        const schedule = scheduleOf(spec, manifest, values);
+        checkSchedule(schedule);
+        return store.routines.create({
+          name: textIn(spec.name, lang()),
+          agent_id: agent.id,
+          action,
+          prompt: prompt ?? fill(spec.prompt, manifest, values),
+          schedule,
+          enabled,
+          next_run_at: enabled ? scheduler.nextFor(schedule) : undefined,
+          call_model: "always",
+          anchor: spec.anchor,
+          origin: `${manifest.id}:${spec.key}`,
+        });
+      }),
     "routines.set": ({
       id,
       name,
@@ -114,10 +164,57 @@ export function routineHandlers(store: Store, scheduler: Scheduler, profileRoots
         applyProfile(store, { manifest: undefined, values: {}, lang: lang(), nextFor: (s) => scheduler.nextFor(s) });
       return { removed };
     },
-    "routines.run": ({ routine }) => scheduler.runNow(routine),
+    "routines.run": ({ routine }, ctx) =>
+      store.tx(() => {
+        if (ctx.flowEvent?.graph)
+          return runGraphStep(store, scheduler, routine, { ...ctx.flowEvent, ...ctx.flowEvent.graph });
+        const source = ctx.flowEvent ? store.flows.admissionInput(ctx.flowEvent.flow, ctx.flowEvent.event) : undefined;
+        if (source) {
+          const binding = store.routines.get(routine);
+          const flow = store.flows.get(source.flow);
+          if (
+            source.action.kind !== "routine" ||
+            source.action.routine !== routine ||
+            !flow?.enabled ||
+            binding?.project_id !== flow.projectId ||
+            binding?.schedule.kind !== "manual"
+          )
+            throw badRequest("Flow routine binding changed");
+        }
+        const run = scheduler.runNow(
+          routine,
+          source ? { flow: source.flow, id: source.id, data: source.data } : undefined,
+        );
+        if (ctx.flowEvent) store.flows.admitted(ctx.flowEvent.flow, ctx.flowEvent.event, run.run_id);
+        return run;
+      }),
     "routines.runs": ({ routine, limit }) => {
       if (!store.routines.get(routine)) throw notFound(`routine ${routine}`);
       return { runs: store.routines.runs(routine, limit) };
     },
   } satisfies Partial<Handlers>;
+}
+
+/**
+ * A graph step starts its routine: the routine must be the one its pinned revision names, manual-only and in the
+ * Flow's project; the run gets the step's input as the untrusted event data and is linked to the step at once.
+ */
+function runGraphStep(store: Store, scheduler: Scheduler, routine: string, step: FlowStepKey) {
+  const run = store.flowGraphRuns.load(step.flow, step.event);
+  const node = run?.revision === step.revision ? run.graph.nodes.find((n) => n.id === step.node) : undefined;
+  const binding = store.routines.get(routine);
+  const flow = store.flows.get(step.flow);
+  if (
+    node?.kind !== "routine" ||
+    node.routine !== routine ||
+    !flow ||
+    (!flow.enabled && !run?.test) ||
+    binding?.project_id !== flow.projectId ||
+    binding.schedule.kind !== "manual"
+  )
+    throw badRequest("Flow routine binding changed");
+  const data = store.flowGraphRuns.startingInput(step);
+  const started = scheduler.runNow(routine, { flow: step.flow, id: step.event, data });
+  store.flowGraphRuns.linkRun(step, started.run_id);
+  return started;
 }

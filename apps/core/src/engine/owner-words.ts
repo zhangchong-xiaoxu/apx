@@ -39,6 +39,12 @@ const zh: typeof es = {
 export const confirmPrompt = (store: Store, why: ConfirmWhy, agent: string, tool: string) =>
   ({ en, es, zh })[textLanguage(store)][why](agent, tool);
 
+/** The question of a card that already says the change in the owner's words (a setting, a Flow): no tool name. */
+export const ownerCardPrompt = (store: Store, agent: string) =>
+  store.settings.get("owner_language") === "en"
+    ? `${agent} needs your OK for this:`
+    : `${agent} necesita tu OK para esto:`;
+
 /** The question of a folder card: an agent wants to read folders outside its own, or (`write`) change files there. */
 export const folderPrompt = (store: Store, agent: string, folders: string[], write = false) => {
   const where = folders.join(", ");
@@ -64,9 +70,3 @@ export const stalledWords = (store: Store, agent: string) =>
   english(store)
     ? `Nobody is working on it: ${agent} was asked to go on and stopped again without closing it or saying what it waits for.`
     : `Nadie la está trabajando: se le pidió a ${agent} que siguiera y volvió a frenar sin cerrarla ni decir qué espera.`;
-
-/** The super-agent is about to give work to several agents in one turn (engine/fan-out.ts). */
-export const fanOutPrompt = (store: Store, agent: string, to: string[]) =>
-  english(store)
-    ? `${agent} wants to hand work to several agents at once (${to.join(", ")}). Let it go on? If not, it looks at it first and proposes a plan.`
-    : `${agent} quiere repartir trabajo entre varios agentes a la vez (${to.join(", ")}). ¿Lo dejás seguir? Si no, primero lo mira y te propone un plan.`;

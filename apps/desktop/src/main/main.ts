@@ -244,6 +244,11 @@ app.whenReady().then(() => {
   win.on("restore", settled);
   win.on("enter-full-screen", settled);
   win.on("leave-full-screen", settled);
+  // The panel's bars leave room for the traffic lights only outside native fullscreen, which only the window knows.
+  const fullScreen = () => panel.webContents.send("window:fullscreen", win.isFullScreen());
+  win.on("enter-full-screen", fullScreen);
+  win.on("leave-full-screen", fullScreen);
+  panel.webContents.on("did-finish-load", fullScreen);
   layout();
 
   ipcMain.on("panel:browser-bounds", (e, b: Bounds | null) => {
@@ -398,6 +403,7 @@ app.whenReady().then(() => {
   // A newer APX: the panel and the app menu show it; the app downloads it and it goes in at the next restart.
   const updater = nativeUpdates(
     createDesktopUpdater({
+      logFile: path.join(app.getPath("logs"), "update.log"),
       quit: () => {
         quitting = true;
         app.quit();
@@ -505,11 +511,10 @@ app.whenReady().then(() => {
     const item = Menu.getApplicationMenu()?.getMenuItemById(id);
     if (item?.enabled) item.click();
   });
-  ipcMain.on("desktop:update-restart", (e) => {
-    if (e.sender === panel.webContents) updater.restart();
-  });
+  ipcMain.handle("desktop:update-restart", (e) => (e.sender === panel.webContents ? updater.restart() : undefined));
   updater.start(updateMenu.found);
   app.on("will-quit", () => {
+    updater.log("will-quit");
     updater.stop();
     updater.quitting();
     connector.stop();

@@ -31,6 +31,13 @@ export type LlmRequest = {
   /** Stable per conversation (a thread id), for providers' prompt caches. */
   cacheKey?: string | undefined;
   maxOutputTokens?: number | undefined;
+  /**
+   * One try only: no retry, no token renewal, no next model. For a call that must never be sent twice (a Flow's
+   * model step); the default keeps every other caller's retries.
+   */
+  once?: boolean | undefined;
+  /** Called synchronously right before the request goes out; throwing stops it from being sent. */
+  onDispatch?: (() => void) | undefined;
 };
 
 export type Llm = {
@@ -57,6 +64,40 @@ export type SignIn = {
 
 /** The key reference of a provider that needs none (a local server). */
 export const NO_KEY = "none";
+
+/** Tries on one model before the next one: a brief overload or 429 should not end a long job. */
+const ATTEMPTS = 4;
+/** The first wait between tries; each next one doubles, with jitter, up to RETRY_MAX_MS. */
+const RETRY_BASE_MS = 800;
+const RETRY_MAX_MS = 8000;
+/** A Retry-After this short is waited for on the same model; a longer one moves on. */
+const RETRY_AFTER_MAX_MS = 30_000;
+
+/** How long to wait before trying the same model again, or undefined when its limit lifts too late to wait for. */
+export function retryWait(err: ProviderError, attempt: number, baseMs: number, now = Date.now()): number | undefined {
+  if (err.resetsAt) {
+    const until = Date.parse(err.resetsAt) - now;
+    if (until > RETRY_AFTER_MAX_MS) return undefined;
+    if (until > 0) return until;
+  }
+  const backoff = Math.min(RETRY_MAX_MS, baseMs * 2 ** attempt);
+  return Math.round(backoff / 2 + Math.random() * (backoff / 2));
+}
+
+/** A wait the turn's signal cuts short. */
+function pause(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const stop = () => {
+      clearTimeout(timer);
+      reject(signal.reason);
+    };
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", stop);
+      resolve();
+    }, ms);
+    signal.addEventListener("abort", stop, { once: true });
+  });
+}
 
 export function createLlm(opts: {
   /** Read on every call: a provider the owner adds or changes applies to the next one. */
@@ -92,7 +133,8 @@ export function createLlm(opts: {
       return ids.length ? ids.join(", ") : "none";
     },
     async complete(req) {
-      const list = targets(req.models);
+      const all = targets(req.models);
+      const list = req.once ? all.slice(0, 1) : all;
       if (!list.length)
         throw new ProviderError(
           "model_gone",
@@ -147,8 +189,10 @@ export function createLlm(opts: {
           continue;
         }
         let renewedToken = false;
-        for (let attempt = 0; attempt < 2; attempt++) {
+        const attempts = req.once ? 1 : ATTEMPTS;
+        for (let attempt = 0; attempt < attempts; attempt++) {
           req.signal.throwIfAborted();
+          req.onDispatch?.();
           try {
             const out = await TRANSPORTS[t.provider.transport]({
               baseUrl: t.provider.base_url,
@@ -177,7 +221,7 @@ export function createLlm(opts: {
             last = err instanceof ProviderError ? err : new ProviderError("network", String(err));
             last.message = `${ref}: ${last.message}`;
             // A plan's token can be refused before it says it expires: renew it once and try again.
-            if (last.kind === "auth" && signIn?.renew && !renewedToken) {
+            if (last.kind === "auth" && signIn?.renew && !renewedToken && !req.once) {
               renewedToken = true;
               try {
                 const c = await signIn.renew();
@@ -192,8 +236,11 @@ export function createLlm(opts: {
             // Auth and a rejected request rule out the whole provider for this call; quota is often per model
             // (Gemini), so the provider's next model still gets a try.
             if (last.kind === "auth" || last.kind === "bad_request") skipped.add(t.provider.id);
-            if (!last.retryable || attempt === 1) break;
-            await new Promise((r) => setTimeout(r, opts.retryDelayMs ?? 800));
+            if (!last.retryable || attempt === attempts - 1) break;
+            const wait = retryWait(last, attempt, opts.retryDelayMs ?? RETRY_BASE_MS);
+            // A limit that lifts later than a short pause goes to the next model now (engine/provider-limit.ts).
+            if (wait === undefined) break;
+            await pause(wait, req.signal);
           }
         }
         if (last) failed.push({ model: ref, why: last.message.slice(ref.length + 2, ref.length + 302) });

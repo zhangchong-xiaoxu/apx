@@ -118,10 +118,56 @@ test("the desktop header shares the native title bar and keeps its search center
   await main.screenshot({ path: test.info().outputPath("unified-header.png") });
 });
 
+test("a full-screen layer's bar clears the window controls and keeps its controls clickable", async () => {
+  const main = await page("main");
+  // The welcome and corner cards would cover the screen: seen already, as in the panel's own specs.
+  await main.evaluate(() => {
+    localStorage.setItem("apx.corner", JSON.stringify({ discord: true, star: true, welcome: true }));
+    location.hash = "#view=flows";
+    location.reload();
+  });
+  await main.getByRole("button", { name: /^(Nuevo flow|New flow)$/ }).click();
+  const bar = main.locator(".fe-top.window-bar.is-desktop");
+  await expect(bar).toBeVisible();
+  const read = () =>
+    bar.evaluate((b) => {
+      const style = getComputedStyle(b);
+      const region = (el: Element | null) => (el ? getComputedStyle(el).getPropertyValue("-webkit-app-region") : "");
+      return {
+        left: Number.parseFloat(style.paddingLeft),
+        right: Number.parseFloat(style.paddingRight),
+        drag: region(b),
+        // Drag regions ignore what is drawn on top: the bar's controls must opt out to get the click.
+        picker: region(b.querySelector('[role="combobox"]')),
+        close: region(b.querySelector("button")),
+      };
+    });
+  const windowed = await read();
+  expect(windowed).toMatchObject({ drag: "drag", picker: "no-drag", close: "no-drag" });
+  if (process.platform === "darwin") {
+    expect(windowed.left).toBe(76);
+    const full = (on: boolean) =>
+      app.evaluate(({ BaseWindow, BrowserWindow }, on) => {
+        BaseWindow.getAllWindows()
+          .find((w) => !(w instanceof BrowserWindow))
+          ?.setFullScreen(on);
+      }, on);
+    // In native fullscreen the traffic lights are gone, and so is their room.
+    await full(true);
+    await expect.poll(async () => (await read()).left, { timeout: 10_000 }).toBe(12);
+    await full(false);
+    await expect.poll(async () => (await read()).left, { timeout: 10_000 }).toBe(76);
+  } else {
+    expect(windowed.right).toBe(140);
+  }
+  await main.getByRole("button", { name: /^(Salir del editor|Exit the editor)$/ }).click();
+  await expect(bar).toHaveCount(0);
+});
+
 test("the app lends its browser to the core, and a tab opened through the core is listed", async () => {
   await until(async () => {
-    const h = await rpc<{ subsystems: Record<string, { status: string }> }>("system.health");
-    return h.subsystems.browser?.status === "ok";
+    const h = await rpc<{ subsystems: Record<string, { status: string; detail?: string }> }>("system.health");
+    return h.subsystems.browser?.status === "ok" && h.subsystems.browser.detail === "apx-desktop";
   }, 20_000);
   // The app's own origins are blocked in tabs: the sandbox's control API is an ordinary page.
   const page = `http://127.0.0.1:${process.env.E2E_CONTROL_PORT ?? 7461}/info`;
@@ -131,7 +177,107 @@ test("the app lends its browser to the core, and a tab opened through the core i
     return r.tabs.find((t) => t.tab === tab) ? r.tabs : undefined;
   });
   expect(tabs.find((t) => t.tab === tab)?.url).toBe(page);
+  const { document } = await rpc<{ document: string }>("browser.snapshot", { tab });
+  const evaluated = await rpc<{ json: string; url: string }>("browser.evaluate", {
+    tab,
+    by: "e2e",
+    script: "Promise.resolve({origin: location.origin, ready: !!document.body})",
+    origin: new URL(page).origin,
+    document,
+  });
+  expect(JSON.parse(evaluated.json)).toEqual({ origin: new URL(page).origin, ready: true });
+  expect(evaluated.url).toBe(page);
+  await expect(
+    rpc("browser.evaluate", {
+      tab,
+      by: "e2e",
+      origin: "https://northwind.example",
+      document,
+      script: "document.body.dataset.apxProbe = 'bad'",
+    }),
+  ).rejects.toThrow(/origin changed/);
+  const untouched = await rpc<{ json: string }>("browser.evaluate", {
+    tab,
+    by: "e2e",
+    origin: new URL(page).origin,
+    document,
+    script: "document.body.dataset.apxProbe ?? null",
+  });
+  expect(untouched.json).toBe("null");
+  await rpc("browser.control", { tab, mode: "user" });
+  await expect(
+    rpc("browser.evaluate", { tab, by: "e2e", script: "1", origin: new URL(page).origin, document }),
+  ).rejects.toThrow(/human has/);
+  await rpc("browser.control", { tab, mode: "idle" });
+  const returned = await rpc<{ json: string }>("browser.evaluate", {
+    tab,
+    by: "e2e",
+    script: "2 + 2",
+    origin: new URL(page).origin,
+    document,
+  });
+  expect(returned.json).toBe("4");
+  await rpc("browser.navigate", { tab, by: "e2e", url: `${page}#another-conversation` });
+  await expect(
+    rpc("browser.evaluate", {
+      tab,
+      by: "e2e",
+      origin: new URL(page).origin,
+      document,
+      script: "document.body.dataset.apxProbe = 'bad'",
+    }),
+  ).rejects.toThrow(/URL changed/);
+  await rpc("browser.history", { tab, by: "e2e", action: "reload" });
+  await expect(
+    rpc("browser.evaluate", {
+      tab,
+      by: "e2e",
+      origin: new URL(page).origin,
+      document,
+      script: "document.body.dataset.apxProbe = 'bad'",
+    }),
+  ).rejects.toThrow(/context|object|document/i);
   await rpc("browser.close", { tab });
+});
+
+test("native tab destruction during CDP invalidation removes only that tab and the browser keeps working", async () => {
+  await until(async () => {
+    const h = await rpc<{ subsystems: Record<string, { status: string; detail?: string }> }>("system.health");
+    return h.subsystems.browser?.status === "ok" && h.subsystems.browser.detail === "apx-desktop";
+  }, 20_000);
+  const url = `http://127.0.0.1:${process.env.E2E_CONTROL_PORT ?? 7461}/info`;
+  const first = await rpc<{ tab: string }>("browser.open", { url: `${url}#survivor`, by: "e2e" });
+  const second = await rpc<{ tab: string }>("browser.open", {
+    url: `${url}#destroyed`,
+    by: "e2e",
+    profile: "incognito",
+  });
+  try {
+    const cookies = await app.evaluate(async ({ webContents }, target) => {
+      const wc = webContents.getAllWebContents().find((contents) => contents.getURL() === target);
+      if (!wc) throw new Error("test tab not found");
+      const session = wc.session;
+      await session.cookies.set({ url: target, name: "private-tab", value: "temporary" });
+      const removed = new Promise<boolean>((resolve) => {
+        session.cookies.once("changed", (_event, cookie, _cause, gone) =>
+          resolve(cookie.name === "private-tab" && gone),
+        );
+      });
+      wc.close();
+      if (!(await removed)) throw new Error("private cookie was not removed");
+      return session.cookies.get({ name: "private-tab" });
+    }, `${url}#destroyed`);
+    expect(cookies).toEqual([]);
+    await expect
+      .poll(async () => (await rpc<{ tabs: Array<{ tab: string }> }>("browser.tabs")).tabs.map((t) => t.tab))
+      .toEqual([first.tab]);
+    await rpc("browser.navigate", { tab: first.tab, by: "e2e", url: `${url}#still-working` });
+    await expect(rpc("browser.snapshot", { tab: second.tab })).rejects.toThrow(/unknown tab/);
+    const tabs = await rpc<{ tabs: Array<{ tab: string; url: string }> }>("browser.tabs");
+    expect(tabs.tabs).toMatchObject([{ tab: first.tab, url: `${url}#still-working` }]);
+  } finally {
+    await rpc("browser.close", { tab: first.tab });
+  }
 });
 
 test("the quick chat opens from Window ▸ Quick chat and talks to the super-agent", async () => {

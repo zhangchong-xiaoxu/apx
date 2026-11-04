@@ -10,7 +10,9 @@ import { deviceMethods } from "./device-methods.ts";
 import { emailSignatureMethods } from "./email-signatures.ts";
 import { engineUsageMethods } from "./engine-usage.ts";
 import { environmentMethods } from "./environment-methods.ts";
+import { flowMethods } from "./flow-methods.ts";
 import { routineMailMethods } from "./routine-mail.ts";
+import { tableMethods } from "./table-methods.ts";
 import { telemetryMethods } from "./telemetry-methods.ts";
 import { terminalMethods } from "./terminal-methods.ts";
 import { threadMethods } from "./thread-methods.ts";
@@ -103,6 +105,8 @@ export const methods = {
   ...deviceMethods,
   ...environmentMethods,
   ...routineMailMethods,
+  ...flowMethods,
+  ...tableMethods,
   ...desktopInstallMethods,
   ...threadMethods,
   ...terminalMethods,
@@ -126,7 +130,9 @@ export function isMethodName(name: string): name is MethodName {
 /** The methods an outside app may call, by scope; anything else is refused to it. */
 export const SCOPE_METHODS: Record<"chat" | "browser", readonly MethodName[]> = {
   chat: ["agents.list", "threads.create", "threads.get", "threads.send"],
-  browser: (Object.keys(browserMethods) as MethodName[]).filter((m) => methodAccess(m) !== "human"),
+  browser: (Object.keys(browserMethods) as MethodName[]).filter(
+    (m) => methodAccess(m) !== "human" && m !== "browser.approval_context",
+  ),
 };
 
 /** Whether a method may be called without the core's token (see MethodDef.open). */

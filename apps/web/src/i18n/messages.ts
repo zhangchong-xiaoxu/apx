@@ -26,6 +26,26 @@ const PACKS = {
     es: () => import("./es-onboarding.ts").then((m) => m.esOnboarding),
     zh: () => import("./zh-onboarding.ts").then((m) => m.zhOnboarding),
   },
+  approvals: {
+    en: () => import("./approvals-en.ts").then((m) => m.enApprovals),
+    es: () => import("./approvals-es.ts").then((m) => m.esApprovals),
+    zh: () => import("./approvals-en.ts").then((m) => m.enApprovals),
+  },
+  flow: {
+    en: () => import("./flow-en.ts").then((m) => m.enFlow),
+    es: () => import("./flow-es.ts").then((m) => m.esFlow),
+    zh: () => import("./flow-en.ts").then((m) => m.enFlow),
+  },
+  ingress: {
+    en: () => import("./ingress-en.ts").then((m) => m.enIngress),
+    es: () => import("./ingress-es.ts").then((m) => m.esIngress),
+    zh: () => import("./ingress-en.ts").then((m) => m.enIngress),
+  },
+  secretary: {
+    en: () => import("./secretary-en.ts").then((m) => m.enSecretary),
+    es: () => import("./secretary-es.ts").then((m) => m.esSecretary),
+    zh: () => import("./secretary-en.ts").then((m) => m.enSecretary),
+  },
   threads: {
     en: () => import("./thread-dialogs-en.ts").then((m) => m.enThreadDialogs),
     es: () => import("./thread-dialogs-es.ts").then((m) => m.esThreadDialogs),

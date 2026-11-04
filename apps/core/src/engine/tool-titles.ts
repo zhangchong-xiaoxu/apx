@@ -2,6 +2,7 @@
 import { textLanguage } from "../domain/owner.ts";
 import type { Store } from "../domain/store.ts";
 import { stepsText } from "../tools/computer.ts";
+import { FLOW_SETTINGS } from "../tools/flow-tool.ts";
 import { settingAct } from "../tools/settings.ts";
 import type { Tool } from "../tools/types.ts";
 
@@ -77,6 +78,11 @@ export const SPANISH_TITLES: Record<string, (a: Args) => string> = {
     const what = SETTING_AREA[area] ?? "la configuración";
     return act === "look" ? "Revisó la configuración" : `${act === "remove" ? "Quitó" : "Cambió"} ${what}`;
   },
+  apx_flow: (a) => {
+    const { act, area } = settingAct(a, FLOW_SETTINGS);
+    const what = area === "tables" ? "una tabla" : "un Flow";
+    return act === "look" ? "Revisó los Flows" : `${act === "remove" ? "Quitó" : "Cambió"} ${what}`;
+  },
   list_agents: () => "Buscó agentes",
   agent_set: (a) =>
     !a.agent
@@ -96,6 +102,7 @@ export const SPANISH_TITLES: Record<string, (a: Args) => string> = {
   stop_session: (a) => `Detuvo la sesión ${str(a.session)}`,
   browser_open: (a) => `Abrió ${host(a.url)}`,
   browser_snapshot: () => "Leyó la página",
+  browser_evaluate: () => "Ejecutó JavaScript en el navegador",
   browser_text: () => "Leyó el texto",
   browser_click: (a) => `Hizo clic en ${str(a.ref)}`,
   browser_type: (a) => `Escribió en ${str(a.ref)}`,
@@ -207,6 +214,11 @@ export const CHINESE_TITLES: Record<string, (a: Args) => string> = {
     const what = ZH_SETTING_AREA[area] ?? "设置";
     return act === "look" ? "查看了设置" : `${act === "remove" ? "移除了" : "修改了"}${what}`;
   },
+  apx_flow: (a) => {
+    const { act, area } = settingAct(a, FLOW_SETTINGS);
+    const what = area === "tables" ? "数据表" : "Flow";
+    return act === "look" ? "查看了 Flows" : `${act === "remove" ? "移除了" : "修改了"}${what}`;
+  },
   list_agents: () => "查找了智能体",
   agent_set: (a) =>
     !a.agent
@@ -227,6 +239,7 @@ export const CHINESE_TITLES: Record<string, (a: Args) => string> = {
   browser_open: (a) => `打开了 ${host(a.url)}`,
   browser_navigate: (a) => `前往 ${host(a.url)}`,
   browser_snapshot: () => "阅读了页面",
+  browser_evaluate: () => "在浏览器中执行了 JavaScript",
   browser_text: () => "阅读了文本",
   browser_click: (a) => `点击了 ${str(a.ref)}`,
   browser_type: (a) => `在 ${str(a.ref)} 中输入了内容`,

@@ -65,9 +65,10 @@ Each rule says how it is enforced. `[gate]` = a command fails; `[review]` = conv
 
 1. **One contract.** Every client↔core call is a method in `packages/protocol/src/methods.ts` handled through
    `apps/core/src/rpc/router.ts`. No second route into a handler (no ad-hoc HTTP endpoints, no direct
-   module calls from transports). The one listener outside it is the webhook listener (`apps/core/src/transport/hooks.ts`,
-   [D-139](rules/DECISIONS.md#d-139)): platforms that POST a channel's messages are no clients, and each channel's
-   `webhook()` verifies its platform's signature. `[review]`, `[gate]` types.
+   module calls from transports). The restricted public listener (`apps/core/src/transport/hooks.ts`,
+   [D-139](rules/DECISIONS.md#d-139), [Public ingress](rules/PUBLIC_INGRESS.md)) accepts only exact registered resources:
+   LINE/Teams POSTs verified by their native platform signature, token-scoped Flow events, and explicitly published
+   read-only widget pages/static kit. It never exposes a protocol client, panel, RPC or private artifact data. `[review]`, `[gate]` types.
 2. **Agents talk through one function.** Agent↔agent messaging is `threads.send` via the router; tools,
    terminal, routines and API all call it. Never add a parallel a2a path. `[review]`
 3. **Apps hold no domain logic.** terminal/web/desktop/mobile call the protocol; logic lives in `apps/core`.
@@ -86,7 +87,10 @@ Each rule says how it is enforced. `[gate]` = a command fails; `[review]` = conv
     data, never instructions; the owner's own agents speak for the owner ([D-071](rules/DECISIONS.md#d-071)). Strong
     actions (send or post as the owner, pay, write outside the owner's projects) need confirmation, except in total; the
     agent's own reads, edits and commands where it works do not ([D-106](rules/DECISIONS.md#d-106),
-    [D-108](rules/DECISIONS.md#d-108)). The embedded browser never types passwords or payment data. `[review]`
+    [D-108](rules/DECISIONS.md#d-108)). The embedded browser never types passwords or payment data. Reviewed arbitrary
+    JavaScript is an explicit owner-approved exception to mechanical field containment, not permission to handle
+    credentials; execution requires its card or explicit temporary tab/turn consent, with exact origin and current
+    document binding ([D-165](rules/DECISIONS.md#d-165)). Temporary consent never becomes a global tool grant. `[review]`
 11. **Secrets by reference** (`secret://…`), resolved only inside the handler; never in prompts, logs or traces.
     `[review]`
 12. **Never `assistant` role for observations**; cap size and detect binary on every tool result entering
@@ -164,7 +168,24 @@ Each rule says how it is enforced. `[gate]` = a command fails; `[review]` = conv
     assessments or known false docs, not a justified no-change result. See [D-159](rules/DECISIONS.md#d-159) and the
     [documentation impact contract](rules/WORKFLOW.md#documentation-impact-contract). `[review]`
 
-31. **Sync this fork through a merge branch.** Keep fork-only changes isolated and small, preserve `origin/master` as
+31. **Screens talk to the person, not about the code.** UI text says what the person can do, what happens and what
+    they must decide, in words they use. Never on screen: internal names (RPC, listener, route, bearer, payload,
+    module or method names), which integration a mechanism exists for, security caveats from reviews ("never the
+    panel or the API", "APX does not promise…"), or a fact another section of the same screen already shows. Those
+    belong in docs. Lists show what the person has, with one action each where it is needed.
+    [D-166](rules/DECISIONS.md#d-166). `[review]`
+
+32. **A screen nobody looked at is not done.** UI work starts from a reference (the owner's, the design system's or
+    a sketch the designer made) and ends with screenshots of the running build, desktop and phone width, reviewed by
+    the designer against it. A form or JSON field is not a stand-in for a requested visual experience
+    ([UI changes](rules/WORKFLOW.md#ui-changes)). `[review]`
+
+33. **A Flow change reaches the agent in the same change.** A new Flow or table method, step kind or field is usable
+    by the super-agent through `apx_flow` and explained in the `apx-flows` skill, or placed as the owner's with a reason
+    ([Agents reach it](rules/FLOWS.md#agents-reach-it), [D-181](rules/DECISIONS.md#d-181)). `[gate]`
+    `flow-tool.test.ts` for methods and step kinds; fields `[review]`.
+
+34. **Sync this fork through a merge branch.** Keep fork-only changes isolated and small, preserve `origin/master` as
     the release source, and integrate `upstream/main` by merge rather than rebasing or repeated cherry-picks. Follow
     [FORK_SYNC.md](rules/FORK_SYNC.md) before resolving overlaps or updating the fork. `[review]`
 
@@ -193,6 +214,7 @@ expected `code_sha`) and the changed path is exercised for real; anything not ex
 | How to verify | [`rules/TESTING.md`](rules/TESTING.md) |
 | Fixing a bug or repairing a failing test | [`rules/TESTING.md#fix-regression-contract`](rules/TESTING.md#fix-regression-contract) |
 | Adding to the prompt or a tool | [`rules/PROMPT_SIZE.md`](rules/PROMPT_SIZE.md) |
+| Adding periodic work (polling, reminders, a job on a timer) | [`rules/DECISIONS.md#d-171`](rules/DECISIONS.md#d-171): a background check set where it lives, not a routine |
 | Syncing the fork with upstream | [`rules/FORK_SYNC.md`](rules/FORK_SYNC.md) |
 | Product direction | `plan/01-arquitectura-v2.md`, `plan/00-plan-maestro.md` (maintainers' checkout) |
 | Design system | [`packages/ui/.design-sync/NOTES.md`](packages/ui/.design-sync/NOTES.md), `packages/ui/src/components/*.md` |

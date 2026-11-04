@@ -2,9 +2,12 @@
 // and the native questions it asks when the owner started it there: restart now or later.
 import { type BaseWindow, dialog, type MenuItemConstructorOptions, Notification } from "electron";
 import type { Lang } from "./lang.ts";
-import type { createDesktopUpdater, DesktopUpdate } from "./updater.ts";
+import type { createDesktopUpdater, DesktopUpdate, RestartAnswer } from "./updater.ts";
 
-type Updater = ReturnType<typeof createDesktopUpdater> & { automatic?(): boolean };
+type Updater = Omit<ReturnType<typeof createDesktopUpdater>, "restart"> & {
+  restart(): RestartAnswer | Promise<RestartAnswer>;
+  automatic?(): boolean;
+};
 
 const words = (lang: Lang, platform: string) => {
   const pick = (en: string, es: string, zh: string) => ({ en, es, zh })[lang];
@@ -84,7 +87,14 @@ export function createUpdateMenu(opts: { updater: Updater; window: BaseWindow; l
       defaultId: 0,
       cancelId: 1,
     });
-    if (response === 0) updater.restart();
+    if (response === 0) await restart();
+  }
+
+  /** Restarting quits APX; an answer back means it could not, and the owner is told why. */
+  async function restart(): Promise<void> {
+    const r = await updater.restart();
+    if (!r.ok)
+      await dialog.showMessageBox(window, { type: "warning", message: t.failed, detail: r.error, buttons: [t.ok] });
   }
 
   async function update(version: string): Promise<void> {
@@ -116,7 +126,7 @@ export function createUpdateMenu(opts: { updater: Updater; window: BaseWindow; l
         return {
           id: "update",
           label: updater.mode === "drag" ? `${t.openInstaller} (${s.ready})…` : t.restart(s.ready),
-          click: () => updater.restart(),
+          click: () => void restart(),
         };
       if (s.downloading && s.latest) return { id: "update", label: t.downloading(s.latest), enabled: false };
       const latest = s.latest;
