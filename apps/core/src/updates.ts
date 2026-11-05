@@ -1,17 +1,17 @@
 // Updates for an APX that runs from its source checkout or from an installed bundle. Every few hours it asks git
-// whether origin/master moved (a checkout) or the release feed whether a newer APX is out (a bundle, see updates-release.ts),
+// whether origin/master moved (a checkout) or the release feed whether a newer APX is out (a bundle, see packages/install/src/release.ts),
 // and on the owner's word it brings it in. A supervisor (`pnpm app`, the service) starts the core again with the new
 // code; without one the owner is told to restart.
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { type Platform, platformOf, type Release, releaseChanges } from "@apx/protocol";
+import { checkReleases, installRelease, type Runner, runningVersion } from "../../../packages/install/src/release.ts";
 import type { RunTimers } from "./engine/engine.ts";
 import { errorMessage } from "./errors.ts";
 import type { Log } from "./log.ts";
 import { FORK_MARK, isForkAuthor } from "./release-notes.ts";
 import { createUpdateCoordination } from "./update-coordination.ts";
-import { checkReleases, installRelease, runningVersion } from "./updates-release.ts";
 
 export type UpdateStatus = {
   /**
@@ -29,8 +29,7 @@ export type UpdateStatus = {
 };
 export type UpdateResult = { ok: boolean; restart: boolean; log: string; target?: string };
 
-/** Runs a command in the checkout; never throws (a failure is a non-zero code). */
-export type Runner = (cmd: string, args: string[], timeoutMs: number) => Promise<{ code: number; out: string }>;
+export type { Runner };
 
 const EVERY_MS = 6 * 3600_000;
 const FIRST_MS = 60_000;

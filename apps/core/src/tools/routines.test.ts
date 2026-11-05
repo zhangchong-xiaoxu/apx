@@ -52,7 +52,7 @@ after(async () => {
 const lastSeen = () => String(llm.calls.at(-1)?.messages.at(-1)?.content);
 
 async function ask(text: string, decision?: "approve" | "deny"): Promise<string> {
-  const thread = await env.client.call("threads.create", { kind: "loose", agent_id: "roby", title: "Routines" });
+  const thread = await env.client.call("threads.create", { kind: "loose", agent_id: "superagent", title: "Routines" });
   await env.client.call("threads.send", { thread: thread.id, text });
   if (decision) {
     const pending: Array<{ id: string; tool?: string | undefined }> = await inputsOrEnd(env.client, thread.id);
@@ -70,21 +70,27 @@ test("routine_list shows global and project routines with the id apx routines ta
   const { project } = await env.client.call("projects.create", { name: "Acme" });
   const global = await env.client.call("routines.set", {
     name: "weather-acme",
-    agent: "roby",
+    agent: "superagent",
     schedule: { kind: "cron", cron: "0 8 * * *" },
     prompt: "Say the weather",
   });
   const scoped = await env.client.call("routines.set", {
     name: "acme-digest",
-    agent: "roby",
+    agent: "superagent",
     project: project.id,
     schedule: { kind: "every", minutes: 60 },
     prompt: "Sum up the day",
     enabled: false,
   });
   const out = await ask("what routines do I have?");
-  assert.match(out, new RegExp(`- weather-acme \\[${global.id}\\] \\(agent roby, cron 0 8 \\* \\* \\*, on, next `));
-  assert.match(out, new RegExp(`- acme-digest \\[${scoped.id}\\] \\(agent roby, project Acme, every 60 min, off\\)`));
+  assert.match(
+    out,
+    new RegExp(`- weather-acme \\[${global.id}\\] \\(agent superagent, cron 0 8 \\* \\* \\*, on, next `),
+  );
+  assert.match(
+    out,
+    new RegExp(`- acme-digest \\[${scoped.id}\\] \\(agent superagent, project Acme, every 60 min, off\\)`),
+  );
 });
 
 test("routine_list with a name shows that routine's whole prompt", async () => {
@@ -100,11 +106,11 @@ test("routine_set creates a routine only once the owner says yes", async () => {
 
   assert.match(
     await ask("make a coffee reminder", "approve"),
-    /saved: - coffee \[rtn_\w+\] \(agent roby, every 90 min, on/,
+    /saved: - coffee \[rtn_\w+\] \(agent superagent, every 90 min, on/,
   );
   const coffee = await byName("coffee");
   assert.equal(coffee?.prompt, "Remind me to drink coffee");
-  assert.equal(coffee?.agent_id, "roby");
+  assert.equal(coffee?.agent_id, "superagent");
 });
 
 test("routine_set changes only what it is given, by name, and can run the routine now", async () => {
@@ -127,7 +133,7 @@ test("routine_set changes only what it is given, by name, and can run the routin
 test("routine commands are visible, owner-approved even in Total, preserved when omitted, and clearable", async () => {
   const original = {
     name: "pipeline-acme",
-    agent: "roby",
+    agent: "superagent",
     schedule: { kind: "manual" as const },
     prompt: "Summarize",
     pre_command: "echo before",
@@ -138,9 +144,13 @@ test("routine commands are visible, owner-approved even in Total, preserved when
   assert.match(shown, /pre_command:\necho before/);
   assert.match(shown, /post_command:\necho after/);
 
-  await env.client.call("agents.update", { agent: "roby", autonomy: "total" });
+  await env.client.call("agents.update", { agent: "superagent", autonomy: "total" });
   try {
-    const thread = await env.client.call("threads.create", { kind: "loose", agent_id: "roby", title: "Commands" });
+    const thread = await env.client.call("threads.create", {
+      kind: "loose",
+      agent_id: "superagent",
+      title: "Commands",
+    });
     await env.client.call("threads.send", { thread: thread.id, text: "change pipeline commands" });
     const [card] = await inputsOrEnd(env.client, thread.id);
     assert.equal(card?.tool, "routine_set");
@@ -160,7 +170,7 @@ test("routine commands are visible, owner-approved even in Total, preserved when
     assert.equal(changed?.prompt, original.prompt);
     assert.deepEqual(changed?.schedule, original.schedule);
   } finally {
-    await env.client.call("agents.update", { agent: "roby", autonomy: null });
+    await env.client.call("agents.update", { agent: "superagent", autonomy: null });
   }
 
   await ask("change pipeline prompt", "approve");
@@ -182,7 +192,7 @@ test("routine_set can create commands but rejects another agent's request to cha
   assert.equal(created?.post_command, "echo delivered");
   assert.equal(created?.enabled, false);
 
-  const thread = await env.client.call("threads.create", { kind: "loose", agent_id: "roby", title: "Delegated" });
+  const thread = await env.client.call("threads.create", { kind: "loose", agent_id: "superagent", title: "Delegated" });
   const agent = new ApxClient({ url: env.core.url, actor: "agent" });
   await agent.call("threads.send", { thread: thread.id, text: "change pipeline commands" });
   await env.settle(thread.id);

@@ -1,6 +1,7 @@
 // Methods behind the app screens: agents, projects, threads, surfaces.
 import { z } from "zod";
 import { composerMethods } from "./composer-methods.ts";
+import { CHANNEL_DEFAULTS } from "./constants.ts";
 import {
   Agent,
   AgentListing,
@@ -105,6 +106,12 @@ const Sent = z.object({
   delivery: z.object({ state: OutboxState, error: z.string().optional() }),
 });
 
+/**
+ * A message to the owner that did not go to a chat app: held for quiet hours, dropped by their notice budget, or kept
+ * in the app's tray because they chose to be told only in the app.
+ */
+const Withheld = z.object({ withheld: z.enum(["held", "dropped", "app_only"]) });
+
 const MemoryJobs = z.array(
   z.object({
     id: Id,
@@ -157,6 +164,8 @@ export const appMethods = {
           projects: z.number().int(),
         })
         .nullable(),
+      /** This APX's own home, where its data lives (as the owner knows it: ~/…). */
+      home: z.string(),
       /** The folder of this APX's command (apps/terminal), to put `apx` on the PATH from there. */
       terminal: z.string().optional(),
       /** APX v1's daemon still answers beside this one: routines and bots would run twice. */
@@ -256,10 +265,13 @@ export const appMethods = {
         z.object({
           id: z.string(),
           since: z.string(),
-          title: z.string(),
+          /** The owner's words (`about`: what they can do now), in English and Spanish: the panel shows its language. */
+          title: z.object({ en: z.string(), es: z.string() }),
+          about: z.object({ en: z.string(), es: z.string() }),
           seen: z.boolean(),
           applies: z.boolean(),
-          actions: z.array(z.string()),
+          /** `prompt`: what asking the super-agent for it says, as the owner's words. */
+          actions: z.array(z.object({ label: z.object({ en: z.string(), es: z.string() }), prompt: z.string() })),
         }),
       ),
     }),
@@ -1062,8 +1074,8 @@ export const appMethods = {
             owner_thread: z.enum(["home", "own"]).default("home"),
             self_owner: z.boolean().optional(),
             rooms: ChannelRooms.optional(),
-            closers: ChannelClosers.default("silent"),
-            research: ChannelResearch.default("owner"),
+            closers: ChannelClosers.default(CHANNEL_DEFAULTS.closers),
+            research: ChannelResearch.default(CHANNEL_DEFAULTS.research),
             hours: ChannelHours.optional(),
             email: ChannelEmail.optional(),
           })
@@ -1107,7 +1119,7 @@ export const appMethods = {
         files: z.array(Id).max(5).optional(),
       })
       .strict(),
-    result: Sent,
+    result: z.union([Sent, Withheld]),
     effect: true,
   },
   /**
@@ -1710,6 +1722,24 @@ export const appMethods = {
     params: z.object({ thread: Id, on: z.boolean() }).strict(),
     result: z.object({ on: z.boolean() }),
     effect: true,
+  },
+  /**
+   * Binds a chat to the Flow editor the owner has open: each of their turns there tells the agent which Flow it draws
+   * (or, while it isn't made, in which project), in the turn's input. `null` unbinds it.
+   */
+  "threads.flow_editor": {
+    params: z
+      .object({
+        thread: Id,
+        editor: z
+          .object({ project: Id, flow: z.string().min(1).max(100).optional() })
+          .strict()
+          .nullable(),
+      })
+      .strict(),
+    result: z.object({ ok: z.literal(true) }),
+    effect: true,
+    access: "human",
   },
   "threads.cancel": {
     params: z.object({ thread: Id }).strict(),

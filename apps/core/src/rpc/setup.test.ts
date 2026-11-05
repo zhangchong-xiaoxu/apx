@@ -7,7 +7,7 @@ import { fakeWhatsApp } from "../channels/fake-whatsapp.test-support.ts";
 import { whatsappAdapter } from "../channels/whatsapp.ts";
 import { say, scriptedLlm, startCore } from "../engine/testkit.ts";
 import { v1Schedule } from "../import/v1-setup.ts";
-import { realpath } from "../paths.ts";
+import { realpath, samePath } from "../paths.ts";
 import { removeDir } from "../testkit/platform.ts";
 
 let env: Awaited<ReturnType<typeof startCore>>;
@@ -250,6 +250,8 @@ after(async () => {
 test("the setup finds v1 and counts what it has, reading only real projects", async () => {
   const s = await env.client.call("setup.status", {});
   assert.equal(s.done, false);
+  // The home this core runs on, not one guessed from v1's.
+  assert.ok(samePath(s.home.replace(/^~/, os.homedir()), env.home), s.home);
   assert.equal(s.fresh, true);
   assert.deepEqual(
     { version: s.v1?.version, agent: s.v1?.agent_name, blob: s.v1?.agent_blob, projects: s.v1?.projects },
@@ -354,7 +356,7 @@ test("importing the identity brings who the owner is, the super-agent's personal
     language: "es",
     timezone: "America/Argentina/Buenos_Aires",
   });
-  const roby = await env.client.call("agents.get", { agent: "roby" });
+  const roby = await env.client.call("agents.get", { agent: "superagent" });
   assert.equal(roby.prompt, "Never book meetings before 10.");
   assert.deepEqual([roby.agent.name, roby.agent.blob, roby.agent.personality], ["Roby", "noche", "warm and direct"]);
   assert.equal(roby.agent.autonomy, "total", "v1's permission_mode: it acts without asking, as it did there");
@@ -364,8 +366,7 @@ test("importing the identity brings who the owner is, the super-agent's personal
   assert.equal(active.values.watch_every_h, 3);
   assert.equal(active.values.waiting_hours, 24);
   assert.equal(active.values.formality, "informal");
-  assert.equal(routines.filter((x) => x.enabled).length, 5, "v1's four, and important mail");
-  assert.ok(routines.some((x) => x.origin === "secretary:mail" && x.action === "mail"));
+  assert.equal(routines.filter((x) => x.enabled).length, 4, "v1's four");
   const notices = env.core.store.settings.read("notices");
   assert.deepEqual([notices.budget_per_day, notices.quiet_from, notices.quiet_to], [5, "22:00", "07:30"]);
   await env.client.call("profiles.set", { id: null, values: {} });

@@ -138,7 +138,7 @@ export const enTeam = {
   "agents.each": "Model and browser of each agent",
   "limits.title": "When agents work on their own",
   "limits.lead":
-    "Agents that delegate and answer each other without you pause after this much, counted since you last wrote in that chat. Write and they go on.",
+    "By default agents finish what you asked without stopping. If you want, set a cap on the turns or tokens they may use without you, counted since you last wrote in that chat; at the cap they pause and go on when you write.",
   "limits.runs": "Turns without you",
   "limits.runsHint": "Turns agents start on their own in one chat before they wait for you. Empty: no limit.",
   "limits.tokens": "Tokens without you",
@@ -146,11 +146,9 @@ export const enTeam = {
     "Fresh tokens those turns may spend before they wait for you, in thousands; what a provider reads from its cache does not count. Empty: no limit.",
   "limits.thousands": "thousand",
   "limits.none": "No limit",
-  "limits.off": "Remove the limits",
-  "limits.offHint": "Agents keep going on their own until they finish, however long it takes and whatever it costs.",
-  "limits.fanOut": "Ask before handing work to several agents",
-  "limits.fanOutHint":
-    "When the super-agent is about to give work to a third agent in one go, its tasks wait as proposals you pick from, and a question asks you first.",
+  "limits.on": "Set limits",
+  "limits.onHint": "Agents pause when they reach these and wait for you.",
+  "limits.offHint": "No limits: agents keep going until they finish what you asked, like a coding agent.",
   "agentedit.group.general": "General",
   "agentedit.group.abilities": "Abilities",
   "agentedit.group.permissions": "Permissions",
@@ -251,7 +249,7 @@ export const enTeam = {
   "agentedit.grantedRun": "{count} granted run without asking: {tools}.",
   "agentedit.leaveProjectTitle": "Stop using the project's rules?",
   "agentedit.leaveProjectBody":
-    "{name} uses the mode of {project} today. Changing a rule gives it rules of its own for every case: later changes to the project's mode will no longer reach it. You can go back to the project's in Permission mode.",
+    "{name} uses the mode of {project} today. Changing a rule makes that mode its own, with only this case changed: later changes to the project's mode will no longer reach it. You can go back to the project's at any time.",
   "agentedit.leaveProjectOk": "Use its own rules",
   "agentedit.ownRulesNote": "It uses its own rules. Changes to the project's mode do not reach it.",
   "agentedit.backToProject": "Use the project's again",
@@ -260,7 +258,7 @@ export const enTeam = {
   "agentedit.autonomyManualHint": "Asks your permission before every action that changes something.",
   "agentedit.autonomyAuto": "Auto",
   "agentedit.autonomyAutoHint":
-    "Reads anywhere and works in its project without asking. Asks only for messages, payments, deleting and writing outside.",
+    "Reads anywhere and works in its project without asking. Asks only for messages, payments, deleting and writing outside your projects.",
   "agentedit.autonomyAcceptEdits": "Accept edits",
   "agentedit.autonomyAcceptEditsHint": "Like Auto, and asks before any command that changes something.",
   "agentedit.autonomyPlan": "Plan",

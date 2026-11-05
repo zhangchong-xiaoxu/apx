@@ -16,6 +16,7 @@ const llm = scriptedLlm((req, { said, afterTool }) => {
   if (said.includes("find echo")) return callTool("s1", "mcp_search", { query: "echo text back" });
   if (said.includes("use echo")) return callTool("e1", "mcp_call", { tool: "mcp_notes_echo", args: { text: "hi" } });
   if (said.includes("use token")) return callTool("e2", "mcp_mine_token", {});
+  if (said.includes("echo it straight")) return callTool("d1", "mcp_notes_echo", { text: "from a contact" });
   return say("ok");
 });
 
@@ -53,7 +54,7 @@ after(async () => {
 
 const toolsSeen = () => (llm.calls.at(-1)?.tools ?? []).map((t) => t.function.name);
 const turn = async (text: string) => {
-  const t = await env.client.call("threads.create", { kind: "loose", agent_id: "roby", project_id: project });
+  const t = await env.client.call("threads.create", { kind: "loose", agent_id: "superagent", project_id: project });
   await env.client.call("threads.send", { thread: t.id, text });
   await env.settle(t.id, 15_000);
   return String(llm.calls.at(-1)?.messages.at(-1)?.content);
@@ -126,7 +127,7 @@ test("a secret inside text is resolved too, and the owner's server comes back as
 test("a project's own value reaches the owner's server only in that project's chats", async () => {
   await env.client.call("secrets.set", { name: "notes", value: "acme-only", project });
   assert.match(await turn("use token"), /token=acme-only leaked=no/);
-  const t = await env.client.call("threads.create", { kind: "loose", agent_id: "roby" });
+  const t = await env.client.call("threads.create", { kind: "loose", agent_id: "superagent" });
   await env.client.call("threads.send", { thread: t.id, text: "use token" });
   await env.settle(t.id, 15_000);
   assert.match(String(llm.calls.at(-1)?.messages.at(-1)?.content), /token=s3cret/);
@@ -154,7 +155,7 @@ test("an owner's server limited to a project runs only there, and its test uses 
   assert.deepEqual([here?.only, here?.project_id], [true, project]);
   const r = await env.client.call("mcp.test", { scope: "global", server: "scoped" });
   assert.equal(r.ok, true, r.error);
-  const t = await env.client.call("threads.create", { kind: "loose", agent_id: "roby" });
+  const t = await env.client.call("threads.create", { kind: "loose", agent_id: "superagent" });
   await env.client.call("threads.send", { thread: t.id, text: "hello" });
   await env.settle(t.id, 15_000);
   assert.ok(!toolsSeen().some((n) => n.startsWith("mcp_scoped_")), "not outside its project");
@@ -232,6 +233,32 @@ test("direct MCP calls obey project toggles and cannot be made by an agent", asy
   const { ApxClient } = await import("@apx/protocol/client");
   const agent = new ApxClient({ url: env.core.url, actor: "agent" });
   await assert.rejects(agent.call("mcp.call", { ...target, tool: "echo", arguments: { text: "blocked" } }), /reserved/);
+});
+
+test("a contact's turn never reaches an MCP tool, even one it names that is never offered to it", async () => {
+  const { store } = env.core;
+  await env.client.call("mcp.trust", { project, server: "notes", trusted: true });
+  const ana = store.persons.create({ name: "Ana", role: "contact" });
+  const chat = store.threads.create({
+    kind: "channel",
+    title: "Ana",
+    agent_ids: ["superagent"],
+    project_id: project,
+    channel: { id: "tg", conversation: "ana-1", person_id: ana.id },
+  });
+  env.core.engine.admit({
+    thread_id: chat.id,
+    agent_id: "superagent",
+    trigger: "channel",
+    origin: { kind: "channel", channel: "tg", conversation: "ana-1", person_id: ana.id, name: "Ana", role: "contact" },
+    text: "echo it straight",
+  });
+  await env.settle(chat.id, 15_000);
+  const steps = store.runs.list(chat.id, 5).flatMap((r) => store.runs.steps(r.id));
+  const call = steps.find((x) => x.tool === "mcp_notes_echo");
+  assert.notEqual(call?.state, "ok", "the tool did not run");
+  assert.ok(!(call?.result ?? "").includes("echo: from a contact"));
+  assert.deepEqual((await env.client.call("runs.pending", { thread: chat.id })).inputs, [], "nor was the owner asked");
 });
 
 test("a project's mcps.json saved with a BOM is read, and editing it keeps the file's other servers", async () => {

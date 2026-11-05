@@ -1,3 +1,4 @@
+import { textOrder } from "../format.ts";
 import type { Key } from "../i18n/index.ts";
 import type { IconName } from "../ui/Icon";
 import type { Tone } from "../ui/tone.ts";
@@ -49,7 +50,10 @@ export function inboxItems(data: Data): InboxItem[] {
       const { thread, name } = projectOf(input.thread_id);
       const notice = data.notices.find((item) => item.kind === "input" && item.ref === input.id);
       const confirm = input.kind === "confirm";
-      const scopes = confirm ? (input.approval_scopes ?? []) : [];
+      // Browser code must be reviewed in full in the chat, not approved from a truncated preview.
+      const reviewInChat =
+        input.tool === "browser_evaluate" || input.approval_scopes?.some((s) => s === "tab" || s === "turn");
+      const scopes = confirm && !reviewInChat ? (input.approval_scopes ?? []) : [];
       const more = [
         ...(scopes.includes("session")
           ? [
@@ -78,9 +82,11 @@ export function inboxItems(data: Data): InboxItem[] {
         body: input.detail,
         quote: input.options?.length ? input.options.join(" · ") : undefined,
         agentId: input.agent_id,
-        primary: confirm
-          ? { label: more.length ? "approveOnce" : "approve", action: { kind: "approve", input: input.id } }
-          : { label: "reply", action: { kind: "open", thread: input.thread_id } },
+        primary: reviewInChat
+          ? { label: "view", action: { kind: "open", thread: input.thread_id } }
+          : confirm
+            ? { label: more.length ? "approveOnce" : "approve", action: { kind: "approve", input: input.id } }
+            : { label: "reply", action: { kind: "open", thread: input.thread_id } },
         secondary: { label: "view", action: { kind: "open", thread: input.thread_id } },
         ...(more.length ? { more } : {}),
         notice,
@@ -89,7 +95,7 @@ export function inboxItems(data: Data): InboxItem[] {
   const notices = data.notices
     .filter((notice) => !notice.read_at && notice.kind !== "input")
     .map((notice) => noticeItem(notice, data, projectOf, ctx));
-  const byNewest = (a: InboxItem, b: InboxItem) => b.at.localeCompare(a.at);
+  const byNewest = (a: InboxItem, b: InboxItem) => textOrder(b.at, a.at);
   return [...inputs.sort(byNewest), ...notices.sort(byNewest)];
 }
 

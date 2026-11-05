@@ -19,6 +19,22 @@ Antes de crear otra tarea, los agentes tienen la instrucción de revisar las tar
 existente si ya cubre el mismo trabajo o uno muy relacionado. No es una detección automática de duplicados.
 Para una tarea que cambia código, mirá [dónde va ese trabajo](/es/office/code/#dónde-una-tarea-cambia-código).
 
+## Registrar versus empezar el trabajo
+
+Si pedís una acción, el agente debe hacerla con sus herramientas o pasarla una sola vez al especialista necesario,
+no reemplazar el resultado por movimientos del tablero. Un trabajo largo puede tener una tarea como seguimiento
+interno, pero debe arrancar y devolver un resultado o un bloqueo concreto.
+
+Para registrar una idea sin empezar a trabajar, pedí una tarea solo de captura y dejala **sin asignar**. Una tarea
+con responsable y descripción inicia su propia sesión, salvo que sea propuesta, esté programada para después o
+esté pausada por límites de agentes. Asignar y delegar son alternativas para arrancar, no dos pasos que haya que
+hacer juntos. Dentro de un mismo turno (incluida la recuperación tras un reinicio), APX impide mezclar ejecución por
+tarea y delegación al mismo agente y proyecto, aunque cambie la redacción. Un trabajo realmente distinto puede usar
+la opción explícita `independent` de la herramienta de delegación y un pedido que nombre el resultado separado; no
+sirve para reintentos ni para el mismo objetivo. Esa distinción queda registrada en el turno delegado. La protección
+no detecta duplicados semánticos entre chats o turnos posteriores, ni puede verificar que el agente tenga razón al
+declarar que son trabajos independientes.
+
 ## Qué tiene una tarea
 
 | Campo | Valores |
@@ -83,13 +99,14 @@ dónde leerlo.
 
 <Shot name="task-drawer" alt="Una tarea abierta en su panel: título, responsable, prioridad y una conversación con comentarios del dueño y de un agente" caption="El panel de una tarea: comentarios, campos y el chat de trabajo" />
 
-Las tareas asignadas que nunca arrancaron se retoman solas: una vez por hora, las más urgentes se ponen en marcha.
+Las tareas asignadas que nunca arrancaron se retoman solas: una vez por hora, las más urgentes se ponen en marcha,
+como de quien las dio: una tarea que dio un agente cuenta para los límites de ese agente, nunca como un pedido tuyo.
 Para que una arranque más tarde (mañana a la mañana, después de una salida a producción), poné **Empieza** en su
 panel, o `apx tasks add … --start 2026-10-23T09:00`: su agente arranca a esa hora, no cuando la asignás.
 
 ### Pasar el trabajo actual a una tarea
 
-**En la rama de desarrollo posterior a 2.11.0**, cuando un agente se asigna de inmediato su trabajo actual como
+**Desde 2.11.1**, cuando un agente se asigna de inmediato su trabajo actual como
 una tarea nueva, APX transfiere la ejecución al chat de la tarea. El turno original deja de ejecutar herramientas;
 el chat de la tarea recibe un resumen acotado del pedido y los hallazgos recientes para seguir sin repetir la
 investigación. Esto no impide otros chats paralelos con trabajo distinto. Si el turno ya tiene ayudantes u otro
@@ -110,9 +127,17 @@ como una tarjeta con la pregunta y la respuesta, y la respuesta le vuelve al age
 trabajo. Un comentario pregunta a dos compañeros como mucho, y el que responde una consulta no puede preguntarle a
 nadie más. Un agente también te puede mencionar a vos para llamarte la atención.
 
+### Un agente trabaja una tarea hasta terminarla
+
+Cuando el turno de un agente en una tarea termina con la tarea todavía en curso (se quedó sin pasos, o frenó en "sigo
+después"), su parte siguiente arranca enseguida, numerada, hasta nueve. Para cuando el agente cierra la tarea, la marca
+esperándote con lo que tenés que hacer, dice qué lo bloquea, o cuando una parte no avanzó. Para cerrar su trabajo como
+hecho, el agente tiene que decir qué verificó.
+
 ### Cuando se cierra la tarea de un agente
 
-Una tarea que un agente creó y le dio a otro avisa cuando se cierra. Tu agente principal puede pasarle un objetivo
+Una tarea que un agente creó y le dio a otro avisa cuando se cierra. Tu agente principal se entera de cada tarea que
+cierra su equipo, también las que diste vos u otro agente, y te cuenta cómo salió. Tu agente principal puede pasarle un objetivo
 entero al orquestador de un proyecto como tarea; cuando el orquestador la cierra, horas y reinicios después, tu agente
 principal recibe su informe en el chat donde creó la tarea y te cuenta lo que importa. Si la cerrás vos, o un agente
 cierra la suya, no se despierta a nadie. Ese turno cuenta para los [turnos que los agentes arrancan solos sin
@@ -145,15 +170,18 @@ rol reparte lo crea y lo arranca; el resto lo **propone**. Una tarea propuesta e
 propuso, hasta que la aceptás (arranca como cualquier tarea asignada) o la descartás. Te llega un aviso por agente con
 cuántas tiene esperando.
 
-Algunas tareas son propuestas pida lo que pida el agente:
+Algunas tareas son propuestas pida lo que pida el agente. Cuando le pedís a tu superagente varias cosas sin decir cómo, primero
+te pregunta (un plan, una tarea por cada una o hacerlo él); si ya le dijiste cómo, sigue sin preguntar.
 
-- **Un reparto amplio.** Cuando un agente reparte tareas a un tercer agente o más en un mismo turno (Roby dividiendo
-  "revisá todos los servicios por vulnerabilidades de PHP" en una tarea por servicio), quedan propuestas, así elegís
-  cuáles siguen. El interruptor **Preguntar antes de repartir trabajo entre varios agentes** (Equipo, en **Cuando los agentes trabajan solos**) lo apaga.
+Las propuestas:
+
 - **Una cadena de tres pases.** Una subtarea de una subtarea de una subtarea queda propuesta, así los agentes no siguen
   pasándose trabajo solos.
 - **Trabajo devuelto hacia arriba.** Una subtarea para un agente que creó una de las tareas de arriba queda propuesta,
   así dos agentes no se pasan el mismo trabajo de ida y vuelta.
+
+Lo mismo pasa cuando un agente le pasa una tarea que ya existe a otro agente: si darla nueva la volvería propuesta, el
+pase también queda propuesto y arranca cuando lo aceptás.
 
 ## Compromisos
 

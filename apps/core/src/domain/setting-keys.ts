@@ -5,8 +5,11 @@ import {
   AgentBudgets,
   AgentLimits,
   BaseProject,
+  CALENDAR_LEAD,
+  CHECK_EVERY,
   ChannelInfo,
   EmailSignatures,
+  EmailSignatureValue,
   HookMode,
   ImageDefaults,
   MemorySettings,
@@ -66,6 +69,7 @@ const Channel = ChannelInfo.omit({ token_set: true, token_hint: true, status: tr
 
 export const SETTINGS = {
   email_signatures: entry(EmailSignatures, []),
+  email_signature_default: entry(EmailSignatureValue.nullable(), null),
   engine_usage: entry(z.record(z.string(), z.boolean()), {}),
   project_helper: entry(
     z.record(
@@ -86,8 +90,6 @@ export const SETTINGS = {
    * the budgets the owner gave single agents, inside those limits.
    */
   agent_limits: entry(AgentLimits.partial().extend({ agents: AgentBudgets.optional() }), {}),
-  /** The super-agent asks before handing work to several agents in one turn (engine/fan-out.ts). */
-  fan_out_ask: entry(z.boolean(), true),
   /**
    * The quick chat's shortcut, start at login (on: APX is meant to be always there) and whether agents may use this
    * computer's screen (off until the owner turns it on); each field falls back alone.
@@ -112,6 +114,27 @@ export const SETTINGS = {
   base_project: entry(BaseProject, { name: "Default" }),
   /** The base project's areas and roles (a real project keeps them in its .apc/organization.json). */
   base_org: entry(Organization, { areas: [], roles: [] }),
+  /**
+   * Google Calendar's event reminders: off, 30 minutes ahead and looked at every 5 minutes until the owner chooses;
+   * each field falls back alone.
+   */
+  calendar_reminders: entry(
+    z.object({
+      enabled: z.boolean().catch(false),
+      lead_min: z.number().int().min(CALENDAR_LEAD.min).max(CALENDAR_LEAD.max).catch(CALENDAR_LEAD.default),
+      every_min: z.number().int().min(CHECK_EVERY.min).max(CHECK_EVERY.max).catch(CHECK_EVERY.default),
+    }),
+    { enabled: false, lead_min: CALENDAR_LEAD.default, every_min: CHECK_EVERY.default },
+  ),
+  /** Gmail's mail check: off, every 5 minutes, any mail outside ads and social until the owner chooses. */
+  mail_check: entry(
+    z.object({
+      enabled: z.boolean().catch(false),
+      every_min: z.number().int().min(CHECK_EVERY.min).max(CHECK_EVERY.max).catch(CHECK_EVERY.default),
+      important_only: z.boolean().catch(false),
+    }),
+    { enabled: false, every_min: CHECK_EVERY.default, important_only: false },
+  ),
   /** The profile the super-agent runs and the owner's values for it (none until the owner picks one). */
   profile: entry(ActiveProfile, { id: null, values: {} }),
   /**
@@ -159,7 +182,7 @@ export const SETTINGS = {
   services_offered: entry(z.array(z.string()).catch([]), []),
   channels: entry(listOf(Channel), []),
   /**
-   * The public address for channels' webhooks the owner chose (webhooks.ts), applied again at every start, and the
+   * The restricted public ingress address the owner chose (public-tunnel.ts), applied again at every start, and the
    * last address ngrok gave (a new one is pointed out to the owner).
    */
   webhooks: entry(

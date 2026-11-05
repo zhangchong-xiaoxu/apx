@@ -1,5 +1,5 @@
 // The built-in loop's limits: a browser session looks again as often as it needs and gets more steps than a plain
-// turn; the same call with the same result three times is still stuck.
+// turn; the same call again and again in a row is reminded first and stuck only at the eighth.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { callTool, say, scriptedLlm } from "../engine/testkit.ts";
@@ -60,8 +60,38 @@ test("reading the same page part is stuck only while it says the same", async ()
   assert.deepEqual(notes(changing.seen), []);
 
   const same = await turn((done) => (done >= 5 ? say("read it") : callTool(`r${done}`, "browser_text", { tab: "t1" })));
-  assert.equal(same.ran.length, 3, "tools go off after the third identical read");
-  assert.match(String(notes(same.seen)[0]), /browser_text with the same arguments 3 times/);
+  assert.equal(same.ran.length, 5, "reminded, never cut, before the eighth");
+  assert.deepEqual(
+    notes(same.seen).map(
+      (n) => /same arguments (\d+) times in a row\. If it is not getting you closer/.exec(String(n))?.[1],
+    ),
+    ["3", "5"],
+  );
+});
+
+test("the same call eight times in a row is stuck: tools go off and the turn answers", async () => {
+  const { out, ran, seen } = await turn((done) =>
+    // Keys in another order are still the same call.
+    callTool(`x${done}`, "memory_search", done % 2 ? { query: "q", limit: 5 } : { limit: 5, query: "q" }),
+  );
+  assert.equal(ran.length, 8);
+  assert.equal(out.text, "no tools left");
+  assert.match(
+    String(notes(seen).at(-1)),
+    /memory_search with the same arguments 8 times in a row\. Stop calling tools/,
+  );
+});
+
+test("the same call between others is not a repeat: work that comes back to a read is not stuck", async () => {
+  const { ran, seen } = await turn((done) =>
+    done >= 12
+      ? say("done")
+      : done % 2
+        ? callTool(`w${done}`, "file_write", { path: `f${done}.txt`, content: "x" })
+        : callTool(`r${done}`, "file_read", { path: "notes.md" }),
+  );
+  assert.equal(ran.length, 12);
+  assert.deepEqual(notes(seen), []);
 });
 
 test("a turn without the browser or the screen still ends at its own step limit", async () => {
@@ -115,6 +145,35 @@ test("malformed tool JSON is returned to the model without executing the tool", 
     String(seen.find((message) => message.role === "tool")?.content),
     /invalid JSON arguments for tool file_write/,
   );
+});
+
+test("different malformed arguments do not count as repeated calls", async () => {
+  const { out, ran, seen } = await turn((done) => {
+    if (done >= 8) return say("recovered");
+    const broken = callTool(`bad${done}`, "file_write", {});
+    const call = broken.message.tool_calls?.[0];
+    assert.ok(call);
+    call.function.arguments = `{"path":"file${done}"`;
+    return broken;
+  });
+  assert.equal(out.text, "recovered");
+  assert.deepEqual(ran, []);
+  assert.equal(toolResults(seen), 8);
+  assert.deepEqual(notes(seen), []);
+});
+
+test("the same malformed arguments are still recognized as repeated calls", async () => {
+  const { out, ran, seen } = await turn((done) => {
+    const broken = callTool(`bad${done}`, "file_write", {});
+    const call = broken.message.tool_calls?.[0];
+    assert.ok(call);
+    call.function.arguments = '{"path":"file"';
+    return broken;
+  });
+  assert.equal(out.text, "no tools left");
+  assert.deepEqual(ran, []);
+  assert.equal(toolResults(seen), 8);
+  assert.match(String(notes(seen).at(-1)), /file_write with the same arguments 8 times in a row/);
 });
 
 test("truncated tool calls are discarded and retried before execution", async () => {

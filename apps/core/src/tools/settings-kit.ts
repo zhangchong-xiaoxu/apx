@@ -1,10 +1,12 @@
-// What a setting of apx_settings is made of, and the lookups its cards share: every record named as the owner names
+// What a method of apx_settings and apx_flow is made of, and the lookups its cards share: every record named as the owner names
 // it in the panel, never by a bare id. The areas are settings-people.ts, settings-team.ts and settings-work.ts.
 
+import type { z } from "zod";
 import type { TemplateRoot } from "../apc/templates.ts";
 import type { Store } from "../domain/store.ts";
 import type { ProfileRoot } from "../engine/profiles.ts";
 import { inlineName } from "./result.ts";
+import type { ToolContext } from "./types.ts";
 
 export type Params = Record<string, unknown>;
 
@@ -24,7 +26,10 @@ export type Setting = {
   says?: (p: Params, d: SettingsDeps) => string;
   /** The params that first line already says (the record it names), left off the lines under it. */
   named?: readonly string[];
-  /** A field the owner reads in words, not as before → after, by its path ("channel.hours"); undefined: it is dropped. */
+  /**
+   * A field the owner reads in words, not as before → after, by its path ("channel.hours"); undefined: it is dropped;
+   * "": the first line already says it.
+   */
   words?: Readonly<Record<string, (v: unknown, d: SettingsDeps) => string>>;
   /** The record as it is now, so the card shows each field before and after, and an equal one asks nobody. */
   now?: (p: Params, d: SettingsDeps) => Params | undefined;
@@ -36,8 +41,24 @@ export type Setting = {
   refuse?: (p: Params, d: SettingsDeps) => string | undefined;
   /** What the agent reads back once it ran (default: the method's result). */
   shows?: (result: unknown) => string;
+  /**
+   * Run as the owner, once they approved the card, when one call is not enough (publish then turn on): what the agent
+   * reads back. Without it, the method itself runs with the params `keep` fills.
+   */
+  owner?: (p: Params, d: SettingsDeps, call: NonNullable<ToolContext["callAsOwner"]>) => Promise<string>;
   /** Its card shows every value whole: a cut could hide what it runs or where a key goes. */
   whole?: true;
+  /**
+   * Run as the agent's own call through the router, not as the owner's: a Flow's drawing, which runs nothing until the
+   * owner publishes it. `confirm`: `untrusted` asks the owner only while outside content is in the turn (a change, or
+   * a read that hands back a whole drawing); `reads` names it a look (DECISIONS.md#d-174).
+   */
+  own?: {
+    reads?: true;
+    confirm: "never" | "untrusted";
+    args: z.ZodType;
+    run: (p: Params, d: SettingsDeps, ctx: Pick<ToolContext, "call" | "upsertPart">) => Promise<string>;
+  };
 };
 
 export const str = (v: unknown) => (typeof v === "string" ? v : "");

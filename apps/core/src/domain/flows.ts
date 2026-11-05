@@ -1,0 +1,251 @@
+import type { FlowGraph } from "@apx/protocol/flow-graph";
+import { FlowDefinition as Definition } from "@apx/protocol/flow-methods";
+import { flowPathOf, flowPathProblem, freeFlowPath } from "@apx/protocol/flow-path";
+import type { Db } from "../db/db.ts";
+import { redactedJson } from "../log.ts";
+import { firstFailedPredicate, matchesFlowPredicates } from "./flow-evaluate.ts";
+import { checkFlowCapacity, FlowCapacityError, flowEventsRepo } from "./flow-events.ts";
+import {
+  type FlowEventSource,
+  FlowGraphUnavailable,
+  FlowTriggerMismatch,
+  flowGraphsRepo,
+  hasPublishedFlowGraph,
+} from "./flow-graphs.ts";
+import { checkFlowIdentifier, retireFlow } from "./flow-retirement.ts";
+import { sql } from "./sql.ts";
+
+export type FlowDefinition = Definition;
+const MAX_EVENTS = 10000;
+const MAX_ROWS = 1000;
+const jsonValue = (value: unknown) => {
+  const text = JSON.stringify(value);
+  if (text === undefined || Buffer.byteLength(text) > 32768) throw new Error("Flow value exceeds 32 KiB");
+  return redactedJson(value);
+};
+type SavedFlow = {
+  id: string;
+  project_id: string;
+  name: string;
+  enabled: number;
+  predicates: string;
+  table_key: string;
+  action: string;
+  read_keys: string;
+  path: string;
+};
+const definition = (row: SavedFlow) =>
+  Definition.parse({
+    id: row.id,
+    projectId: row.project_id,
+    name: row.name,
+    enabled: Boolean(row.enabled),
+    predicates: JSON.parse(row.predicates),
+    tableKey: row.table_key,
+    action: JSON.parse(row.action),
+    readKeys: JSON.parse(row.read_keys),
+    path: row.path,
+  });
+
+/** Another Flow's address is this one (or would read as it, case aside). */
+const pathTaken = (db: Db, path: string, flow?: string) =>
+  Boolean(db.prepare("SELECT 1 FROM flows WHERE lower(path)=lower(?) AND id IS NOT ?").get(path, flow ?? null));
+/** A path the owner chose, refused when it is not one or another Flow has it. */
+export class FlowPathError extends Error {
+  readonly problem: "taken" | "invalid" | "reserved";
+  constructor(problem: "taken" | "invalid" | "reserved") {
+    super(`Flow path ${problem}`);
+    this.problem = problem;
+  }
+}
+function checkNewPath(db: Db, path: string, flow: string) {
+  const problem = flowPathProblem(path) ?? (pathTaken(db, path, flow) ? "taken" : undefined);
+  if (problem) throw new FlowPathError(problem);
+}
+
+/** A published Flow keeps its old definition as history: only its name and switch change. */
+function onlyNameOrSwitch(db: Db, flow: FlowDefinition): boolean {
+  const row = db.prepare("SELECT * FROM flows WHERE id=?").get(flow.id) as SavedFlow | undefined;
+  if (!row) return false;
+  const kept = (f: FlowDefinition) =>
+    JSON.stringify([f.projectId, f.predicates, f.tableKey, f.action, f.readKeys ?? []]);
+  return kept(definition(row)) === kept(flow);
+}
+
+export function saveFlow(db: Db, value: FlowDefinition): void {
+  const flow = Definition.parse(value);
+  checkFlowIdentifier(db, flow.id);
+  const saved = db.prepare("SELECT path FROM flows WHERE id=?").get(flow.id) as { path: string } | undefined;
+  // A new Flow's address comes from its name unless the owner chose one; a saved one keeps its own until renamed.
+  const path = flow.path ?? saved?.path ?? freeFlowPath(flowPathOf(flow.name), (p) => pathTaken(db, p, flow.id));
+  if (path !== saved?.path) checkNewPath(db, path, flow.id);
+  if (hasPublishedFlowGraph(db, flow.id) && !onlyNameOrSwitch(db, flow))
+    throw new FlowGraphUnavailable("Published graph configuration cannot be replaced by a legacy definition");
+  if (redactedJson(flow) !== JSON.stringify(flow))
+    throw new Error("Flow definitions must use secret references, not credentials");
+  matchesFlowPredicates({}, flow.predicates);
+  const result = db
+    .prepare(`INSERT INTO flows(id, project_id, name, enabled, predicates, table_key, action, read_keys, path) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET name=excluded.name, enabled=excluded.enabled, predicates=excluded.predicates, table_key=excluded.table_key, action=excluded.action, read_keys=excluded.read_keys, path=excluded.path
+    WHERE flows.project_id=excluded.project_id`)
+    .run(
+      flow.id,
+      flow.projectId,
+      flow.name,
+      Number(flow.enabled),
+      JSON.stringify(flow.predicates),
+      flow.tableKey,
+      JSON.stringify(flow.action),
+      JSON.stringify(flow.readKeys ?? []),
+      path,
+    );
+  if (!result.changes) throw new Error("Flow belongs to another project");
+  // Off, a schedule owes nothing: turned on again, it counts from then.
+  if (!flow.enabled) db.prepare("DELETE FROM flow_schedules WHERE flow_id=?").run(flow.id);
+}
+
+export function flowsRepo(db: Db) {
+  const tx = sql(db).tx;
+  const graphs = flowGraphsRepo(db);
+  const api = {
+    get(id: string): FlowDefinition | undefined {
+      const row = db.prepare("SELECT * FROM flows WHERE id=?").get(id) as SavedFlow | undefined;
+      return row ? definition(row) : undefined;
+    },
+    /** The Flow whose public address is `/flows/<path>`. */
+    byPath(path: string): FlowDefinition | undefined {
+      const row = db.prepare("SELECT * FROM flows WHERE path=?").get(path) as SavedFlow | undefined;
+      return row ? definition(row) : undefined;
+    },
+    /** Whether `flow` (or a new Flow, without one) could take this path, and the first free one from it. */
+    pathCheck(path: string, flow?: string) {
+      const problem = flowPathProblem(path) ?? (pathTaken(db, path, flow) ? ("taken" as const) : undefined);
+      const base = flowPathProblem(path) ? flowPathOf(path) : path;
+      return { ok: !problem, problem: problem ?? null, free: freeFlowPath(base, (p) => pathTaken(db, p, flow)) };
+    },
+    /** A new address: the old one stops answering. Undefined when the Flow is gone. */
+    setPath(id: string, path: string): FlowDefinition | undefined {
+      return tx(() => {
+        const flow = api.get(id);
+        if (!flow) return undefined;
+        if (flow.path === path) return flow;
+        checkNewPath(db, path, id);
+        db.prepare("UPDATE flows SET path=? WHERE id=?").run(path, id);
+        return api.get(id);
+      });
+    },
+    list(project?: string): FlowDefinition[] {
+      const rows =
+        project === undefined
+          ? db.prepare("SELECT * FROM flows ORDER BY id LIMIT 1000").all()
+          : db.prepare("SELECT * FROM flows WHERE project_id=? ORDER BY id LIMIT 1000").all(project);
+      return (rows as SavedFlow[]).map(definition);
+    },
+    save(flow: FlowDefinition) {
+      if (!api.get(flow.id) && Number(db.prepare("SELECT count(*) AS n FROM flows").get()?.n) >= 1000)
+        throw new Error("Too many flows");
+      saveFlow(db, flow);
+      return api.get(flow.id) as FlowDefinition;
+    },
+    rows(id: string, limit: number, cursor = "") {
+      return db
+        .prepare("SELECT key,value FROM flow_rows WHERE flow_id=? AND key>? ORDER BY key LIMIT ?")
+        .all(id, cursor, limit)
+        .map((r) => ({ key: String(r.key), value: JSON.parse(String(r.value)) as unknown }));
+    },
+    /** The rows saved under these keys; keys with no row are left out. */
+    readRows(id: string, keys: readonly string[]): Record<string, unknown> {
+      return Object.fromEntries(
+        keys.flatMap((key) => {
+          const row = db.prepare("SELECT value FROM flow_rows WHERE flow_id=? AND key=?").get(id, key);
+          return row ? [[key, JSON.parse(String(row.value)) as unknown]] : [];
+        }),
+      );
+    },
+    rowsPage(id: string, limit: number, cursor?: string) {
+      const found = api.rows(id, limit + 1, cursor);
+      const rows = found.slice(0, limit);
+      return { rows, nextCursor: found.length > limit ? (rows.at(-1)?.key ?? null) : null };
+    },
+    write(id: string, key: string, value: unknown) {
+      if (!key || key.length > 128 || redactedJson(key) !== JSON.stringify(key))
+        throw new Error("Invalid flow row key");
+      const text = jsonValue(value);
+      const exists = db.prepare("SELECT 1 FROM flow_rows WHERE flow_id=? AND key=?").get(id, key);
+      if (!exists && Number(db.prepare("SELECT count(*) AS n FROM flow_rows WHERE flow_id=?").get(id)?.n) >= MAX_ROWS)
+        throw new FlowCapacityError("Flow table is full");
+      if (!exists && Number(db.prepare("SELECT count(*) AS n FROM flow_rows").get()?.n) >= 10000)
+        throw new FlowCapacityError("Flow tables are full");
+      db.prepare(
+        "INSERT INTO flow_rows(flow_id,key,value) VALUES (?,?,?) ON CONFLICT(flow_id,key) DO UPDATE SET value=excluded.value",
+      ).run(id, key, text);
+      return { written: true };
+    },
+    ...flowEventsRepo(db),
+    retire: (id: string) => retireFlow(db, id),
+    /**
+     * A published Flow admits the event for its graph (pinned to the revision published now, `authorize` checking
+     * its bindings); any other runs the legacy definition. Either way in one transaction with the dedup.
+     */
+    receive(
+      flowId: string,
+      eventId: string,
+      payload: unknown,
+      authorize?: (graph: FlowGraph) => void,
+      at = new Date(),
+      from: FlowEventSource = { source: "webhook" },
+      headers?: Record<string, string>,
+    ): "duplicate" | "ignored" | "written" | "pending" {
+      if (!eventId || eventId.length > 256 || redactedJson(eventId) !== JSON.stringify(eventId))
+        throw new Error("Invalid event id");
+      const value = jsonValue(payload);
+      const data: unknown = JSON.parse(value);
+      return tx(() => {
+        const flow = api.get(flowId);
+        if (!flow?.enabled) throw new Error("Flow not found or disabled");
+        if (hasPublishedFlowGraph(db, flowId)) {
+          if (!authorize) throw new FlowGraphUnavailable("Graph admission needs its binding check");
+          return graphs.admit(flowId, eventId, payload, at, authorize, from, headers).state;
+        }
+        // Only a drawing runs on a schedule or by hand; a legacy definition takes POSTs alone.
+        if (from.source !== "webhook") throw new FlowTriggerMismatch("The Flow does not start that way");
+        if (db.prepare("SELECT 1 FROM flow_events WHERE flow_id=? AND event_id=?").get(flowId, eventId))
+          return "duplicate";
+        if (Number(db.prepare("SELECT count(*) AS n FROM flow_events WHERE flow_id=?").get(flowId)?.n) >= MAX_EVENTS)
+          throw new FlowCapacityError("Flow event history is full");
+        if (Number(db.prepare("SELECT count(*) AS n FROM flow_events").get()?.n) >= 10000)
+          throw new FlowCapacityError("Flow event history is full");
+        const object =
+          data !== null && typeof data === "object" && !Array.isArray(data) && Object.keys(data).length > 0;
+        const failed = object ? firstFailedPredicate(data, flow.predicates) : -1;
+        const matches = object && failed === -1;
+        const state = !matches ? "ignored" : flow.action.kind === "none" ? "written" : "pending";
+        if (state === "pending") checkFlowCapacity(db, flowId);
+        const reads = matches
+          ? (flow.readKeys ?? []).map((key) => {
+              const row = db.prepare("SELECT value FROM flow_rows WHERE flow_id=? AND key=?").get(flowId, key);
+              return { key, value: row ? (JSON.parse(String(row.value)) as unknown) : null };
+            })
+          : [];
+        const snapshot = reads.length ? jsonValue({ event: data, rows: reads }) : value;
+        if (matches) api.write(flowId, flow.tableKey, data);
+        db.prepare(
+          "INSERT INTO flow_events(flow_id,event_id,state,created_at,payload,action,stopped_at) VALUES (?,?,?,?,?,?,?)",
+        ).run(
+          flowId,
+          eventId,
+          state,
+          at.toISOString(),
+          state === "pending" ? snapshot : null,
+          JSON.stringify(flow.action),
+          failed === -1 ? null : failed,
+        );
+        return state;
+      });
+    },
+  };
+  return api;
+}
+
+export const receiveFlowEvent = (db: Db, flow: string, event: string, payload: unknown) =>
+  flowsRepo(db).receive(flow, event, payload);

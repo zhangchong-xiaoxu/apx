@@ -51,7 +51,15 @@ operation; preparation never blocks creation or ordinary chat.
 Node capabilities (`browser.*`): the handler is `apps/core/src/rpc/browser.ts`, which asks
 `apps/core/src/nodes/broker.ts` to send the same method + params to the connected desktop over its socket; the
 desktop executes it in `apps/desktop/src/main/browser/host.ts` (re-validating params and tab control) and the
-core validates the answer against the registry. No desktop connected → `unavailable` immediately.
+core validates the answer against the registry. Without a desktop node, the core can use its own headless Chromium.
+
+Browser JavaScript approval uses the same tool executor and input cards. A dynamic approval target obtains a trusted
+`browser.approval_context` through the router, validating the current snapshot's document and exact origin. The core
+binds that opaque page epoch to the active browser connection before offering once/tab/turn scopes. Tab and turn
+consents live only in `domain/browser-consents.ts`, surfaced through the existing `tools.approvals`/`tools.revoke` methods;
+normal durable tool grants cannot authorize them. The browser validates the page epoch again before executing immutable
+source. Navigation and reload retire tab consent; turn consent is limited to its active run and approved exact origin.
+Both are agent/chat scoped and revocable. Tab consent is capped at 30 minutes; turn consent ends with its run, without an additional consent timeout. See [D-165](DECISIONS.md#d-165).
 
 The registry is `packages/protocol/src/methods.ts`. Adding a method = registry entry + handler; every client
 gets the types. There is no other way into a handler.
@@ -63,6 +71,39 @@ Only its successful, non-skipped post phase receives a short-lived capability fo
 secret through encrypted storage and reuses the email channel's SMTP implementation. Daily receipts persist
 in settings; uncertain deliveries block retries until the owner checks the recipient and calls
 `routines.mail_retry`. The capability is revoked after post and is not an operating-system sandbox.
+
+The restricted public listener (`transport/hooks.ts`) is a different boundary from the private daemon. One shared
+public tunnel (`public-tunnel.ts`, controlled by the existing `webhooks.*` methods) exposes only exact registered routes:
+LINE/Teams POSTs with native HMAC/JWT verification, registered Flow POSTs with independently rotatable route credentials,
+and explicitly published widget GET/HEAD pages plus the static kit. `public_routes.*` manages credentials through the
+private owner-only router; values live in Secrets and only references enter SQLite/idempotency replies. Public widget
+pages receive HTML, not saved state, stores, private media or actions, and a restrictive opaque-sandbox CSP prevents
+connections back into APX. See [Public ingress](PUBLIC_INGRESS.md) for limits, publication and rollback.
+
+Webhook-only Flows (`flows.ts`, `domain/flows.ts`) enter on protected `/flows/<id>` routes, commit event deduplication,
+fixed action/read snapshots and table writes before accepting, then use the existing router's `threads.send` or
+`routines.run` admission. The admitted run and event linkage share a transaction. Startup and run-completion events
+resume pending work; no cron or periodic model call is added. Owner-only `flows.*` methods serve the global sidebar's Flows screen (all projects or one project filter),
+the CLI and approved super-agent settings. Agent events stay external/untrusted; routines must be manual-only in the
+same project. See [Flows](FLOWS.md) for bounds, retry semantics and deployment.
+
+Drawn graphs (`domain/flow-graphs.ts`, `domain/flow-graph-runs.ts`, `flow-graph-executor.ts`, `rpc/flow-graphs.ts`)
+run as published. `flows.publish` (owner-only, CAS) makes an immutable revision; each event is pinned to the revision
+it was admitted with, in the same transaction as the `(flow,event)` dedup, and `flow_events.executor` keeps legacy
+events on the legacy worker. Steps checkpoint durably: database steps commit with their effect, a model step commits
+`dispatched` before its one gateway call (`once`) and becomes `uncertain`, never re-sent, if no answer is stored;
+agent and routine steps link their run in the router's admission transaction through an internal `flowEvent.graph`
+context. Runs have a 10-minute deadline on the injected clock. `flows.run_get` shows each step. See
+[Flows](FLOWS.md#drawn-graphs-graph-executor) and [D-167](DECISIONS.md#d-167).
+
+Secretary capabilities (team news) are configured in Settings → Super-agent, not the routine action picker. `secretary.set` reuses the existing scheduled row and its ID, prompt and history; there is no startup rewrite or replay. The switch survives profile saves and profile changes; timing values still come from profile settings.
+
+**Background checks** are the core's own periodic work (`engine/background.ts`): `officeScheduler` runs each on its
+`everyMs` on the office clock's beat, never two at once, and logs a failure without stopping the others. Task pickup,
+stalled tasks, Google Calendar's event reminders (`engine/calendar-reminders.ts`) and Gmail's mail check
+(`engine/mail-check.ts`) are checks; each one an integration does is turned on and timed in that integration's
+settings (`integrations.settings` / `integrations.configure`, a `SETTINGS` entry), never in the routines list.
+[D-171](DECISIONS.md#d-171) says when new periodic work is a check and when it is a routine.
 
 ## 3. Modules and dependency direction
 
@@ -99,7 +140,7 @@ The super-agent's `apx_settings` email area discovers configured Gmail/SMTP iden
 signature by transport, account and sender. Human-only `email.signature_upsert` and `email.signature_remove`
 run through the same owner-confirmed settings flow, with the exact last-read entry as a concurrency precondition
 (`null` only when creating). Writes preserve other signatures and validate configured senders, including removals; an unconfigured mailbox's
-signature stays in the owner's Account settings for manual cleanup. No Gmail settings access, import or remote mutation is added.
+signature is preserved after disconnection. Gmail's signature is edited in integration preferences; SMTP signatures and mailbox selection are in each Email channel's settings. Account settings expose an optional global signature without requiring a connection. Resolution is account override first, otherwise global; a disabled account override blocks fallback. Both paths respect per-message omission. Global edits use owner-only `email.signature_default_get` / `email.signature_default_set`, with the last-read value as a concurrency precondition and null for absence. The same approval-based settings tool exposes these operations. No Gmail settings access, import or remote mutation is added.
 
 ## 4. State and persistence
 

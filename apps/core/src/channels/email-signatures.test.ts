@@ -7,6 +7,12 @@ import { emailAdapter } from "./email.ts";
 import { parseMail } from "./email-mime.ts";
 import { fakeImap, fakeSmtp, mail } from "./fake-email.test-support.ts";
 
+/** The owner's own sends are never withheld by the notice budget. */
+function sentNow<R extends object>(r: R): Exclude<R, { withheld: unknown }> {
+  assert.ok(!("withheld" in r), "sent now");
+  return r as Exclude<R, { withheld: unknown }>;
+}
+
 const address = "user@example.com";
 const pass = "test-password";
 const signature = {
@@ -35,7 +41,7 @@ test("the production SMTP factory resolves signatures by channel and sender; omi
       token: pass,
       channel: {
         type: "email",
-        agent_id: "roby",
+        agent_id: "superagent",
         email: {
           address,
           imap: { host: "127.0.0.1", port: imap.port, tls: "none" },
@@ -55,18 +61,20 @@ test("the production SMTP factory resolves signatures by channel and sender; omi
         signature,
       ],
     });
+    await env.client.call("email.signature_default_set", {
+      signature: { enabled: true, text: "Global", html: "<b>Global</b>" },
+      expected: null,
+    });
     const contact = env.core.store.persons.create({ name: "Acme contact", role: "contact" });
     env.core.store.persons.link(contact.id, { channel: "email", external_id: "contact@example.com" });
-    const sent = await env.client.call("channels.message", { person: contact.id, text: "Hello" });
+    const sent = sentNow(await env.client.call("channels.message", { person: contact.id, text: "Hello" }));
     assert.equal(sent.delivery.state, "sent");
     const first = smtp.sent.at(-1);
     assert.ok(first);
     assert.deepEqual(parts(first.raw), ["Hello\r\n\r\n-- \r\nAcme", `Hello<br><br><div>${signature.html}</div>`]);
-    const omitted = await env.client.call("channels.message", {
-      person: contact.id,
-      text: "No footer",
-      omit_signature: true,
-    });
+    const omitted = sentNow(
+      await env.client.call("channels.message", { person: contact.id, text: "No footer", omit_signature: true }),
+    );
     assert.equal(omitted.delivery.state, "sent");
     assert.deepEqual(parts(smtp.sent.at(-1)?.raw ?? ""), ["No footer"]);
     await env.client.call("channels.send", { thread: sent.thread, text: "Direct", omit_signature: true });
@@ -83,6 +91,16 @@ test("the production SMTP factory resolves signatures by channel and sender; omi
     await env.client.call("email.signatures_set", { signatures: [{ ...signature, enabled: false }] });
     await env.client.call("channels.message", { person: contact.id, text: "Disabled" });
     assert.deepEqual(parts(smtp.sent.at(-1)?.raw ?? ""), ["Disabled"]);
+    await env.client.call("email.signatures_set", { signatures: [] });
+    await env.client.call("channels.message", { person: contact.id, text: "Fallback" });
+    assert.deepEqual(parts(smtp.sent.at(-1)?.raw ?? ""), [
+      "Fallback\r\n\r\n-- \r\nGlobal",
+      "Fallback<br><br><div><b>Global</b></div>",
+    ]);
+    await env.client.call("channels.message", { person: contact.id, text: "Omit default", omit_signature: true });
+    assert.deepEqual(parts(smtp.sent.at(-1)?.raw ?? ""), ["Omit default"]);
+    await env.client.call("channels.message", { person: contact.id, text: "Signed\n\n-- \nGlobal" });
+    assert.equal(parts(smtp.sent.at(-1)?.raw ?? "")[0], "Signed\r\n\r\n-- \r\nGlobal");
   } finally {
     await env.core.close();
     await imap.close();
@@ -99,7 +117,7 @@ test("SMTP signatures retain attachments and do not duplicate a pre-signed messa
     {
       id: "email",
       type: "email",
-      agent_id: "roby",
+      agent_id: "superagent",
       label: "Email",
       enabled: true,
       strangers: "pair",

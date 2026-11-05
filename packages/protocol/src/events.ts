@@ -32,6 +32,40 @@ export const CoreEvent = z.discriminatedUnion("type", [
   z.object({ type: z.literal("surface.deleted"), surface_id: Id }),
   /** A widget's remembered state changed (the widget or its agent wrote it): open copies take it live. */
   z.object({ type: z.literal("surface.state"), surface_id: Id, state: SurfaceState }),
+  /**
+   * A Flow's saved drawing changed: a draft saved, discarded or published, or a Flow made with one. `by` is the agent
+   * whose tool did it, null for the owner. An open screen reloads that Flow's drawing.
+   */
+  z.object({
+    type: z.literal("flow.draft"),
+    flow: z.string(),
+    project: z.string(),
+    draft_version: z.number().int().nullable(),
+    by: z.string().nullable(),
+  }),
+  /**
+   * A Flow's test (DECISIONS.md#d-178): it started waiting for an event until `until`, stopped or ran out of time, one
+   * arrived and started the run `event`, or one arrived that the drawing could not take.
+   */
+  z.object({
+    type: z.literal("flow.test"),
+    flow: z.string(),
+    state: z.enum(["listening", "stopped", "expired", "received", "refused"]),
+    until: z.string().nullable(),
+    event: z.string().nullable(),
+  }),
+  /**
+   * A drawn Flow's run moved: a step started or ended, or the run ended. Ids and states only; what each step was given
+   * and gave back is read with `flows.run_get`.
+   */
+  z.object({
+    type: z.literal("flow.run"),
+    flow: z.string(),
+    event: z.string(),
+    state: z.enum(["pending", "succeeded", "failed", "uncertain", "cancelled", "ignored"]),
+    test: z.boolean(),
+    steps: z.array(z.object({ node: z.string(), state: z.string() })),
+  }),
   /** Agents or projects changed (from any client, an agent's tool or a project's files): reload both lists. */
   z.object({ type: z.literal("team.updated") }),
   z.object({ type: z.literal("browser.tabs"), tabs: z.array(TabInfo) }),

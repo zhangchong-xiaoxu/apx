@@ -124,7 +124,8 @@ test("in the base project the super-agent is on top and a global agent can repor
   await autonomy.click();
   await page.getByRole("menuitem", { name: "Total: no pregunta nada" }).click();
   await expect(autonomy).toHaveText("Total: no pregunta nada");
-  const own = async () => (await rpc<{ agent: { autonomy?: string } }>("agents.get", { agent: "roby" })).agent.autonomy;
+  const own = async () =>
+    (await rpc<{ agent: { autonomy?: string } }>("agents.get", { agent: "superagent" })).agent.autonomy;
   expect(await own()).toBe("total");
   await autonomy.click();
   await page.getByRole("menuitem", { name: fromProject }).click();
@@ -134,16 +135,16 @@ test("in the base project the super-agent is on top and a global agent can repor
 
 test("an agent model-call limit preserves other budgets and reports a failed save", async ({ page }) => {
   await rpc("setup.finish", {});
-  await rpc("agents.set_agent_limits", { agent: "roby", limits: { runs: 5, tokens: 100_000 } });
+  await rpc("agents.set_agent_limits", { agent: "superagent", limits: { runs: 5, tokens: 100_000 } });
   await open(page, "#project=~default&tab=team");
 
   await page.locator(".teamcanvas__node:has(.apx-agentnode.is-lead)").click({ button: "right" });
   await page.getByRole("menuitem", { name: "Ver detalle" }).click();
   const detail = page.locator(".teamdetail");
   const calls = detail.getByLabel("Llamadas al modelo por ejecución");
-  const own = async () => (await rpc<{ agents: Record<string, object> }>("agents.limits")).agents.roby;
+  const own = async () => (await rpc<{ agents: Record<string, object> }>("agents.limits")).agents.superagent;
   await expect(detail.getByLabel("Turnos sin vos")).toHaveValue("5");
-  await rpc("agents.set_agent_limits", { agent: "roby", limits: { runs: 6, tokens: 100_000 } });
+  await rpc("agents.set_agent_limits", { agent: "superagent", limits: { runs: 6, tokens: 100_000 } });
   await calls.fill("25");
   await calls.blur();
   await expect.poll(own).toEqual({ runs: 6, tokens: 100_000, steps: 25 });
@@ -176,7 +177,7 @@ test("an agent limit load failure is visible", async ({ page }) => {
 
 test("an agent model-call limit saved in the editor refreshes its detail", async ({ page }) => {
   await rpc("setup.finish", {});
-  await rpc("agents.set_agent_limits", { agent: "roby", limits: { steps: 12 }, merge: false });
+  await rpc("agents.set_agent_limits", { agent: "superagent", limits: { steps: 12 }, merge: false });
   await open(page, "#project=~default&tab=team");
   await page.locator(".teamcanvas__node:has(.apx-agentnode.is-lead)").click({ button: "right" });
   await page.getByRole("menuitem", { name: "Ver detalle" }).click();
@@ -192,7 +193,9 @@ test("an agent model-call limit saved in the editor refreshes its detail", async
   await editorCalls.blur();
   await expect(editorCalls).toBeEnabled();
   await expect
-    .poll(async () => (await rpc<{ agents: Record<string, { steps?: number }> }>("agents.limits")).agents.roby?.steps)
+    .poll(
+      async () => (await rpc<{ agents: Record<string, { steps?: number }> }>("agents.limits")).agents.superagent?.steps,
+    )
     .toBe(25);
   await page.keyboard.press("Escape");
   await expect(editor).toHaveCount(0);
@@ -201,7 +204,7 @@ test("an agent model-call limit saved in the editor refreshes its detail", async
 
 test("invalid model-call limits cannot silently clear an existing cap", async ({ page }) => {
   await rpc("setup.finish", {});
-  await rpc("agents.set_agent_limits", { agent: "roby", limits: { steps: 25 }, merge: false });
+  await rpc("agents.set_agent_limits", { agent: "superagent", limits: { steps: 25 }, merge: false });
   await open(page, "#project=~default&tab=team");
   await page.locator(".teamcanvas__node:has(.apx-agentnode.is-lead)").click({ button: "right" });
   await page.getByRole("menuitem", { name: "Ver detalle" }).click();
@@ -212,30 +215,36 @@ test("invalid model-call limits cannot silently clear an existing cap", async ({
     await input.blur();
     await expect(detail.getByRole("alert")).toContainText("número entero");
     const limits = await rpc<{ agents: Record<string, { steps?: number }> }>("agents.limits");
-    expect(limits.agents.roby?.steps).toBe(25);
+    expect(limits.agents.superagent?.steps).toBe(25);
   }
   await input.fill("15");
   await input.blur();
   await expect
-    .poll(async () => (await rpc<{ agents: Record<string, { steps?: number }> }>("agents.limits")).agents.roby?.steps)
+    .poll(
+      async () => (await rpc<{ agents: Record<string, { steps?: number }> }>("agents.limits")).agents.superagent?.steps,
+    )
     .toBe(15);
   await expect(detail.getByRole("alert")).toHaveCount(0);
   await input.fill("150");
   await input.blur();
   await expect
-    .poll(async () => (await rpc<{ agents: Record<string, { steps?: number }> }>("agents.limits")).agents.roby?.steps)
+    .poll(
+      async () => (await rpc<{ agents: Record<string, { steps?: number }> }>("agents.limits")).agents.superagent?.steps,
+    )
     .toBe(150);
   await input.fill("0");
   await input.blur();
   await expect
-    .poll(async () => (await rpc<{ agents: Record<string, { steps?: number }> }>("agents.limits")).agents.roby?.steps)
+    .poll(
+      async () => (await rpc<{ agents: Record<string, { steps?: number }> }>("agents.limits")).agents.superagent?.steps,
+    )
     .toBeUndefined();
   await expect(input).toHaveValue("");
 });
 
 test("incomplete number inputs cannot silently clear an existing model-call cap", async ({ page }) => {
   await rpc("setup.finish", {});
-  await rpc("agents.set_agent_limits", { agent: "roby", limits: { steps: 25 }, merge: false });
+  await rpc("agents.set_agent_limits", { agent: "superagent", limits: { steps: 25 }, merge: false });
   await open(page, "#project=~default&tab=team");
   await page.locator(".teamcanvas__node:has(.apx-agentnode.is-lead)").click({ button: "right" });
   await page.getByRole("menuitem", { name: "Ver detalle" }).click();
@@ -248,7 +257,7 @@ test("incomplete number inputs cannot silently clear an existing model-call cap"
     await input.blur();
     await expect(detail.getByRole("alert")).toContainText("número entero");
     const limits = await rpc<{ agents: Record<string, { steps?: number }> }>("agents.limits");
-    expect(limits.agents.roby?.steps).toBe(25);
+    expect(limits.agents.superagent?.steps).toBe(25);
     await input.fill("25");
     await input.blur();
     await expect(detail.getByRole("alert")).toHaveCount(0);
@@ -258,7 +267,7 @@ test("incomplete number inputs cannot silently clear an existing model-call cap"
 
 test("pending agent limit saves block duplicates and do not overwrite a different agent", async ({ page }) => {
   await rpc("setup.finish", {});
-  await rpc("agents.set_agent_limits", { agent: "roby", limits: null, merge: false });
+  await rpc("agents.set_agent_limits", { agent: "superagent", limits: null, merge: false });
   await rpc("agents.create", { slug: "northwind-reviewer", name: "Northwind Reviewer" });
   await rpc("agents.set_agent_limits", { agent: "northwind-reviewer", limits: { steps: 7 }, merge: false });
   await open(page, "#project=~default&tab=team");
@@ -295,7 +304,9 @@ test("pending agent limit saves block duplicates and do not overwrite a differen
     release();
   }
   await expect
-    .poll(async () => (await rpc<{ agents: Record<string, { steps?: number }> }>("agents.limits")).agents.roby?.steps)
+    .poll(
+      async () => (await rpc<{ agents: Record<string, { steps?: number }> }>("agents.limits")).agents.superagent?.steps,
+    )
     .toBe(25);
   await expect(calls).toHaveValue("7");
   expect(requests).toBe(1);

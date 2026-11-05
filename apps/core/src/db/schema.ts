@@ -96,6 +96,128 @@ export interface ExtensionsTable {
   updated_at: string;
 }
 
+export interface FlowEventsTable {
+  flow_id: string;
+  event_id: string;
+  state: string;
+  created_at: string;
+  payload: string | null;
+  action: string | null;
+  run_id: string | null;
+  thread_id: string | null;
+  error: string | null;
+  executor: Generated<string>;
+  stopped_at: number | null;
+  source: Generated<string>;
+  scheduled_at: string | null;
+  test: Generated<number>;
+  headers: string | null;
+}
+
+export interface FlowGraphDraftsTable {
+  flow_id: string;
+  version: number;
+  graph: string;
+  published_revision: number | null;
+  discarded: Generated<number>;
+  saved_by: string | null;
+}
+
+export interface FlowGraphEventsTable {
+  flow_id: string;
+  event_id: string;
+  revision: number;
+  payload: string;
+  deadline_at: string;
+  state: Generated<string>;
+  ended_at: string | null;
+  stopped_by: string | null;
+}
+
+export interface FlowGraphHistoryTable {
+  flow_id: string;
+  entry: Generated<number>;
+  at: string;
+  kind: string;
+  saved_by: string | null;
+  restored_from: number | null;
+  revision: number | null;
+  steps: number;
+  graph: string;
+}
+
+export interface FlowGraphNodesTable {
+  flow_id: string;
+  event_id: string;
+  revision: Generated<number>;
+  node_id: string;
+  state: string;
+  input: string | null;
+  output: string | null;
+  run_id: string | null;
+  thread_id: string | null;
+  error: string | null;
+  started_at: string | null;
+  ended_at: string | null;
+  phase: string | null;
+}
+
+export interface FlowGraphRevisionsTable {
+  flow_id: string;
+  revision: Generated<number>;
+  graph: string;
+  created_at: string;
+  test: Generated<number>;
+}
+
+export interface FlowRowsTable {
+  flow_id: string;
+  key: string;
+  value: string;
+}
+
+export interface FlowSchedulesTable {
+  flow_id: string;
+  since: string;
+  skipped: Generated<number>;
+  skipped_at: string | null;
+}
+
+export interface FlowSendsTable {
+  flow_id: string;
+  kind: string;
+  at: string;
+}
+
+export interface FlowTableDefsTable {
+  project_id: string;
+  name: string;
+  columns: Generated<string>;
+  created_at: string;
+  updated_at: string;
+  required: Generated<string>;
+}
+
+export interface FlowTablesTable {
+  project_id: string;
+  name: string;
+  key: string;
+  value: string;
+  updated_at: string;
+}
+
+export interface FlowsTable {
+  id: string;
+  project_id: string;
+  enabled: number;
+  predicates: string;
+  table_key: string;
+  name: Generated<string>;
+  action: Generated<string>;
+  read_keys: Generated<string>;
+  path: Generated<string>;
+}
+
 export interface HarnessSessionsTable {
   thread_id: string;
   harness: string;
@@ -229,6 +351,12 @@ export interface MemoryWorkTable {
   reservation: Generated<number>;
   result: string | null;
   error: string | null;
+}
+
+export interface MessageMediaTable {
+  message_id: string;
+  media_id: string;
+  name: string | null;
 }
 
 export interface MessagesTable {
@@ -383,6 +511,10 @@ export interface ProjectsTable {
 export interface PromptTextsTable {
   hash: string;
   text: string;
+}
+
+export interface RetiredFlowsTable {
+  id: string;
 }
 
 export interface RoutineRunsTable {
@@ -601,6 +733,18 @@ export interface Database {
   channel_inbox: ChannelInboxTable;
   devices: DevicesTable;
   extensions: ExtensionsTable;
+  flow_events: FlowEventsTable;
+  flow_graph_drafts: FlowGraphDraftsTable;
+  flow_graph_events: FlowGraphEventsTable;
+  flow_graph_history: FlowGraphHistoryTable;
+  flow_graph_nodes: FlowGraphNodesTable;
+  flow_graph_revisions: FlowGraphRevisionsTable;
+  flow_rows: FlowRowsTable;
+  flow_schedules: FlowSchedulesTable;
+  flow_sends: FlowSendsTable;
+  flow_table_defs: FlowTableDefsTable;
+  flow_tables: FlowTablesTable;
+  flows: FlowsTable;
   harness_sessions: HarnessSessionsTable;
   idempotency: IdempotencyTable;
   jobs: JobsTable;
@@ -613,6 +757,7 @@ export interface Database {
   memory_exclusions: MemoryExclusionsTable;
   memory_versions: MemoryVersionsTable;
   memory_work: MemoryWorkTable;
+  message_media: MessageMediaTable;
   messages: MessagesTable;
   messages_n: MessagesNTable;
   meta: MetaTable;
@@ -625,6 +770,7 @@ export interface Database {
   persons: PersonsTable;
   projects: ProjectsTable;
   prompt_texts: PromptTextsTable;
+  retired_flows: RetiredFlowsTable;
   routine_runs: RoutineRunsTable;
   routines: RoutinesTable;
   run_contexts: RunContextsTable;

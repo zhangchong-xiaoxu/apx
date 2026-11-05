@@ -25,9 +25,9 @@ after(async () => {
 const lastSeen = () => String(llm.calls.at(-1)?.messages.at(-1)?.content);
 
 async function ask(text: string, decision?: "approve" | "deny"): Promise<string> {
-  const thread = await env.client.call("threads.create", { kind: "loose", agent_id: "roby", title: "Limits" });
+  const thread = await env.client.call("threads.create", { kind: "loose", agent_id: "superagent", title: "Limits" });
   // Agents already work together here: the limits apply, so the tool is offered.
-  const sub = { kind: "a2a" as const, title: "Helper", agent_ids: ["scout", "roby"], parent_id: thread.id };
+  const sub = { kind: "a2a" as const, title: "Helper", agent_ids: ["scout", "superagent"], parent_id: thread.id };
   env.core.store.threads.create(sub);
   await env.client.call("threads.send", { thread: thread.id, text });
   if (decision) {
@@ -41,7 +41,7 @@ async function ask(text: string, decision?: "approve" | "deny"): Promise<string>
 
 test("agent_limits shows the limits in force without asking, and says the cache does not count", async () => {
   const seen = await ask("how far can you go alone?");
-  assert.match(seen, /limits: 30 turns, 1500k fresh tokens/);
+  assert.match(seen, /limits: no turn limit, no token limit \(by default there are none\)/);
   assert.match(seen, /cache does not count/);
   assert.match(seen, /not paused/);
 });
@@ -59,7 +59,7 @@ test("agent_limits lets a conversation go on with the owner's OK", async () => {
 });
 
 test("a chat where no agents work together is not offered agent_limits", async () => {
-  const thread = await env.client.call("threads.create", { kind: "loose", agent_id: "roby", title: "Plain" });
+  const thread = await env.client.call("threads.create", { kind: "loose", agent_id: "superagent", title: "Plain" });
   await env.client.call("threads.send", { thread: thread.id, text: "hola" });
   await env.settle(thread.id);
   assert.ok(!llm.calls.at(-1)?.tools?.some((t) => t.function.name === "agent_limits"));

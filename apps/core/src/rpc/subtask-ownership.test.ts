@@ -11,7 +11,7 @@ const context = (thread: string): CallContext => ({
   transport: "internal",
   session: undefined,
   log: createLog("test", true),
-  agent: { id: "roby", thread_id: thread, run_id: "run_test" },
+  agent: { id: "superagent", thread_id: thread, run_id: "run_test" },
 });
 
 async function fixture() {
@@ -23,7 +23,7 @@ async function fixture() {
   const work = env.core.store.threads.create({
     kind: "loose",
     title: parent.title,
-    agent_ids: ["roby"],
+    agent_ids: ["superagent"],
     task_id: parent.id,
   });
   return { env, parent, work };
@@ -75,7 +75,10 @@ test("a complete agent subtask starts exactly once; agents cannot erase its owne
     const session = sessions[0];
     assert.ok(session);
     await env.settle(session.id);
-    assert.equal(env.core.store.runs.list(session.id).length, 1);
+    // One start; a part APX goes on with on its own (engine/task-continue.ts) is not a second one.
+    const starts = () =>
+      env.core.store.runs.list(session.id).filter((r) => r.input?.origin.kind !== "task_continue").length;
+    assert.equal(starts(), 1);
     for (const [i, changes] of [{ assignee: null }, { description: "   " }].entries()) {
       const result = await env.core.dispatch(
         "tasks.update",
@@ -95,7 +98,7 @@ test("a complete agent subtask starts exactly once; agents cannot erase its owne
       "status",
     );
     assert.ok(changed.ok);
-    assert.equal(env.core.store.runs.list(session.id).length, 1);
+    assert.equal(starts(), 1);
   } finally {
     await env.core.close();
     await env.cleanup();
@@ -107,7 +110,7 @@ test("owner drafts and agent top-level drafts remain possible; explicit parent c
   try {
     const draft = await env.client.call("tasks.create", { title: "Owner draft", parent: parent.id });
     assert.equal(draft.assignee, undefined);
-    const chat = env.core.store.threads.create({ kind: "loose", title: "Planning", agent_ids: ["roby"] });
+    const chat = env.core.store.threads.create({ kind: "loose", title: "Planning", agent_ids: ["superagent"] });
     const created = await env.core.dispatch("tasks.create", { title: "Unassigned plan" }, context(chat.id), "plan");
     assert.ok(created.ok);
     const refused = await env.core.dispatch(

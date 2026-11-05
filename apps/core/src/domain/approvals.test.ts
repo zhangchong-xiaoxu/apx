@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import { say, scriptedLlm, startCore } from "../engine/testkit.ts";
-import { matchesCondition, nativeApproval } from "./approvals.ts";
+import { type ApprovalTarget, matchesCondition, nativeApproval } from "./approvals.ts";
 
 let env: Awaited<ReturnType<typeof startCore>>;
 before(async () => {
@@ -49,18 +49,51 @@ test("a grant narrowed to a condition covers only matching calls, and one past i
   assert.equal((await env.client.call("tools.approvals", {})).approvals.filter((g) => g.agent_id === "ann").length, 0);
 });
 
-test("a grant for this chat outlives a core restart, and ends when the chat is archived", async () => {
+test("temporary browser consents never survive a real store restart", async () => {
   const first = await startCore({ llm: scriptedLlm(() => say("ok")) });
-  const target = nativeApproval("shell");
-  const thread = (await first.client.call("threads.create", { kind: "loose", agent_id: "roby" })).id;
-  first.core.store.approvals.grant(target, "session", thread, "roby");
+  const thread = (await first.client.call("threads.create", { kind: "loose", agent_id: "superagent" })).id;
+  const run = first.core.store.runs.create({
+    thread_id: thread,
+    agent_id: "superagent",
+    trigger: "user",
+    input: { origin: { kind: "user" }, text: "Review browser consent" },
+    deadline_at: "2099-01-01T00:00:00.000Z",
+  });
+  first.core.store.runs.setState(run, "working");
+  const target: ApprovalTarget = {
+    ...nativeApproval("browser_evaluate"),
+    browser: { tab: "tab1", origin: "https://example.com", epoch: "epoch1", run: run.id },
+  };
+  // This persistence fixture has no browser host; lifecycle authorization is exercised in the tool tests.
+  first.core.store.approvals.setBrowserConsentGuard(() => true);
+  const version = first.core.store.approvals.browserVersion(target, thread, "superagent");
+  first.core.store.approvals.grant(target, "tab", thread, "superagent", version);
+  first.core.store.approvals.grant(target, "turn", thread, "superagent", version);
+  assert.equal(first.core.store.approvals.list(thread).filter((grant) => grant.browser).length, 2);
+  first.core.store.runs.setState(run, "completed");
   await first.core.close();
   const again = await startCore({ llm: scriptedLlm(() => say("ok")), home: first.home });
   try {
-    assert.ok(again.core.store.approvals.allows(target, thread, "roby"), "the chat's grant came back");
-    assert.ok(!again.core.store.approvals.allows(target, "th_other", "roby"), "and only for that chat");
+    assert.equal(again.core.store.approvals.allows(target, thread, "superagent"), false);
+    assert.equal(again.core.store.approvals.list(thread).filter((grant) => grant.browser).length, 0);
+  } finally {
+    await again.core.close();
+    await first.cleanup();
+  }
+});
+
+test("a grant for this chat outlives a core restart, and ends when the chat is archived", async () => {
+  const first = await startCore({ llm: scriptedLlm(() => say("ok")) });
+  const target = nativeApproval("shell");
+  const thread = (await first.client.call("threads.create", { kind: "loose", agent_id: "superagent" })).id;
+  first.core.store.approvals.grant(target, "session", thread, "superagent");
+  await first.core.close();
+  const again = await startCore({ llm: scriptedLlm(() => say("ok")), home: first.home });
+  try {
+    assert.ok(again.core.store.approvals.allows(target, thread, "superagent"), "the chat's grant came back");
+    assert.ok(!again.core.store.approvals.allows(target, "th_other", "superagent"), "and only for that chat");
     await again.client.call("threads.update", { thread, archived: true });
-    assert.ok(!again.core.store.approvals.allows(target, thread, "roby"));
+    assert.ok(!again.core.store.approvals.allows(target, thread, "superagent"));
   } finally {
     await again.core.close();
     await first.cleanup();

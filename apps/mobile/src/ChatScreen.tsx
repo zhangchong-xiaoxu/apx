@@ -1,5 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Alert, FlatList, KeyboardAvoidingView, Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  Alert,
+  FlatList,
+  InteractionManager,
+  KeyboardAvoidingView,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { draftOf, keepDraft } from "./chat/drafts";
 import { type CatalogEngine, choiceText, type ModelChoice } from "./chat/models";
@@ -9,20 +18,23 @@ import { useAttachments } from "./chat/useAttachments";
 import { useVoiceNote } from "./chat/useVoiceNote";
 import type { Creds } from "./creds";
 import { dayLabel } from "./format";
-import { engineName, isWorking, routineName, threadContext } from "./hooks/chatSelectors";
-import { continueSession } from "./hooks/continueSession";
+import { channelIdentity, engineName, isWorking, routineName, threadContext } from "./hooks/chatSelectors";
+import { continueSession, sessionState } from "./hooks/continueSession";
 import { useThread } from "./hooks/useThread";
 import type { Thread, Workspace } from "./hooks/useWorkspace";
 import { t } from "./i18n";
 import type { Message } from "./protocol";
+import { BrowserConsents } from "./ui/BrowserConsents";
 import { ChatComposer } from "./ui/ChatComposer";
 import { ChatMenu } from "./ui/ChatMenu";
 import { ChatMessage } from "./ui/ChatMessage";
+import { ComputerProgress } from "./ui/chat/ComputerProgress";
 import { EngineIcon } from "./ui/EngineIcon";
 import { Icon } from "./ui/Icon";
 import { ActivityPill, AgentAvatar, BottomSheet, EmptyState, IconButton, ListRow, Spinner } from "./ui/kit";
 import { ModelSheet } from "./ui/ModelSheet";
 import { MediaClient } from "./ui/media/context";
+import { PersonAvatar } from "./ui/PersonAvatar";
 import { makeStyles, useTheme } from "./ui/theme";
 
 export function ChatScreen({
@@ -30,6 +42,7 @@ export function ChatScreen({
   onUnpair,
   onApps,
   base,
+  focus,
   data,
   onBack,
   onSwitch,
@@ -43,6 +56,8 @@ export function ChatScreen({
   onApps: () => void;
   /** The chat as the list knows it, until the live one loads. */
   base: Thread;
+  /** A message to scroll to and light for a moment once it is loaded (a shared file's). */
+  focus?: string;
   data: Workspace;
   onBack: () => void;
   onSwitch: () => void;
@@ -60,6 +75,7 @@ export function ChatScreen({
   const insets = useSafeAreaInsets();
   const thread = (live.thread as Thread | undefined) ?? base;
   const agent = data.agents.find((item) => item.id === thread.agent_ids[0]);
+  const contact = channelIdentity(thread, data);
   const name = thread.engine ? thread.title : (agent?.name ?? thread.title);
   const fresh = isNewChat(base.id);
   // What is typed stays as the chat's draft until it is sent.
@@ -79,7 +95,28 @@ export function ChatScreen({
     onWords: (words) => setTextNow((current) => (current.trim() ? `${current.trim()} ${words}` : words)),
   });
   const list = useRef<FlatList<TranscriptRow>>(null);
+  // The messages are drawn once the screen has slid in: the slide starts at once instead of after the whole list.
+  const [settled, setSettled] = useState(false);
+  useEffect(() => {
+    const later = InteractionManager.runAfterInteractions(() => setSettled(true));
+    return () => later.cancel();
+  }, []);
   const rows = useMemo(() => withDays(live.messages).reverse(), [live.messages]);
+  const [flash, setFlash] = useState<string>();
+  const focused = useRef(false);
+  useEffect(() => {
+    if (!focus || focused.current || !settled) return;
+    const index = rows.findIndex((row) => row.kind !== "day" && row.message.id === focus);
+    if (index < 0) return;
+    focused.current = true;
+    setFlash(focus);
+    requestAnimationFrame(() => list.current?.scrollToIndex({ index, viewPosition: 0.5 }));
+  }, [focus, rows, settled]);
+  useEffect(() => {
+    if (!flash) return;
+    const off = setTimeout(() => setFlash(undefined), 2000);
+    return () => clearTimeout(off);
+  }, [flash]);
   const working = isWorking(live.state);
   const engine = thread.engine === "claude" || thread.engine === "codex" ? thread.engine : undefined;
   // A new chat keeps the model picked in it until it is made.
@@ -146,6 +183,8 @@ export function ChatScreen({
           <View>
             {engine ? (
               <EngineIcon engine={engine} size={36} />
+            ) : contact ? (
+              <PersonAvatar person={contact.person} name={contact.name} size={36} channel={contact.type} />
             ) : (
               <AgentAvatar name={name} blob={agent?.blob} id={agent?.id} size={36} />
             )}
@@ -175,7 +214,12 @@ export function ChatScreen({
           />
         )}
       </View>
-      {showsStartHint({ rows: rows.length, working, fresh, loaded: Boolean(live.thread) }) ? (
+      {!fresh && settled ? (
+        <BrowserConsents client={live.client} thread={base.id} agents={data.agents} threads={data.threads} />
+      ) : null}
+      {!settled ? (
+        <View style={s.empty} />
+      ) : showsStartHint({ rows: rows.length, working, fresh, loaded: Boolean(live.thread) }) ? (
         <View style={s.empty}>
           <EmptyState icon="MessageCircle" title={t("chatWith", { name })} body={t("chatStartHint")} />
         </View>
@@ -186,6 +230,11 @@ export function ChatScreen({
             inverted
             data={rows}
             keyExtractor={(row) => (row.kind === "day" ? row.key : row.message.id)}
+            // Rows not drawn yet have no size: jump near by the average, then aim again.
+            onScrollToIndexFailed={({ index, averageItemLength }) => {
+              list.current?.scrollToOffset({ offset: index * averageItemLength, animated: false });
+              setTimeout(() => list.current?.scrollToIndex({ index, viewPosition: 0.5 }), 120);
+            }}
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="on-drag"
             contentContainerStyle={s.transcript}
@@ -206,20 +255,30 @@ export function ChatScreen({
                 item.message.id === live.messages[0]?.id ? (
                 <RoutinePrompt name={routineName(thread)} message={item.message} />
               ) : (
-                <ChatMessage
-                  message={item.message}
-                  agents={data.agents}
-                  waiting={live.state === "input-required"}
-                  respond={live.respond}
-                  goOn={(thread, mode) => live.client.call("threads.go_on", { thread, mode })}
-                  continueSession={(session) => continueSession(live.client, session)}
-                  {...(onOpenThread ? { openThread: onOpenThread } : {})}
-                />
+                <View style={item.message.id === flash ? s.flash : undefined}>
+                  <ChatMessage
+                    message={item.message}
+                    agents={data.agents}
+                    waiting={live.state === "input-required"}
+                    runState={live.state}
+                    thread={thread}
+                    projects={data.projects}
+                    last={item.message.id === live.messages.at(-1)?.id}
+                    client={live.client}
+                    send={(words) => live.send(words)}
+                    respond={live.respond}
+                    goOn={(thread, mode) => live.client.call("threads.go_on", { thread, mode })}
+                    continueSession={(session) => continueSession(live.client, session)}
+                    sessionState={(session) => sessionState(live.client, session)}
+                    {...(onOpenThread ? { openThread: onOpenThread } : {})}
+                  />
+                </View>
               )
             }
           />
         </MediaClient.Provider>
       )}
+      {live.computer ? <ComputerProgress stage={live.computer} /> : null}
       {live.error ? <Text style={s.error}>{live.error}</Text> : null}
       <ChatComposer
         text={text}
@@ -324,6 +383,8 @@ function RoutinePrompt({ name, message }: { name: string; message: Message }) {
 
 const useStyles = makeStyles((theme) => ({
   root: { flex: 1, backgroundColor: theme.bg },
+  // The message a shared file led to, lit for a moment.
+  flash: { borderRadius: theme.radiusMd, backgroundColor: theme.brandSoft },
   header: {
     height: 60,
     flexDirection: "row",

@@ -26,6 +26,20 @@ transfer's source, independently of the creation event, and still notifies a dif
 **Where:** `engine/task-handoff.ts`, `engine/task-work.ts`, `engine/executor.ts`, `harness/native.ts`,
 `rpc/tasks.ts` and `engine/task-report.ts` under `apps/core/src/`.
 
+<a id="project-read-prompt"></a>
+### Project folders are read after the core listens, in worker threads
+**Rule:** the core never reads a registered project's folder before it listens, and at start reads each one in a
+worker thread (`createProjectReader`) with a deadline (`PROJECT_READ_MS`). A folder that does not answer in time is
+marked not present with `unreadable: "waiting"` (in memory only; the next start reads it again); its late answer
+still lands and the project comes back. A folder the system refuses reads as `unreadable: "denied"`.
+**Why:** on macOS, a read of ~/Documents, ~/Desktop, Downloads, iCloud Drive or a removable drive by the launchd
+core's `node` blocks inside the system call until someone answers the privacy prompt. The core read every project
+synchronously before `listen`, so one unanswered prompt left the desktop app on "Connecting to APX". Moving the
+read after `listen` alone does not help: a blocked synchronous read stops the whole event loop, and `fs.promises`
+would park one of libuv's four pool threads per held folder (DNS and other async work share them). Code that reads
+project files later skips projects that are not present.
+**Where:** `apps/core/src/apc/project-reader.ts`, `apc/sync.ts` (`load`), `server.ts`.
+
 <a id="connection-attempt-timeout"></a>
 ### Give dual-stack connections enough time
 **Rule:** the core entry point gives each address attempt at least two seconds, preserving longer configured values.
@@ -90,12 +104,30 @@ about 4 MB it never used. `process.getBuiltinModule("node:http")` returns the sa
 
 ## Repo hygiene
 
+<a id="cli-without-core"></a>
+### `apx doctor` and `apx update` work with the core down
+**Rule:** the terminal diagnoses a core that does not answer (`apx doctor`) and updates a bundle install without it
+(`apx update`), reading this machine directly instead of the protocol: the one exception to rule 3, since there is
+no core to ask. The bundle install itself is the core's own code, shared from `packages/install/src/release.ts`.
+**Why:** the 2.12.0 and 2.12.1 bundles could not start their core; `apx update` then only said "Core not running"
+and pointed at `apx service install`, which started the same broken version again.
+**Where:** `apps/terminal/src/commands/doctor.ts`, `packages/install/src/release.ts`.
+
 <a id="private-terms"></a>
 ### `check:private` scans untracked files too
 **Rule:** the gate scans tracked **and** untracked-not-ignored files.
 **Why:** leaks must be caught before the first `git add`; in v1 real names reached the public history through
 fixtures and previews. On its first run in v2 it caught a real name in a design-system preview.
 **Where:** `scripts/check-private-terms.ts`.
+
+<a id="protocol-subpaths"></a>
+### The core imports the protocol only through `@apx/protocol` subpaths
+**Rule:** `apps/core` and `apps/terminal` never import `packages/protocol/src/…` by path; a module they need becomes a
+subpath in the protocol's `exports`.
+**Why:** the installed core carries the protocol compiled into `node_modules/@apx/protocol` (one entry per export), not
+its source folder. Flow modules imported by path worked in a checkout but made the 2.12.0 and 2.12.1 bundles exit at
+start with `ERR_MODULE_NOT_FOUND`, in the desktop app and the service alike.
+**Where:** `packages/protocol/package.json` exports, `apps/desktop/scripts/stage-protocol.ts`, lint in `biome.json`.
 
 ## Embedded browser
 
@@ -338,3 +370,11 @@ and stripping `import`/`export` to fit `vm.Script` would be unsound. The child i
 desktop app it is Electron with `ELECTRON_RUN_AS_NODE=1` inherited (checked with Electron 42: exit 1 and a
 `SyntaxError:` line for a broken module, exit 0 for a good one). It runs off the event loop, all module scripts at once,
 for at most 3 seconds, and any failure to run it passes the script. Where: `apps/core/src/tools/widget-syntax.ts`.
+
+<a id="read-only-continuation"></a>
+### A consult opened read-only no longer keeps the work it leads to read-only
+The super-agent asked a developer agent to look at a task read-only, then told the same session to go on and finish it
+without naming a write policy. The session kept `read-only`, so the developer could neither run tests nor fix code, and
+the task sat "in progress" overnight. A delegation that continues a free session and says nothing about folder or
+writes now lifts a read-only session back to what caller, callee and project allow, in the same folder; one that asks
+for read-only again keeps it. Where: `apps/core/src/engine/delegation.ts`, test in `engine/workers.test.ts`.

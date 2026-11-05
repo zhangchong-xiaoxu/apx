@@ -9,7 +9,7 @@ import { createLog } from "../log.ts";
 import { createSecrets } from "../secrets.ts";
 import { tempDir, waitFor } from "../testkit/platform.ts";
 import { openDisplay } from "./display.ts";
-import { routinePipeline } from "./pipeline.ts";
+import { routinePipeline, STEP_OUTPUT_CHARS } from "./pipeline.ts";
 import { createRoutineMail } from "./routine-mail.ts";
 import { say, scriptedLlm, startCore } from "./testkit.ts";
 
@@ -40,16 +40,20 @@ after(async () => {
 async function fixture(send: NonNullable<Parameters<typeof createRoutineMail>[0]["send"]> = async () => {}) {
   const routine = await env.client.call("routines.set", {
     name: "Digest",
-    agent: "roby",
+    agent: "superagent",
     project,
     schedule: { kind: "manual" },
     prompt: "Write a digest",
     post_command: "echo delivery",
   });
-  const thread = await env.client.call("threads.create", { kind: "loose", agent_id: "roby", project_id: project });
+  const thread = await env.client.call("threads.create", {
+    kind: "loose",
+    agent_id: "superagent",
+    project_id: project,
+  });
   const run = env.core.store.runs.create({
     thread_id: thread.id,
-    agent_id: "roby",
+    agent_id: "superagent",
     trigger: "routine",
     input: { origin: { kind: "routine", id: routine.id, name: routine.name }, text: routine.prompt },
     deadline_at: "2099-01-01T00:00:00.000Z",
@@ -254,7 +258,7 @@ test("the real post process receives only a temporary capability, redacts it, an
   };
   const message = env.core.store.messages.add({
     thread_id: f.done.thread_id,
-    author: { kind: "agent", id: "roby" },
+    author: { kind: "agent", id: "superagent" },
     run_id: f.done.id,
     parts: [],
   });
@@ -271,7 +275,9 @@ test("the real post process receives only a temporary capability, redacts it, an
   assert.match(token, /^[a-f0-9]{64}$/);
   const notice = display.message.parts.find((p) => p.type === "notice");
   assert.equal(notice?.type === "notice" ? notice.code : undefined, "routine.post.ok");
-  assert.equal(notice?.type === "notice" ? notice.detail : undefined, "[redacted]".repeat(300));
+  const detail = notice?.type === "notice" ? (notice.detail ?? "") : "";
+  assert.ok(detail.length > 0 && detail.length <= STEP_OUTPUT_CHARS);
+  assert.match(detail, /^(?:\[redacted\])+$/);
   assert.ok(!JSON.stringify(display.message).includes(token));
   await assert.rejects(f.mail.send(token, content), /active post-command/);
   f.mail.close();
@@ -313,7 +319,7 @@ console.log(JSON.stringify(result.result));
     );
     const routine = await isolated.client.call("routines.set", {
       name: "Digest",
-      agent: "roby",
+      agent: "superagent",
       project,
       schedule: { kind: "manual" },
       prompt: "Write a digest",

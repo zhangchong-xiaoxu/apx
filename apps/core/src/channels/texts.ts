@@ -71,6 +71,9 @@ const es = {
   noticeLostTitle: "Un aviso no te llegó",
   noticeLost: (channels: string, why: string, text: string) =>
     `Ningún canal pudo entregarlo (${channels}${why ? `: ${why}` : ""}). Decía: «${text}»`,
+  locale: "es",
+  event: (title: string, time: string, inMin: number, where: string[]) =>
+    `A las ${time} (en ${inMin} min): ${title}.${where.map((w) => ` ${w}`).join(" ·")}`,
   reminders: (lines: string[]) => `Recordatorios:\n${lines.map((l) => `• ${l}`).join("\n")}`,
   digest: (texts: string[]) => `Mientras estabas en silencio:\n\n${texts.join("\n\n—\n\n")}`,
   suggested: (name: string, label: string, said: string, draft: string) =>
@@ -87,6 +90,8 @@ const es = {
   suggestionGone: "Esa sugerencia ya no está pendiente (ya se decidió o llegó un mensaje más nuevo).",
   inputGone: "Eso ya no está pendiente: se respondió en otro lado o venció.",
   inApp: "Esto se responde en la app de APX (el panel, el escritorio o tu teléfono vinculado), no por este canal.",
+  waiting: (agent: string, what: string) =>
+    `${agent} te espera: ${what}\n\nRespondele en APX (la app, el escritorio o tu teléfono).`,
   writeNow: (name: string, minutes: number) =>
     `Escribí tu respuesta para ${name}: lo próximo que me mandes acá se lo envío tal cual (durante ${minutes} minutos). Mandá «cancelar» para no enviarle nada.`,
   writeCanceled: "Listo, no le mando nada.",
@@ -161,6 +166,9 @@ const en: typeof es = {
   noticeLostTitle: "A notice didn't reach you",
   noticeLost: (channels, why, text) =>
     `No channel could deliver it (${channels}${why ? `: ${why}` : ""}). It said: "${text}"`,
+  locale: "en-US",
+  event: (title, time, inMin, where) =>
+    `At ${time} (in ${inMin} min): ${title}.${where.map((w) => ` ${w}`).join(" ·")}`,
   reminders: (lines) => `Reminders:\n${lines.map((l) => `• ${l}`).join("\n")}`,
   digest: (texts) => `While your quiet hours lasted:\n\n${texts.join("\n\n—\n\n")}`,
   suggested: (name, label, said, draft) => `${name} wrote to you on ${label}:\n${said}\n\nI'd answer:\n"${draft}"`,
@@ -175,6 +183,8 @@ const en: typeof es = {
   suggestionGone: "That suggestion is no longer pending (it was decided, or a newer message came in).",
   inputGone: "That is no longer pending: it was answered elsewhere or it expired.",
   inApp: "Answer this in the APX app (the panel, the desktop or your paired phone), not on this channel.",
+  waiting: (agent, what) =>
+    `${agent} is waiting for you: ${what}\n\nAnswer them in APX (the app, the desktop or your phone).`,
   writeNow: (name, minutes) =>
     `Write your answer for ${name}: the next thing you send me here goes to them as it is (for ${minutes} minutes). Send "cancel" to send nothing.`,
   writeCanceled: "Done, I'm sending nothing.",
@@ -247,6 +257,8 @@ const zh: ChannelTexts = {
       : "模型提供方的用量已达上限：智能体已暂停，且对方未说明恢复时间。",
   noticeLostTitle: "有一条通知没有送达你",
   noticeLost: (channels, why, text) => `没有任何渠道能送达它（${channels}${why ? `：${why}` : ""}）。内容是：“${text}”`,
+  locale: "zh-CN",
+  event: (title, time, inMin, where) => `${time}（${inMin} 分钟后）：${title}。${where.map((w) => ` ${w}`).join(" ·")}`,
   reminders: (lines) => `提醒：\n${lines.map((l) => `• ${l}`).join("\n")}`,
   digest: (texts) => `免打扰期间的内容：\n\n${texts.join("\n\n—\n\n")}`,
   suggested: (name, label, said, draft) =>
@@ -262,6 +274,7 @@ const zh: ChannelTexts = {
   suggestionGone: "这条建议已不在待处理状态（已经决定，或收到了更新的消息）。",
   inputGone: "这个已不在待处理状态：已在其他地方回答，或已过期。",
   inApp: "请在 APX 应用（面板、桌面端或已配对的手机）里回答，而不是在这个渠道里。",
+  waiting: (agent, what) => `${agent} 正在等你：${what}\n\n请在 APX 应用（面板、桌面端或已配对的手机）里回复。`,
   writeNow: (name, minutes) =>
     `请写下你给 ${name} 的回复：你在这里发给我的下一条内容会原样发送给对方（${minutes} 分钟内）。发送“取消”则不发送任何内容。`,
   writeCanceled: "好的，什么都不发送。",

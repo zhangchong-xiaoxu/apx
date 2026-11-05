@@ -14,9 +14,19 @@
 - Preview content uses generic names only (Acme, Northwind, Globex, Roby, Ledger, Scout…). Never real client/project names.
 
 ## Pending re-sync
+- FlowStep (a Flow step card on a canvas, with its run state) and RunBars (recent runs as bars) are new, for the
+  Flows screens; neither is in the Claude Design project yet. Their CSS is `dist/flow.css`, outside `styles.css` (it
+  stays off the panel's first load): a re-sync bundles it too.
 - AgentAvatar's eye canvas now keeps its full size inside icon buttons; re-sync the shared CSS bundle.
 - Meter is new (single or stacked bar with a legend) and the icon set gained Gauge, Cpu, HardDrive and MemoryStick:
   neither is in the Claude Design project yet.
+- TemplateField is new (a text field whose placeholders read as badges, with a grouped value picker), for Flow
+  steps, and the icon set gained Braces: neither is in the Claude Design project yet.
+- AgentGrid is new (agents as two-column cards, for a Flow's AI step); TemplateField gained one-line fields and a
+  group action ("Save a secret"); minimal dark fields gained a hairline border so they read on any panel. None is in
+  the Claude Design project yet.
+- MediaLoader is new (a loading file as a moving icon of its kind: image, video, audio or file); not in the Claude
+  Design project yet.
 - MarkdownView now renders safe pipe tables; its remote preview and bundle need a re-sync.
 - Lint fixes (DECISIONS.md#d-005) changed markup in Avatar, AgentAvatar, Checkbox, Switch, SegmentedControl (now a
   Base UI RadioGroup), DayDivider, VoiceNote and the list keys of ActionGroup/StepList/EntityCard/Menu/Kbd/

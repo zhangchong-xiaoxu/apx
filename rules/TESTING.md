@@ -67,6 +67,7 @@ machine it was written on is a broken test. The helpers live in `apps/core/src/t
 | Wait until something is true | `waitFor(check, what, { ms })`: fails after `ms` of wall-clock time × `TEST_TIME_SCALE` | A loop of N tries, or a local `until` |
 | A run's input or its end | `pendingInput(client, thread)`, `inputOrEnd(…)` | Polling `runs.pending` by hand |
 | Idle, cap, deadline, burst | `manualTimers()` passed as `runTimers`; `tick(ms)`, or `autoAdvance` when runs chain | A window of real milliseconds |
+| A schedule's times, a date shown | `clock` on `startCore`; in e2e `world.clock(at)` with `page.clock.setFixedTime(at)`, then `world.clock(null)` | Today's date or hour |
 | A temp folder | `tempDir(prefix)` → `{ path, remove() }`; `removeDir(dir)` for a folder made otherwise | `fs.rmSync(dir, { recursive: true })` |
 | A child to be gone | `await stopped(child)` (or the product's `await stopTree(pid)`) before removing its folder | Removing the folder while it runs |
 | Compare paths | `isInside`, `samePath` (`paths.ts`), `assertPath` in tests | ``startsWith(`${root}/`)``, `===` on paths |
@@ -176,7 +177,14 @@ While developing against a scratch state, set `APX_HOME` to a temp dir so `~/.ap
 ```bash
 pnpm preflight                     # check:private, check:schema, lint, typecheck, unit tests
 pnpm verify                        # preflight, all-suite execution coverage, then lightness budgets
+pnpm verify --stream               # the same, with every step's output as it runs
 ```
+Both run through `scripts/verify.ts`, which expands the root scripts they name (`preflight:static`, `test`,
+`test:coverage:all`) into steps and stops at the first failure with its exit code. In a terminal it keeps one status
+line: step k of N, a bar, time for the step and in total, and the time left estimated from each step's last passing
+duration (`node_modules/.cache/apx-verify/history.json`; none on the first run). The steps' output goes to
+`node_modules/.cache/apx-verify/logs/`, and only a failing step's is shown. Outside a terminal (CI, a log file) or with
+`--stream`, the output streams and the status is one plain line per step start and end.
 
 ## 5a. End to end (Playwright)
 ```bash
@@ -225,6 +233,13 @@ Process sampling uses `ps` on macOS/Linux and Windows PowerShell's `WorkingSet64
 on Windows, converted to resident MB and CPU seconds. Missing processes, command failures and invalid samples
 fail explicitly, never as zero usage. Native sampling support is not proof that a platform meets the budgets:
 report each observed number, and keep a failing budget visible.
+
+The memory numbers are `ps` RSS. On macOS the memory compressor takes a varying part of the core's malloc pages
+out of it, so the same commit reads anywhere from ~90 to ~145 MB idle (and `rss_after_turns_mb` swings the same
+way) depending on how loaded the machine is. A difference between two commits measured once each on a Mac says
+nothing. Compare them where nothing is compressed: CI's Linux job, or a `node:24` container (within ~1 MB from
+run to run). On a Mac, `vmmap -summary <pid>` lists each region's dirty and compressed sizes; their sum stays
+about the same between a low reading and a high one.
 
 The first load is read from the built `apps/web/dist` (`scripts/bundle.ts`), never from source:
 `initial_bundle_gzip_kb` is what `index.html` names plus the chunks it imports statically; `boot_gzip_kb` adds the

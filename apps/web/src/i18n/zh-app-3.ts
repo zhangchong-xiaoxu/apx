@@ -265,7 +265,7 @@ export const zhApp3: Partial<Record<MessageKey, string>> = {
   "quick.openApp": "在应用中打开",
   "config.desktop": "桌面",
   "desktop.memoryHint":
-    "APX 正在使用 {total}。超过 4 GB 时，它会告诉你哪个进程占用最多。闲置的标签页 30 分钟后会关闭。",
+    "APX 正在使用 {total}。超过 4 GB 时，它会告诉你哪个进程占用最多。闲置的标签页 {minutes} 分钟后会关闭。",
   "desktop.memory.core": "核心（智能体、渠道、数据）",
   "desktop.memory.main": "APX（主进程）",
   "desktop.memory.gpu": "GPU",

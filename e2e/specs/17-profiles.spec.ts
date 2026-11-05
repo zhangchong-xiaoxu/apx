@@ -39,5 +39,11 @@ test("picking the secretary seeds its routines; a new time moves the morning bri
   await dialog.getByRole("radio", { name: /Ninguno/ }).click();
   await expect.poll(async () => (await rpc<Listed>("profiles.list")).active.id).toBe(null);
   const all = (await rpc<{ routines: Routine[] }>("routines.list")).routines;
-  expect(all.filter((r) => r.origin).every((r) => !r.enabled)).toBe(true);
+  expect(
+    all
+      .filter((r) => r.origin && !["secretary:mail", "secretary:team-news"].includes(r.origin))
+      .every((r) => !r.enabled),
+  ).toBe(true);
+  // Mail checks are set in the Gmail integration now; the relay is the one action left here.
+  await rpc("secretary.set", { action: "relay", enabled: false });
 });

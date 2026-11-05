@@ -1,10 +1,11 @@
 // The one executor every tool call goes through, whatever harness made it: check the arguments, ask the policy,
 // wait for the owner when it says so, record the step, run with a deadline, keep the full output and hand the
 // model a capped copy.
+import path from "node:path";
 
 import type { MethodName, Params, Result, Thread } from "@apx/protocol";
 import type { AgentRecord } from "../domain/agents.ts";
-import { strictApproval } from "../domain/approvals.ts";
+import { type ApprovalTarget, strictApproval } from "../domain/approvals.ts";
 import type { InputRecord } from "../domain/inputs.ts";
 import type { JobRecord } from "../domain/jobs.ts";
 import { ownerAsked, type RunRecord } from "../domain/runs.ts";
@@ -13,16 +14,16 @@ import { worksInFolder } from "../domain/threads.ts";
 import { errorMessage } from "../errors.ts";
 import type { TurnIO } from "../harness/index.ts";
 import { MCP_CALL, MCP_SEARCH, unwrapCall } from "../tools/mcp-bridge.ts";
-import { authorize, decide, keepsCard } from "../tools/policy.ts";
+import { authorize, decide, keepsCard, sessionGate } from "../tools/policy.ts";
 import { cap, UNTRUSTED_MARK } from "../tools/result.ts";
-import { commandRisk, judgeCommand } from "../tools/shell.ts";
+import { commandRisk } from "../tools/shell.ts";
 import type { CheckContext, Confirm, ScopedThread, Tool, ToolContext } from "../tools/types.ts";
+import { prepareBrowserConsent } from "./browser-consent.ts";
 import type { Display } from "./display.ts";
-import { fanOut, LOOK_FIRST } from "./fan-out.ts";
 import { folderBinding, type Inputs } from "./inputs.ts";
 import type { Jobs } from "./jobs.ts";
-import { confirmPrompt, fanOutPrompt, folderPrompt } from "./owner-words.ts";
-import { guarded, pathsOf } from "./paths.ts";
+import { confirmPrompt, folderPrompt, ownerCardPrompt } from "./owner-words.ts";
+import { guarded, inGitFolder, namesApc, pathsOf } from "./paths.ts";
 import type { Permissions } from "./permissions.ts";
 import { handedOff } from "./task-handoff.ts";
 import { toolTitle } from "./tool-titles.ts";
@@ -157,8 +158,6 @@ export function createExecutor(o: {
   };
   let untrusted = o.untrusted;
   let toolsRan = 0;
-  /** The owner let this turn hand work to many agents (engine/fan-out.ts): it is not asked again. */
-  let wideOk = false;
 
   /**
    * A command as a terminal job of this run, stopped at its timeout. Foreground: waits, and also stops when the turn
@@ -325,66 +324,38 @@ export function createExecutor(o: {
           : "only actions that read may run here";
       return { ok: false, text: `refused: this code thread is read-only; ${why}` };
     }
-    // A delegated session capped at ask (its caller could do no more) asks before changing files on our own loop too,
-    // as an outside engine does under it. The owner's own chats follow the agent's mode (DECISIONS.md#d-106).
-    const gate: typeof decision =
-      decision.kind === "allow" &&
-      thread.kind === "a2a" &&
-      worksInFolder(thread) &&
-      thread.write === "ask" &&
-      (level === "ask" || level === "always" || changesFiles)
-        ? { kind: "confirm", why: "asks_every", reason: "this session asks before changing files" }
-        : decision;
-    const wide = wideOk ? undefined : fanOut(store, run, agent, name, args);
-    // Tasks handed out wide become proposals the owner picks from, instead of a card that stops the turn.
-    const proposes = wide && name === "task_create";
-    if (proposes) (args as { propose?: boolean }).propose = true;
-    if (wide && !proposes && !o.inputs.takeGrant(thread.id, agent.id, name, raw)) {
-      const answer = await o.inputs.ask({
-        run,
-        agent,
-        display,
-        callId,
-        kind: "confirm",
-        prompt: fanOutPrompt(
-          store,
-          agent.name,
-          wide.map((id) => store.agents.get(id)?.name ?? id),
-        ),
-        tool: name,
-        args: raw,
-        detail: describe(args),
-        external: o.external(),
-        stays: true,
-        signal,
-      });
-      signal.throwIfAborted();
-      if (answer.state === "denied") {
-        card("error", "the owner wants a plan first");
-        return { ok: false, text: `${LOOK_FIRST}${answer.answer ? ` Their note: ${answer.answer}` : ""}` };
-      }
-      const no = unanswered(answer);
-      if (no) {
-        card("error", no.card);
-        return { ok: false, text: no.text };
-      }
-    }
-    if (wide && !proposes) wideOk = true;
+    // The owner's own chats follow the agent's mode (DECISIONS.md#d-106); a delegated session may ask before changes.
+    const gate = sessionGate(thread, decision, level === "ask" || level === "always" || changesFiles);
     const keeps = keepsCard(tool, args, agent);
     // A call that always asks has its own grant, apart from the tool's ordinary one (DECISIONS.md#d-089); one that
     // keeps its card whatever is granted offers none (DECISIONS.md#d-143).
-    const target =
-      keeps === "card"
-        ? undefined
-        : level === "always" && tool.approval
-          ? strictApproval(tool.approval)
-          : tool.approval;
+    let target: ApprovalTarget | undefined;
+    try {
+      target = tool.approvalForCall
+        ? await tool.approvalForCall(args, {
+            agent,
+            thread: callThread,
+            run,
+            call: (method, params) => o.call(method, params, { run, callId }),
+          })
+        : keeps === "card"
+          ? undefined
+          : level === "always" && tool.approval
+            ? strictApproval(tool.approval)
+            : tool.approval;
+    } catch (error) {
+      return { ok: false, text: `not run: ${failure(error)}` };
+    }
+    const approvalVersion = target && store.approvals.browserVersion(target, thread.id, agent.id);
+    const granted = !!target && store.approvals.allows(target, thread.id, agent.id, args);
+    let checkConsentAtDispatch = !!target?.browser && granted;
+    let pendingBrowserScope: "tab" | "turn" | undefined;
     if (
       gate.kind === "confirm" &&
       // The owner just said yes to this very call on its folder card: manual's ask for every change is answered.
       !(lent.asked && gate.why === "asks_every" && !keeps) &&
-      !(target && store.approvals.allows(target, thread.id, agent.id, args)) &&
-      !o.inputs.takeGrant(thread.id, agent.id, name, raw, target?.key)
+      !granted &&
+      (target?.browser || !o.inputs.takeGrant(thread.id, agent.id, name, raw, target?.key))
     ) {
       const answer = await o.inputs.ask({
         run,
@@ -392,7 +363,10 @@ export function createExecutor(o: {
         display,
         callId,
         kind: "confirm",
-        prompt: confirmPrompt(store, gate.why, agent.name, name),
+        prompt:
+          tool.ownerSetting?.(args) && tool.explain
+            ? ownerCardPrompt(store, agent.name)
+            : confirmPrompt(store, gate.why, agent.name, name),
         tool: name,
         approval: target,
         args: raw,
@@ -400,8 +374,8 @@ export function createExecutor(o: {
         // A preview that fails only costs the patch: the owner still sees the arguments.
         change: await tool.preview?.(args, { agent, thread: callThread }).catch(() => undefined),
         external: o.external(),
-        stays: true,
-        appOnly: tool.ownerSetting?.(args),
+        stays: !target?.browser,
+        appOnly: tool.ownerSetting?.(args) || tool.appOnly,
         signal,
       });
       signal.throwIfAborted();
@@ -409,6 +383,32 @@ export function createExecutor(o: {
       if (no) {
         card("error", no.card);
         return { ok: false, text: no.text };
+      }
+      if (target?.browser) {
+        try {
+          const prepared = await prepareBrowserConsent({
+            store,
+            target,
+            scope: answer.approval_scope,
+            version: approvalVersion,
+            thread: thread.id,
+            agent: agent.id,
+            signal,
+            current: async () =>
+              tool.approvalForCall?.(args, {
+                agent,
+                thread: callThread,
+                run,
+                call: (method, params) => o.call(method, params, { run, callId }),
+              }),
+          });
+          if (prepared && (answer.approval_scope === "tab" || answer.approval_scope === "turn"))
+            pendingBrowserScope = answer.approval_scope;
+        } catch (error) {
+          const detail = failure(error);
+          card("error", detail);
+          return { ok: false, text: `not run: ${detail}` };
+        }
       }
     }
 
@@ -446,7 +446,28 @@ export function createExecutor(o: {
       // A tool that always asks acts as the owner once this call passed its card (answered or granted above), or
       // where the mode or rule let it run unasked and it keeps no card (DECISIONS.md#d-143).
       ...(level === "always" && (gate.kind === "confirm" || !keeps)
-        ? { callAsOwner: (method, params) => o.call(method, params, { run, callId, owner: true }) }
+        ? {
+            callAsOwner: async (method, params) => {
+              if (target?.browser && store.approvals.browserVersion(target, thread.id, agent.id) !== approvalVersion)
+                throw new Error("Browser approval was revoked or declined; request approval again");
+              if (checkConsentAtDispatch && target && !store.approvals.allows(target, thread.id, agent.id, args))
+                throw new Error("Browser consent was revoked or expired; request approval again");
+              const result = await o.call(method, params, { run, callId, owner: true });
+              if (pendingBrowserScope && target?.browser && method === "browser.evaluate") {
+                const state = store.runs.get(run.id)?.state;
+                // The first successful dispatch proves its context; revocation only prevents future consent.
+                if (
+                  !signal.aborted &&
+                  (state === "working" || state === "input-required") &&
+                  store.approvals.browserVersion(target, thread.id, agent.id) === approvalVersion
+                )
+                  store.approvals.grant(target, pendingBrowserScope, thread.id, agent.id, approvalVersion);
+                pendingBrowserScope = undefined;
+                checkConsentAtDispatch = true;
+              }
+              return result;
+            },
+          }
         : {}),
       delegate: o.delegate,
       askOwner: (prompt, options, canContinue, multi) =>
@@ -521,11 +542,13 @@ export function createExecutor(o: {
   };
 
   /** How much an external agent's own tool kind needs the owner, before the thread's write policy and autonomy. */
-  function externalLevel(kind: string, inside: boolean, command: unknown): Confirm {
+  function externalLevel(kind: string, inside: boolean, command: unknown, paths: string[]): Confirm {
     if (READING.has(kind)) return inside ? "never" : "ask";
     // Fetching sends something out; in a code thread it could carry the code with it.
     if (kind === "fetch") return worksInFolder(thread) ? "ask" : "untrusted";
     if (kind === "execute" && typeof command === "string") return commandRisk(command, o.apxPort());
+    // APC files and AGENTS.md define agents and their modes: changing them is high impact, as file_write's.
+    if (paths.some((p) => namesApc(p) || guarded(o.workDir, p))) return "always";
     return "ask";
   }
 
@@ -549,12 +572,13 @@ export function createExecutor(o: {
     const judged = paths.map((p) => o.permissions.harnessPath(scope, p, !reading));
     // A command is held to the shell tool's folder rule: what it reads readable, what it writes writable.
     const ran = req.kind === "execute" && typeof command === "string";
-    const refusedCommand = ran ? judgeCommand(o.permissions.harnessRoots(scope), command, base) : undefined;
+    const refusedCommand = ran ? o.permissions.harnessCommand(scope, command, base) : undefined;
     if (refusedCommand) judged.push(refusedCommand);
-    // No answer of the owner's opens a read-only folder or APX's own.
+    // No answer of the owner's opens a read-only folder or APX's own, nor lets a file tool change git's folder.
     if (judged.some((r) => "refused" in r && !r.offer)) return false;
+    if (!reading && paths.some((p) => inGitFolder(path.resolve(base, p)))) return false;
     const inside = judged.every((r) => !("refused" in r));
-    const own = externalLevel(req.kind, inside, command);
+    const own = externalLevel(req.kind, inside, command, paths);
     // Outside the folders it may use, the owner says yes unless its mode lets it on its own.
     const level = inside || own === "always" ? own : "ask";
     // A read-only code thread lets only reading run. Otherwise the agent's mode decides, as for our own tools: an edit
@@ -564,7 +588,8 @@ export function createExecutor(o: {
     // A command that only reads here is risk read, as the shell tool's (DECISIONS.md#d-098).
     const reads = reading || (req.kind === "execute" && level === "never");
     const effect = reads ? "none" : req.kind === "edit" && workspace ? "local" : "external";
-    const decision = decide(level, effect, agent, untrusted, workspace);
+    const changes = !reads && (level === "ask" || level === "always" || req.kind === "edit" || req.kind === "execute");
+    const decision = sessionGate(thread, decide(level, effect, agent, untrusted, workspace), changes);
     if (decision.kind === "allow") return allow();
     if (decision.kind === "deny") return false;
     const answer = await o.inputs.ask({

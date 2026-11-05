@@ -6,7 +6,9 @@
 // waits behind that turn); "make a note file" runs a command that needs the owner's OK; "look around the parent
 // folder" reads outside the project's folder (a folder card); "show a widget" makes one; "open a
 // report" writes one and opens it as a document; "show a table for task_…" answers with a wide table whose last
-// column holds that task's chip; "connect <app> for me" offers that app or channel to connect. It also
+// column holds that task's chip; "connect <app> for me" offers that app or channel to connect; "draw a flow in
+// <project id>" makes a Flow there with apx_flow (a draft the chat shows as a card); asked from a Flow's editor,
+// "add a cleanup step" adds one to that Flow's draft and "make this flow" makes the new one in its project. It also
 // embeds texts (Ollama's /api/embed) for the skills picked by meaning.
 import http from "node:http";
 import type { AddressInfo } from "node:net";
@@ -83,6 +85,8 @@ const SLOW_MS = 2500;
 /** How long a caller that handed work off keeps its turn going ("start a worker and keep going"). */
 const KEEP_GOING_MS = 10_000;
 const KEEP_GOING = /^start a worker and keep going/i;
+/** A Flow's model step whose instruction starts "Take your time" answers this late: long enough to stop its run. */
+const LONG_MS = 30_000;
 
 /** Four delegations in one step: past the three at once from a thread, the fourth is queued. */
 function fanOut(messages: Message[], said: string): Array<{ name: string; arguments: string }> | undefined {
@@ -96,6 +100,21 @@ function fanOut(messages: Message[], said: string): Array<{ name: string; argume
 
 /** A tool call to make instead of answering, if the conversation asks for one. */
 function toolCall(messages: Message[], said: string): { name: string; arguments: string } | undefined {
+  if (/^evaluate browser three times/i.test(said)) {
+    const sinceOwner = messages.slice(messages.findLastIndex((message) => message.role === "user"));
+    const done = sinceOwner.filter((message) => message.role === "tool").length;
+    return done < 3
+      ? {
+          name: "browser_evaluate",
+          arguments: JSON.stringify({
+            tab: "consent-tab",
+            origin: "https://example.com",
+            document: "consent-doc",
+            script: String(done),
+          }),
+        }
+      : undefined;
+  }
   if (/^read MCP twice/i.test(said)) {
     const last = messages.at(-1);
     if (last?.role !== "tool") return { name: "mcp_notes_echo", arguments: JSON.stringify({ text: "first" }) };
@@ -141,6 +160,79 @@ function toolCall(messages: Message[], said: string): { name: string; arguments:
     return {
       name: "suggest_connection",
       arguments: JSON.stringify({ query: app[1], why: `To work with your ${app[1]} for you.` }),
+    };
+  // A Flow drawn for the owner in a project: a webhook and a save, as a draft, shown as a card in the chat.
+  const flowIn = /^draw a flow in (\S+)/i.exec(said);
+  if (flowIn)
+    return {
+      name: "apx_flow",
+      arguments: JSON.stringify({
+        method: "flows.create",
+        params: {
+          project: flowIn[1],
+          name: "New leads",
+          edits: [
+            { op: "add", step: { kind: "webhook", id: "hook", label: "New lead" } },
+            {
+              op: "add",
+              after: "hook",
+              step: {
+                kind: "table_write",
+                id: "save",
+                label: "Save the lead",
+                table: "leads",
+                key: "$trigger.email",
+                value: { kind: "event", path: [] },
+              },
+            },
+          ],
+        },
+      }),
+    };
+  // Asked from a Flow's editor: the editor's first words name the Flow (or, for a new one, its project) by "(id …)".
+  const editing = /\(id ([A-Za-z0-9_-]+)\)/.exec(textOf(messages.findLast((m) => m.role === "user")))?.[1];
+  if (editing && /^add a cleanup step/i.test(said))
+    return {
+      name: "apx_flow",
+      arguments: JSON.stringify({
+        method: "flows.draft_save",
+        params: {
+          flow: editing,
+          edits: [
+            {
+              op: "add",
+              after: "save",
+              step: { kind: "js", id: "tidy", label: "Tidy the lead", code: "return input;" },
+            },
+          ],
+        },
+      }),
+    };
+  if (editing && /^make this flow/i.test(said))
+    return {
+      name: "apx_flow",
+      arguments: JSON.stringify({
+        method: "flows.create",
+        params: {
+          project: editing,
+          name: "Lead intake",
+          edits: [
+            { op: "add", step: { kind: "webhook", id: "hook", label: "New lead" } },
+            {
+              op: "add",
+              after: "hook",
+              step: {
+                kind: "table_write",
+                id: "save",
+                label: "Save the lead",
+                table: "leads",
+                key: "latest",
+                value: { kind: "event", path: [] },
+              },
+            },
+          ],
+        },
+      }),
     };
   // A first look past the project's folder: a folder card asks the owner.
   if (/^look around the parent folder/i.test(said))
@@ -268,8 +360,12 @@ export async function fakeLlm() {
         res.end("data: [DONE]\n\n");
       };
       const keepGoing = KEEP_GOING.test(said) && body.messages?.at(-1)?.role === "tool";
-      if (slow || keepGoing) setTimeout(answer, slow ? SLOW_MS : KEEP_GOING_MS);
-      else answer();
+      const long = system.startsWith("Take your time");
+      if (slow || keepGoing || long) {
+        const timer = setTimeout(answer, long ? LONG_MS : slow ? SLOW_MS : KEEP_GOING_MS);
+        // A caller that gave up (a stopped Flow run) leaves nothing to answer.
+        res.on("close", () => clearTimeout(timer));
+      } else answer();
     });
   });
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));

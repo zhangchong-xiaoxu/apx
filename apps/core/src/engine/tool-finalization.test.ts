@@ -48,8 +48,8 @@ async function fixture(
     await env.core.close();
     await env.cleanup();
   });
-  await env.client.call("agents.update", { agent: "roby", autonomy: "total" });
-  const thread = await env.client.call("threads.create", { kind: "loose", agent_id: "roby" });
+  await env.client.call("agents.update", { agent: "superagent", autonomy: "total" });
+  const thread = await env.client.call("threads.create", { kind: "loose", agent_id: "superagent" });
   const sent = await env.client.call("threads.send", { thread: thread.id, text: "Write notes.md with the draft." });
   const result = await env.settle(thread.id);
   const run = await env.client.call("runs.get", { run: sent.run.id });
@@ -204,16 +204,16 @@ test("repeated schema failures reach an honest tool-free summary without a gatew
     return { role: "assistant", content: "No document was saved: file_write requires a path." };
   });
   assert.equal(result.run.state, "completed");
-  assert.equal(result.requests.length, 4);
+  assert.equal(result.requests.length, 9);
   assert.equal(fs.existsSync(result.file), false);
   assert.ok(texts(result.messages).some((s) => s.startsWith("No document was saved")));
   const cards = result.messages.flatMap((m) => m.parts).filter((p) => p.type === "tool");
-  assert.equal(cards.length, 3);
+  assert.equal(cards.length, 8);
   assert.ok(cards.every((p) => p.status === "error"));
   const log = result.env.core.store.modelLog.forRun(result.run.id);
   assert.equal(
     log.filter((m) => m && typeof m === "object" && "role" in m && m.role === "tool").length,
-    3,
+    8,
     "the canonical tool history remains intact",
   );
 });
@@ -234,7 +234,7 @@ for (const malformed of [true, false]) {
       assert.equal(result.requests.length, 2);
       assert.match(texts(result.messages).join("\n"), /nothing was saved/i);
     } else {
-      assert.equal(result.requests.length, 4);
+      assert.equal(result.requests.length, 8);
       assert.ok(result.messages.at(-1)?.parts.some((p) => p.type === "notice" && p.level === "error"));
     }
   });

@@ -12,7 +12,7 @@ const workerSessions = async () =>
   ).length;
 
 test.afterEach(async () => {
-  await rpc("agents.set_limits", { runs: 30, tokens: 1_500_000 });
+  await rpc("agents.set_limits", { runs: 0, tokens: 0 });
 });
 
 test("the owner writing on Telegram gives agents a fresh budget each time", async () => {
@@ -31,7 +31,7 @@ test("the owner writing on Telegram gives agents a fresh budget each time", asyn
 for (const mode of ["reset", "release"] as const) {
   test(`${mode} resumes paused work and keeps the notice resolved after navigation and reload`, async ({ page }) => {
     await rpc("agents.set_limits", { runs: 1, tokens: 0 });
-    const chat = await rpc<{ id: string }>("threads.create", { kind: "agent", agent_id: "roby" });
+    const chat = await rpc<{ id: string }>("threads.create", { kind: "agent", agent_id: "superagent" });
     await open(page, `#thread=${chat.id}`);
     const main = page.getByRole("main");
     const composer = main.getByRole("textbox").last();

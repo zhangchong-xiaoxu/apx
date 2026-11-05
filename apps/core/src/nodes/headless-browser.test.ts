@@ -34,7 +34,12 @@ before(async () => {
     if (req.url === "/to-apx") return res.writeHead(302, { location: `http://127.0.0.1:${apxPort}/rpc` }).end();
     const page = PAGES[req.url?.split("?")[0] ?? ""];
     if (page === undefined) return res.writeHead(404).end();
-    res.writeHead(200, { "content-type": "text/html" }).end(page);
+    res
+      .writeHead(200, {
+        "content-type": "text/html",
+        "content-security-policy": "script-src 'none'; object-src 'none'",
+      })
+      .end(page);
   });
   await new Promise<void>((r) => srv.listen(0, "127.0.0.1", r));
   base = `http://127.0.0.1:${(srv.address() as AddressInfo).port}`;
@@ -94,7 +99,7 @@ test("CDP input and output pipe errors reject work and stop Chrome without an un
       onChange: () => {},
     });
     try {
-      const opening = isolated.handle("browser.open", { url: "https://example.com", by: "roby" });
+      const opening = isolated.handle("browser.open", { url: "https://example.com", by: "superagent" });
       (stream === "input" ? input : output).emit("error", new Error("ECONNRESET"));
       await assert.rejects(opening, /ECONNRESET/);
       assert.equal(isolated.running(), false);
@@ -111,42 +116,137 @@ test("CDP input and output pipe errors reject work and stop Chrome without an un
 
 test("with no desktop app the core drives its own headless Chrome: open, read, click, type; never a password", async (t) => {
   assert.ok(browser.available());
-  const tab = (await browser.handle("browser.open", { url: `${base}/`, by: "roby" }).catch((error) => {
+  const tab = (await browser.handle("browser.open", { url: `${base}/`, by: "superagent" }).catch((error) => {
     t.diagnostic(`Browser executable: ${chrome}`);
     t.diagnostic(chromeStderr || "No browser stderr");
     throw error;
   })) as TabInfo;
+  const snap = (await browser.handle("browser.snapshot", { tab: tab.tab })) as { tree: string; document: string };
+  const evaluated = (await browser.handle("browser.evaluate", {
+    tab: tab.tab,
+    by: "superagent",
+    script: "Promise.resolve({title: document.title, path: location.pathname})",
+    origin: base,
+    document: snap.document,
+  })) as { json: string; url: string };
+  assert.deepEqual(JSON.parse(evaluated.json), { title: "Acme home", path: "/" });
+  assert.equal(evaluated.url, `${base}/`);
+  await assert.rejects(
+    browser.handle("browser.evaluate", {
+      tab: tab.tab,
+      by: "superagent",
+      origin: "https://northwind.example",
+      document: snap.document,
+      script: "document.title = 'wrong'",
+    }),
+    /origin changed/,
+  );
+  await assert.rejects(
+    browser.handle("browser.evaluate", {
+      tab: tab.tab,
+      by: "superagent",
+      script: "(() => { throw new Error('expected failure') })()",
+      origin: base,
+      document: snap.document,
+    }),
+    /expected failure/,
+  );
   assert.equal(tab.title, "Acme home");
   assert.deepEqual(tab.control.kind, "agent");
-  const snap = (await browser.handle("browser.snapshot", { tab: tab.tab })) as { tree: string };
   assert.match(snap.tree, /^<untrusted_web source=/, "page content is marked as outside data");
   const link = /link "Prices" \[(e\d+)\]/.exec(snap.tree)?.[1];
   const search = /textbox "Search" \[(e\d+)\]/.exec(snap.tree)?.[1];
   const password = /textbox "Password" \[(e\d+)\]/.exec(snap.tree)?.[1];
   assert.ok(link && search && password, snap.tree);
-  await browser.handle("browser.type", { tab: tab.tab, ref: search, text: "plans", by: "roby" });
+  await browser.handle("browser.type", { tab: tab.tab, ref: search, text: "plans", by: "superagent" });
   await assert.rejects(
-    browser.handle("browser.type", { tab: tab.tab, ref: password, text: "x", by: "roby" }),
+    browser.handle("browser.type", { tab: tab.tab, ref: password, text: "x", by: "superagent" }),
     /password/,
   );
-  const clicked = (await browser.handle("browser.click", { tab: tab.tab, ref: link, by: "roby" })) as { url: string };
+  const clicked = (await browser.handle("browser.click", { tab: tab.tab, ref: link, by: "superagent" })) as {
+    url: string;
+  };
   assert.equal(clicked.url, `${base}/prices`);
+  await assert.rejects(
+    browser.handle("browser.evaluate", {
+      tab: tab.tab,
+      by: "superagent",
+      origin: base,
+      document: snap.document,
+      script: "document.title = 'wrong'",
+    }),
+    /context|object|document/i,
+  );
   const text = (await browser.handle("browser.text", { tab: tab.tab })) as { text: string };
   assert.match(text.text, /From 10 a month/);
   await assert.rejects(
-    browser.handle("browser.handoff", { tab: tab.tab, reason: "log in", by: "roby" }),
+    browser.handle("browser.handoff", { tab: tab.tab, reason: "log in", by: "superagent" }),
     /nobody can take over/,
   );
   await assert.rejects(
-    browser.handle("browser.navigate", { tab: tab.tab, url: `http://127.0.0.1:${apxPort}/`, by: "roby" }),
+    browser.handle("browser.navigate", { tab: tab.tab, url: `http://127.0.0.1:${apxPort}/`, by: "superagent" }),
     /APX itself/,
   );
-  await browser.handle("browser.navigate", { tab: tab.tab, url: `${base}/to-apx`, by: "roby" });
+  await browser.handle("browser.navigate", { tab: tab.tab, url: `${base}/to-apx`, by: "superagent" });
   const after = (await browser.handle("browser.text", { tab: tab.tab })) as { text: string };
   assert.doesNotMatch(after.text, /^APX$/, "a redirect to APX is blocked too");
   assert.ok(seen.length > 0, "tab changes reach the panel");
   await browser.handle("browser.close", { tab: tab.tab });
   assert.deepEqual(browser.list(), []);
+});
+
+test("real Chromium retires consent on reload, in-page navigation and tab closure", async () => {
+  const tab = (await browser.handle("browser.open", { url: `${base}/`, by: "reader" })) as TabInfo;
+  const snapshot = async () => (await browser.handle("browser.snapshot", { tab: tab.tab })) as { document: string };
+  const context = async (document: string) =>
+    (await browser.handle("browser.approval_context", {
+      tab: tab.tab,
+      origin: base,
+      document,
+    })) as { epoch: string };
+  try {
+    const first = await snapshot();
+    const consent = await context(first.document);
+    for (let i = 0; i < 3; i++) {
+      const result = (await browser.handle("browser.evaluate", {
+        tab: tab.tab,
+        origin: base,
+        document: first.document,
+        epoch: consent.epoch,
+        script: String(i),
+        by: "reader",
+      })) as { json: string };
+      assert.equal(result.json, String(i));
+    }
+    await browser.handle("browser.history", { tab: tab.tab, action: "reload", by: "reader" });
+    const second = await snapshot();
+    assert.notEqual((await context(second.document)).epoch, consent.epoch);
+    await assert.rejects(
+      browser.handle("browser.evaluate", {
+        tab: tab.tab,
+        origin: base,
+        document: second.document,
+        epoch: consent.epoch,
+        script: "42",
+        by: "reader",
+      }),
+      /permission expired/,
+    );
+    const next = await context(second.document);
+    await browser.handle("browser.evaluate", {
+      tab: tab.tab,
+      origin: base,
+      document: second.document,
+      epoch: next.epoch,
+      script: "history.pushState({}, '', '/prices')",
+      by: "reader",
+    });
+    const third = await snapshot();
+    assert.notEqual((await context(third.document)).epoch, next.epoch);
+  } finally {
+    await browser.handle("browser.close", { tab: tab.tab });
+  }
+  await assert.rejects(context("doc1"), /tab|unknown|not found/i);
 });
 
 test("a remote browser transport failure kills its process and never launches host Chrome", async () => {
@@ -172,7 +272,7 @@ test("a remote browser transport failure kills its process and never launches ho
     onChange: () => {},
   });
   try {
-    const work = remote.handle("browser.open", { url: "https://example.com", by: "roby" });
+    const work = remote.handle("browser.open", { url: "https://example.com", by: "superagent" });
     child.emit("error", new Error("SSH guest unavailable"));
     await assert.rejects(work, /SSH guest unavailable/);
     assert.equal(killed, true);

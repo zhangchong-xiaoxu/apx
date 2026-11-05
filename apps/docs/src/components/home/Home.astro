@@ -17,6 +17,7 @@ interface Props {
 const { lang } = Astro.props;
 const t = HOME[lang];
 const href = (path: string) => sitePath(path, import.meta.env.BASE_URL);
+const canonical = new URL(href(lang === "es" ? "/es/" : "/"), Astro.site).href;
 const pre = lang === "es" ? "/es" : "";
 const site = "https://github.com/zhangchong-xiaoxu/apx/releases/latest/download";
 const install = `curl -fsSL ${site}/install.sh | bash`;
@@ -53,6 +54,7 @@ const issues = "https://github.com/zhangchong-xiaoxu/apx/issues";
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{t.title}</title>
     <meta name="description" content={t.description} />
+    <link rel="canonical" href={canonical} />
     <link rel="icon" href={href("/favicon.svg")} type="image/svg+xml" />
     <link rel="alternate" hreflang="en" href={href("/")} />
     <link rel="alternate" hreflang="es" href={href("/es/")} />
@@ -364,13 +366,19 @@ You have three open things in Acme Store:
           <a href="https://github.com/zhangchong-xiaoxu/apx">GitHub</a>
           <a href={issues}>Issues</a>
           <a href="https://github.com/agentprojectcontext/agentprojectcontext">APC</a>
-          <a href={href(other)}>{lang === "es" ? "English" : "Español"}</a>
+          <a href={href(other)} hreflang={lang === "es" ? "en" : "es"}>{lang === "es" ? "English" : "Español"}</a>
         </p>
       </div>
     </footer>
 
     <BlobEyes />
     <script>
+      import { bindInstallationCopy } from "../install-copy.mjs";
+      import { fillLatest } from "../latest-release";
+      import { startReveal } from "../web/reveal";
+      import { startHorizon } from "./horizon";
+      import { startTermDemo } from "./term-demo";
+
       const nav = document.getElementById("nav");
       const onScroll = () => nav?.classList.toggle("scrolled", scrollY > 8);
       addEventListener("scroll", onScroll, { passive: true });
@@ -385,16 +393,7 @@ You have three open things in Acme Store:
       });
 
       for (const b of document.querySelectorAll<HTMLButtonElement>("[data-copy]")) {
-        b.addEventListener("click", async () => {
-          await navigator.clipboard?.writeText(b.dataset.copy ?? "");
-          const label = b.querySelector(".copy");
-          if (!label) return;
-          const was = label.textContent;
-          label.textContent = b.dataset.done ?? "✓";
-          setTimeout(() => {
-            label.textContent = was;
-          }, 1400);
-        });
+        bindInstallationCopy(window, b);
       }
 
       // The hero's install line follows the reader's system; the icons switch it.

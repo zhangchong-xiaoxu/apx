@@ -26,6 +26,7 @@ export const TabInfo = z.object({
   title: z.string(),
   profile: BrowserProfile,
   control: TabControl,
+  consent_epoch: z.string().max(100).optional(),
 });
 export type TabInfo = z.infer<typeof TabInfo>;
 
@@ -63,6 +64,7 @@ export const browserMethods = {
       url: z.string(),
       title: z.string(),
       tree: z.string(),
+      document: z.string().optional(),
       refs: z.number().int(),
       truncated: z.boolean(),
     }),
@@ -79,6 +81,26 @@ export const browserMethods = {
       .strict(),
     result: z.object({ ok: z.literal(true), url: z.string() }),
     effect: true,
+  },
+  "browser.approval_context": {
+    params: z.object({ tab: Tab, origin: Url, document: z.string().min(1).max(500) }).strict(),
+    result: z.object({ epoch: z.string().min(1).max(500) }),
+    effect: false,
+  },
+  "browser.evaluate": {
+    params: z
+      .object({
+        tab: Tab,
+        origin: Url,
+        document: z.string().min(1).max(500),
+        script: z.string().min(1).max(64_000),
+        epoch: z.string().min(1).max(500).optional(),
+        by: By,
+      })
+      .strict(),
+    result: z.object({ url: z.string(), json: z.string().max(16_000) }),
+    effect: true,
+    access: "human",
   },
   "browser.screenshot": {
     params: z.object({ tab: Tab }).strict(),

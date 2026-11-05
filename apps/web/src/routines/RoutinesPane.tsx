@@ -14,6 +14,7 @@ import {
 } from "../data/routines.ts";
 import { useData } from "../data/state.ts";
 import { useT } from "../i18n/index.ts";
+import { go } from "../shell/nav.ts";
 import { ActivationBars, hasAgent, useRuns } from "./ActivationBars.tsx";
 import { RoutineDrawer } from "./RoutineDrawer.tsx";
 import { RoutineEditor } from "./RoutineEditor.tsx";
@@ -34,7 +35,7 @@ export function RoutinesPane({ projectId }: { projectId: string }) {
     void loadRoutines();
   }, []);
   const global = projectId === DEFAULT_PID;
-  const list = all.filter((r) => (global ? !r.project_id : r.project_id === projectId));
+  const list = all.filter((r) => r.action !== "relay" && (global ? !r.project_id : r.project_id === projectId));
   const current = list.find((r) => r.id === open);
   const blank: RoutineDraft = {
     name: "",
@@ -56,6 +57,9 @@ export function RoutinesPane({ projectId }: { projectId: string }) {
       <div className="board__head">
         <p className="config__lead">{t("routines.lead")}</p>
         <span className="board__spacer" />
+        <Button size="sm" variant="secondary" onClick={() => go.flows(global ? undefined : projectId)}>
+          {t("nav.flows")}
+        </Button>
         <Button size="sm" leadingIcon={<Icons.Plus size={14} />} onClick={() => setEditing(blank)}>
           {t("routines.new")}
         </Button>
@@ -125,11 +129,9 @@ function RoutineRow(props: {
         ? t("routines.flow.watch", { agent: props.agentName })
         : r.action === "relay"
           ? t("routines.flow.relay", { agent: props.agentName })
-          : r.action === "mail"
-            ? t("routines.flow.mail", { agent: props.agentName })
-            : r.action === "message"
-              ? t("routines.flow.message")
-              : undefined,
+          : r.action === "message"
+            ? t("routines.flow.message")
+            : undefined,
     r.post_command && t("routines.flow.post"),
   ].filter(Boolean);
   return (

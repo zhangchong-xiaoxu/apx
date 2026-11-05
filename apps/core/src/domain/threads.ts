@@ -43,6 +43,8 @@ export type ThreadContext = {
   roster_agent?: string;
   /** Answers on a channel also go as voice notes (the agent's voice_replies tool). */
   voice_replies?: boolean;
+  /** Opened from the Flow editor: the Flow it shows, or only its project while the Flow isn't made (D-175). */
+  flow_editor?: { project: string; flow?: string | undefined };
   /** A title was given (or tried) once. */
   titled?: boolean;
   /** Memory notes shown per agent, and the model log seq of the turn that showed the standing ones. */
@@ -58,6 +60,8 @@ export type ThreadContext = {
   model_choice?: ModelChoice;
   /** A worker's session: the caller's own agent, run under instructions the caller wrote for one task. */
   worker?: Worker;
+  /** A Flow's AI model step: what it may do beyond answering (DECISIONS.md#d-172). */
+  flow_step?: FlowStepContext;
   /** A consult an @mention in a task opened: the task, and the card in its conversation that shows the answer. */
   /** `asker`: the agent that asked on the task and the chat it asked from, where it hears the answer. */
   consult?: { task: string; card: string; review?: boolean; asker?: { agent: string; thread: string } };
@@ -72,6 +76,8 @@ export type ThreadContext = {
   asked_from?: string;
   /** An immediate self-task takes execution from this run only; later owner turns stay independent. */
   task_handoff?: { task: string; run: string };
+  /** One execution channel per teammate in a turn, including work started through task assignment. */
+  task_dispatches?: { run: string; tasks: Array<{ task: string; agent: string; project?: string | undefined }> };
   /** The source of a self-task's existing findings, without copying trusted instructions or permissions. */
   handoff_from?: { thread: string; run: string };
   /** Native tool permissions cannot be revoked or reliably correlated with completion by every harness. */
@@ -109,6 +115,11 @@ export type ReleaseContext = { version: string; previous?: string; branch?: stri
 export type HeldTask = { task: string; agent: string; run: string; depth: number };
 
 /** A throwaway helper an agent starts for one task: a name, its instructions and (optionally) fewer tools. */
+/**
+ * A Flow step's chat: whether it may hand work to or message other agents, whether it is a bot of the Flow (no memory,
+ * history or team) and the mode it acts in on APX's harness, over the agent's own.
+ */
+export type FlowStepContext = { delegate: boolean; bot?: boolean; autonomy?: "manual" | "auto" | "total" };
 export type Worker = { name: string; instructions: string; tools?: string[] | undefined };
 
 /** What a thread list shows of the last thing said. */
@@ -646,6 +657,28 @@ export function messagesRepo({ one, all, run }: Sql, bus: Bus) {
           return [{ part: part as DocumentPart, message }];
         }),
       );
+    },
+    /** The newest owner message or agent reply content, outside run `notRun`; placeholders and tool activity are not replies. */
+    latestBy(threadIds: string[], kind: "user" | "agent", notRun?: string): Message | undefined {
+      if (!threadIds.length) return undefined;
+      const r = one(
+        qb
+          .selectFrom("messages")
+          .selectAll()
+          .where("thread_id", "in", threadIds)
+          .where(sql<string>`json_extract(author, '$.kind')`, "=", kind)
+          .$if(kind === "agent", (q) =>
+            q.where(sql<boolean>`exists (select 1 from json_each(messages.parts) where
+              (json_extract(value, '$.type') = 'text' and length(trim(json_extract(value, '$.text'))) > 0)
+              or json_extract(value, '$.type') in ('image', 'audio', 'file', 'surface'))`),
+          )
+          .$if(!!notRun, (q) =>
+            q.where((eb) => eb.or([eb("run_id", "is", null), eb("run_id", "!=", notRun as string)])),
+          )
+          .orderBy("created_at", "desc")
+          .limit(1),
+      );
+      return r ? toMessage(r) : undefined;
     },
     /** Whether the owner ever wrote anything (an install in use, not a new one). */
     anyFromOwner(): boolean {

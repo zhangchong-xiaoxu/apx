@@ -26,7 +26,8 @@ Each routine does one of four things:
 | **Message** | Sends you a fixed message on your channel (Telegram, WhatsApp…). No model. |
 | **Shell** | Only runs a command in the project's folder. No model, no notice. |
 | **Watcher** | Sweeps your work for what is worth a word (late tasks, commitments coming due, quiet projects, tasks set up so they cannot move) and calls the model only when something is new. |
-| **Team news** | Tells you in one message what your other agents' routines and notices had for you; while one is on, they don't write to you on their own. Calls the model only when there is news. |
+
+**Team news** is a [secretary capability](/office/secretary/), switched on or off in **Settings → Super-agent**, not a routine action. Work an integration does on its own, such as Gmail's new mail check or Google Calendar's event reminders, is not a routine either: it is turned on and timed in that integration's settings.
 
 ## Schedules
 
@@ -39,10 +40,244 @@ Each routine does one of four things:
 
 A run missed while the core was off runs once when it comes back, never twice.
 
+## Flows
+
+In the unreleased integration branch, open **Flows** in the global sidebar beside **Tasks** and **Resources**. The list
+shows every flow across projects with its steps, how many of them use AI, a bar for each of its last runs and an
+on/off switch; the project menu narrows it. The Routines tab's shortcut opens this same global screen. Direct links use
+`#view=flows`, `#view=flows&scope=<project-id>`, `#view=flows&flow=<flow-id>` (its runs) or
+`#view=flows&flow=<flow-id>&edit=1` (its editor); chat buttons may use `apx:flows`, `apx:flows/<project-id>`,
+`apx:flows/<project-id>/<flow-id>` or `apx:flows/<project-id>/<flow-id>/edit`.
+
+**New flow** opens the editor, blank or from a starter shape. Add steps from the left (they join after the step you
+chose), drag from a step's output dot to join two steps, and click a step to set it in the card that opens over the
+canvas (the step moves into view at the same zoom; click the canvas, × or Escape to close it). On a phone the step
+types open from **Add a step** and the card is a sheet at the bottom:
+
+| Step | What it does |
+|---|---|
+| Incoming webhook | Starts the flow when a service calls its address. Its card shows the address (production or test, one copy button), what it **Accepts** (POST with a JSON body, GET with the data as parameters, or both) and its **Key** (see [Testing a flow](#testing-a-flow-with-a-real-event)). |
+| Schedule | Starts the flow at set times in your time zone, with no cron to write: a quick choice (**Every 5 min**, **Every hour**, **Weekdays 08:30**, **Daily 03:00**), **Fixed times** (tick the days, each with one or more times, or give a group of days the same times), **Every…** (a number of minutes, hours, days or months, or a day of the week) or **Cron** by hand. The side panel shows the next runs. |
+| Check | Tries its cases in order and goes on by the first that holds, else by its last way out. A case has a name and either **Compare** or **Formula**. **Compare** holds one or more comparisons, each a value picked with `{}` (what arrived, an earlier step's result like `$steps.normalize.username`, or a variable), read as **Text**, **Number** or **Yes or no**, and compared: *is*, *is not*, *contains*, *starts with*, *is greater* or *less than*, *is at least* or *at most*, *is empty*, *is not empty*. Join two or more with **And** (all hold) or **Or** (one holds). **Formula** is free: `$trigger.amount > 100 && $vars.vip`. One case reads as **Yes** and **No**; with more, each case has its own dot, named, plus **Otherwise**. No model. |
+| Variables | Names values once for the steps after it: text, a number, yes or no, or a formula over `$trigger`, `$steps` and the variables above. Later steps read them as `$vars.name`. A value can hold a secret picked from your list (`secret://name`): it is used only in an outgoing webhook's headers and a command's variables, and a flow that puts it in a message, a body or an instruction can't be saved to run. No model. |
+| JavaScript | A short function body that gets `input` (what arrived or an earlier step's result) and `vars`, and returns what the next steps read as `$steps.<step>`. It runs apart, with a time limit, and can't open files, use the internet or run programs. No model. |
+| Read table | Picks any of the project's tables (it shows how many rows each has), or makes a new one there, and brings **One row, by its key** (like `$trigger.email`) or **The latest rows**. Tick the **Columns it brings** (all of them unless you untick some); beside each is the name a later step reads, `$steps.<step>.<column>` (the row's, or the newest row's), to copy. The whole row or rows are `.row` and `.rows`. An empty table reads nothing. Rename or remove columns in **Tables**. No model. |
+| Save to table | Picks any of the project's tables, or makes a new one there, and fills it **By column** (what goes in each column, picked with `{}` from what arrived or an earlier step) or saves one **Whole value** (one `{}` field; empty saves everything that arrived). A required column shows an asterisk: the step isn't finished until something goes in it. **New column** adds a column on the spot, and a preview shows the key and what fills each column. The key can come from what arrived (`$trigger.email`); saving under the same key again changes only the columns it fills. No model. |
+| SQL | One statement on a SQLite file in the project's folder (`data/app.db`). Values go in apart from the query, as `:name` with a line `name: $trigger.email`, never inside it. **Read only** reads rows (`$steps.<step>.rows`, at most 500); off, it can add, change and delete rows and add tables or indexes. No model. |
+| AI model | Gives a task to an agent of the crew or to a bot of this flow, with what arrived or an earlier step's result, on the harness and model you pick (see below). Spends tokens. |
+| Routine | Runs a manual routine of the project. |
+| Direct model | Asks one set-up model once, without tools, and passes its answer on. Spends tokens. It stays in flows that have one; new steps use **AI model**. |
+| Outgoing webhook | Calls a URL with GET, POST or PUT. Headers and body can carry values of the run; a key goes in a header as `secret://name`, from **Secrets**. Later steps read its answer as `$steps.<step>.status`, `.ok` and `.json` (or `.body` when it isn't JSON). |
+| Cmd | A shell command in the project's folder, like a routine's. Values of the run reach it only as variables (`EMAIL=$trigger.email`, read as `$EMAIL`) and as its input, never inside its text; a key goes in a variable as `secret://name`. Later steps read `$steps.<step>.stdout` and `.exit`; an error stops the flow unless **Go on if it fails** is on. It has a time limit (up to 2 minutes). |
+| Notify | Sends a message for you on one of your chat apps (Telegram, WhatsApp, Discord…) to someone you know there, to yourself, or to a room you listed. In APX it shows in that chat as written by the agent that answers on that app, as it arrived. With **Only if there's something to tell**, it doesn't send when every value in the message came out empty. |
+
+The editor's top bar has the flow's name at the left and **Exit** at the right, beside the save status, **Listen for a test event**, **Simulate**,
+**Save draft** and **Save** (on a phone, **Draft** and an exit icon). Leaving with unsaved changes asks first, and
+offers **Save draft** to keep them.
+
+### Testing a flow with a real event
+
+A flow's address is `https://<your public address>/flows/<name>`, where the end comes from the flow's name
+(`leads-from-the-form`). The webhook step's card shows it from the first moment, before you save, with a copy button.
+**Starts with** switches the trigger between a webhook and a schedule without redrawing its connections.
+
+Click the end of the address and write the new one in place (Enter takes it, Esc cancels); before the first save, it's
+kept when you save. Changing it later stops the
+old address at once (it asks first): the services that call the flow need the new one. Its key, if it has one, stays
+the same. The address only works from outside once you set up a public address in **Devices**.
+
+Callers send the flow's **Key** in the header `Authorization: Bearer <key>`; without it they are refused. **Create key**
+makes one; you can show it, copy it, replace it with **New key** or write your own with **Use my own** (24 to 200
+letters, numbers, dots, hyphens or underscores). Replacing it stops the old key at once, so it asks first.
+
+**Test** beside **Production** shows the **test address**, `…/flows/test/<name>`. It answers only while you test. **Listen for a test event** in
+the top bar saves what you drew (it says which step to finish first, if any), asks **Let this flow act for you?** when
+the flow would send, call, run or change something new, and waits five minutes for one event at the test address. Send
+it from the service, or by hand, as a POST with JSON like `{"id": "1", "data": {"name": "Ada"}}` (with the address's
+key, once it has one). The flow doesn't need to be on. When the event arrives the flow runs as you drew it, for real: its
+messages, calls and commands happen. The steps light up as they run, and the log at the bottom shows what arrived (its
+headers and data), then each step as it starts and ends with what it got and gave. While it tests you can open a step
+to see what it got and gave, but not change it; **Back to editing** closes the log. **Listen again** waits for another
+event. A schedule flow has **Test now** instead, which runs it once at once.
+
+A test run is listed with the flow's runs, marked **Test**, with the same log. It isn't shown as the flow's last run in
+the list, and a schedule doesn't skip its time because of it.
+
+### Who answers an AI model step
+
+A flow belongs to one project, chosen at the top of a new flow: the steps that need it (agents, tables, routines, a
+folder) say so until it is chosen. Text fields offer values as you type `$`, `{{` or `secret://`, or with their braces
+button; where a secret can go, the list also offers **Save a secret**.
+
+**Who answers** is **An agent** (one of the crew, with its instructions, personality, memory and tools) or **A bot for
+this flow**: a name and **How it works**, the system prompt you write. A bot starts from scratch on every run: no memory,
+no history and no team, and it works only with the web, files and commands in the project and its own browser, never
+with your chats, mail, calendar or accounts. Then pick:
+
+- **Agent of the crew**: the project's agents and, always, your super-agent, as cards.
+- **Harness**: **APX** (APX's own, on the model APIs you set up) or an app on this computer such as Claude Code or Codex,
+  when it is installed. On an app, the step runs in the project's folder with that app's own tools and settings, as a
+  session of its own; who answers travels as its brief, and APX's memory doesn't reach it.
+- **Model** and, when the model takes it, **Effort**. Left as it is, an agent uses its own model and a bot your default.
+- **Permissions**: on APX, the agent's own, **Asks first**, **Auto** or **Total**; on an app, **Asks first**, **Edits
+  freely** or **Read only**. A flow runs unattended: something that asks waits for you until the run's time limit.
+- **Can ask other agents** (agents on APX only), off by default. Off, the agent works alone with all its tools and
+  memory but can't hand work to your other agents, message them, or create or comment tasks for them. On, it works as
+  it does in a chat.
+
+The run shows who answered, on which harness and model, and **Open chat** opens the conversation it had.
+
+A flow has one trigger. A flow runs as drawn: steps can branch and join, and each step can receive what arrived or the
+result of a step before it. In **Goes on to** you pick by which of a check's ways out each connection leaves; a step
+added after a check takes its first free way out. The step list under the step types says *Runs as drawn*, or
+why the drawing can't run yet (an agent outside the project, a model that isn't set up, two saves to one key with no
+order between them, a schedule more often than every 5 minutes), also for a new flow before its first save.
+
+**Save** keeps your drawing. When the flow is on, saving also makes it what runs: new events use it, and events already
+received finish with the version they started with. When the flow is off, turning it on makes your last saved drawing
+what runs. **Save draft** keeps the drawing exactly as it is, steps you haven't finished included, and never changes
+what runs, even when the flow is on: the status says **Draft saved. What runs doesn't change.** It still needs a name
+and a project. **Save**, and turning the flow on, ask you to finish every step first and say which one. A flow whose
+drawing has the old one-path shape (webhook, checks, read, save, then one agent or routine) keeps
+running as before until you save a drawing it can't stand for. **Simulate** follows sample data through the checks
+and branches and marks the steps it would reach, without saving, reading a table, sending or calling an agent; a step
+that needs another step's answer says it depends on it. Saving never runs anything, and a new flow starts off.
+
+Every save that changes the drawing leaves a version: a draft you saved, one that became what runs, one an agent drew
+for you, or one you restored. On the flow's page, switch the list at the right from **Runs** to **History** to see
+them, newest first, with when, who and how many steps. Pick one to see its drawing (it doesn't run), and **Restore as
+draft** to keep working from it: it becomes the draft, and what runs doesn't change until you save it. In the editor,
+the history button in the top bar opens the same list; restoring there replaces the canvas, and asks first when you
+have unsaved changes. The last 50 versions are kept, and every one a run still used.
+
+Opening a flow shows its steps as they ran in the chosen run (numbered, green when they ran, dashed when they didn't,
+red when they failed), what each step got and gave, when it started and ended, a log, and the runs at the right with
+their duration and tokens. A run made with an earlier drawing shows that drawing and says **Previous version**. A run
+a check stopped marks that check **no** and the steps after it as not run. A step that handed work to an agent opens
+its chat.
+
+While a saved draft waits, the list shows its steps marked **Draft**, and the flow's page draws it with **Draft** in
+the corner; **What runs** switches to the version that runs, and picking a run shows the version that run used. A flow
+nothing drawn runs for yet (one your super-agent just made) shows only its draft.
+
+Each run has 10 minutes from the moment its event arrives; a model step has its own limit (up to 2 minutes). Steps that
+call a model are sent once and never again: if APX stops or the answer doesn't come in time after the request went
+out, the run says **Needs a look** instead of trying again, because the model may have done it anyway. Commands and
+SQL writes follow the same rule: one cut by a restart, a time limit or **Stop run** is never run again. Turning on a
+flow with a command or a SQL write asks first (**Let this flow act for you?**), naming the command and the folder or
+the database; changing either asks again. Turning a
+flow off stops new steps; a run that was waiting still ends at its time limit. A flow runs one event at a time, in the
+order they arrived.
+
+**Run now** on a flow's page starts it at once, through the same path as its trigger. A schedule flow runs with an
+empty event; a webhook flow asks for the body it gets, filled in with the last one it received, and treats it like
+any outside data. The run says **Started by you**. **Stop run** on a run that is going stops it: steps that haven't
+started don't run, and a step already sent to a model is left as **Needs a look**, never sent again.
+
+A schedule flow runs while APX is on. If APX was off at a run's time, the flow runs once when APX starts (not once for
+each time it missed), and that run says it started late. If the last run is still going when the next time comes, that
+time is skipped, not queued, and the flow's page says how many were skipped. A flow that is off doesn't run on its
+schedule and, turned on again, starts counting from then. A schedule flow has no address: it never takes a POST, and a
+webhook flow never runs on a timer.
+
+### Messages and calls a flow makes for you
+
+A message, a room and a person are written into the step's text with placeholders: `$trigger.email` is a field of what
+arrived, `$steps.<step>.text` the answer of a step before it, `$vars.name` a variable, `$apx.project`, `$apx.now` and
+`$apx.run` the project's name, the date and time and the run's number, and `$$` is a dollar sign. You don't need to
+know them: in any field that takes values, type `{{` or `$`, or press the **{}** button, and pick from what arrived,
+earlier steps, the flow's variables and APX's values; what you picked shows as a badge. **What it receives** works the
+same way: empty is everything that arrived, or pick one field of it or an earlier step's result. **Secrets** are offered only in
+an outgoing webhook's headers and a command's variables, where the step reads them itself; a message, a body or an AI
+instruction never gets one. What arrived only fills the words: who gets the message is the person or room you picked, never one the
+data names.
+
+Because a notify step speaks as you and an outgoing webhook acts on another service, the first time a drawing would
+send or call somewhere new, saving it while on (or turning it on) asks **Let this flow act for you?** and lists each
+person, room and host. **Allow** makes it what runs; **Not now** keeps the previous version running. Each run then
+sends without asking again.
+
+Each send and each call that changes something goes out once: if APX stops or the other side doesn't answer after it
+went out, the step says **Needs a look** instead of repeating it (check the chat or the service). A GET, which changes
+nothing, tries once more if the connection fails before any answer. A flow sends at most 20 messages an hour, and makes at most 60 calls that
+change something; the next one fails without going out. A message to a chat app that isn't running is taken back,
+not sent later. An outgoing webhook only calls addresses on the internet: an address on this computer or
+a private network is refused, also when a name points there, and redirects are not followed. Its answer is kept up to
+256 KB read (16 KB of text), files are only said, and a secret it used never shows in the run, only `secret://name`.
+
+### Tables
+
+A project's tables keep what your flows save, a row per key and a value per column. Switch the Flows screen to
+**Tables** to see them: pick a table for its columns and rows, **Add row**, click a row's key to change or delete it,
+add a column with **New column**, and rename or delete a table or a column from its menu. **Make required** in a
+column's menu marks it with an asterisk: no save may leave it empty, so a row added here asks for it, a flow's save must
+fill it, and a run whose value comes out empty stops at that step and says which column it was. A table made here, or by
+your super-agent, is there for any flow to read: Read and Save list every table of the project and can make a new one
+or a new column without leaving the step.
+
+Ask your super-agent in any chat ("add this lead to the leads table", "what's in the orders table?") and it reads or
+fills a table without a flow. If the chat had a message from someone else or a web page in it, it asks you before it
+changes a table; renaming or deleting a table or a column always asks. A flow whose table or column was renamed or
+deleted stops taking events, and its editor says which step lost it: pick the table again and save.
+
+### Ask your super-agent for a flow
+
+Ask in any chat ("when a lead arrives on the site, save it and tell me on Telegram") and your super-agent draws the
+flow in the right project, or changes the steps of one you have. It places the steps, checks what keeps the drawing
+from running and fixes it. The chat shows the flow's drawing, whether it is a draft, and **Open in the editor**.
+Click the drawing to see it larger: you can move around it and zoom, and clicking a step shows its settings beside it
+(on a phone, in a sheet at the bottom): what kind of step it is, what it uses and where it goes on to. This view only
+shows the flow; to change it, use **Open in the editor**. Esc, × or a click outside closes it. It shows the draft when
+there is one, otherwise what runs.
+
+What it saves is a draft: nothing runs until you review it in the editor and turn the flow on (or save it while on).
+Turning on a flow whose last changes an agent drew opens its editor first: look them over and **Save** to make them
+yours.
+
+You can also ask it in the chat to turn the flow on and try it. It asks you first with a card that names the flow and
+what it will send, call, run and change; on your OK the drawing runs and the flow is on. To try it, it runs the flow
+once with sample data, again after your OK on a card that shows the data, and tells you how each step went.
+Messages, calls, commands and database writes still ask **Let this flow act for you?** first. If the chat had a
+message from someone else or a web page in it, the super-agent asks you before it saves the draft. How freely an AI
+model step acts (its permission mode, whether it can ask other agents) is yours to set in the editor. The list and a
+flow's page show the agent's changes as soon as they are saved.
+
+**From the editor.** **Ask** (with your super-agent's name) in the editor's top bar opens a chat with it over the
+canvas, in the place of a step's settings; on a phone it is a sheet at the bottom. Say what to change and watch: while
+it works the canvas says it is editing, your steps stay still, and each step it adds or changes appears and is marked
+**New** or **Changed** for a moment; its answer says **Updated the drawing** instead of showing the flow again. The chat is kept for that flow, so **Ask** continues it; ↻ starts a new one. Your
+own changes not saved yet are saved as a draft when you send a message, so it starts from what you see, steps you
+haven't finished included. In a new flow, choose the project first: your super-agent makes
+the flow there and the editor opens it. The top bar says **Drawn by** its name until you **Save**. An editor you have
+open without that chat keeps what is on screen if an agent changes the flow from another chat: exit and open it again
+to see it.
+
+The CLI starts and stops runs too: `apx flows run <flow> ['<sample body JSON>']` and `apx flows stop <flow> <event>`.
+They act as you, so they refuse to run inside an agent's command.
+
+A Flow belongs to a project. Its key is made in the webhook step's card (**Settings → Devices → Endpoints** lists the
+addresses of the flows that are on). Public access is configured separately; it never exposes private RPC or the panel.
+
+Send JSON such as `{"id":"order-42","data":{"status":"paid"}}` to `POST /flows/<path>` with the flow's key as a bearer
+token, or, when its webhook accepts GET, `GET /flows/<path>?id=order-42&status=paid` (the parameters except `id` are
+the data; a repeated one is a list; without `id` each call is a new event). Keep the same event ID on retries. Empty, duplicate or nonmatching events do not call a model; matching work
+uses the saved binding, not an identity or command chosen by the payload. Tables and event history persist across
+restarts. A linked agent run can still fail, and external effects are not guaranteed exactly once. The panel shows
+the last 50 runs at a time (**Show older runs** pages back) and up to 20 rows of the table, with a link to the whole
+table in **Tables**; the private `tables.get`, `flows.rows` and `flows.events` protocol methods provide paginated
+inspection.
+
+Rotation invalidates the previous token immediately. If deleting its stored secret fails, a non-authorizing cleanup
+reference survives for retry at core startup or the next rotation; the newly activated credential is still returned.
+Interrupted token creation is tracked for the same cleanup. Restore the Secrets backend if rotations report a full
+cleanup queue (1,000 references). Use the same idempotency key when retrying a management request whose reply was lost.
+
 ## Silence is an answer: SKIP
 
 An agent routine's prompt is your own words. When there is nothing worth telling you this time, the agent answers
-only `SKIP` and nothing reaches you. Write prompts that leave room for that:
+only `SKIP` and nothing reaches you. When the routine's job is to write to you ("remind me on Telegram…"), you get
+that message once: what the agent says afterwards about having sent it stays in the routine's chat in APX. Write
+prompts that leave room for that:
 
 > Check yesterday's orders for anything unusual: refunds over 200, a product selling 3× its average, a failed
 > payment. If nothing stands out, answer SKIP.

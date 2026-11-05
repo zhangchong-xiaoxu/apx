@@ -3,6 +3,7 @@ import http from "node:http";
 import type { AddressInfo } from "node:net";
 import { after, before, test } from "node:test";
 import { z } from "zod";
+import { GREETED_KEY } from "../domain/greeting.ts";
 import { inQuietHours } from "../domain/notices.ts";
 import { OWNER_ID } from "../domain/persons.ts";
 import { callTool, say, scriptedLlm, startCore } from "../engine/testkit.ts";
@@ -25,6 +26,8 @@ const llm = scriptedLlm((req, { said, afterTool }) => {
   if (said.includes("slow job") && !afterTool) return callTool("s1", "slowpoke", {});
   if (afterTool) return say(`Done: ${String(req.messages.at(-1)?.content).slice(0, 80)}`);
   if (said.includes("launch the probe")) return callTool("p1", "probe", {});
+  if (said.includes("ping me on telegram"))
+    return callTool("me1", "message_contact", { to: "me", text: "Ping from the agent.", channel: "tg" });
   if (said.includes("pick the days"))
     return callTool("q1", "ask_owner", {
       question: "Which days work for the Northwind review?",
@@ -90,7 +93,7 @@ before(async () => {
   });
   await env.client.call("channels.set", {
     id: "tg",
-    channel: { type: "telegram", agent_id: "roby" },
+    channel: { type: "telegram", agent_id: "superagent" },
     token: TOKEN,
   });
   await waitFor(async () => (await env.client.call("channels.list", {})).channels[0]?.status === "running", "running");
@@ -382,7 +385,7 @@ test("groups are ignored and a redelivered update is handled once", async () => 
   const count = () => tg.messagesTo(OWNER.id).filter((m) => /only once please/.test(String(m.body.text))).length;
   // A crash between storing and confirming: a restarted channel gets the same update again.
   tg.redeliver(id, OWNER, "only once please");
-  await env.client.call("channels.set", { id: "tg", channel: { type: "telegram", agent_id: "roby" } });
+  await env.client.call("channels.set", { id: "tg", channel: { type: "telegram", agent_id: "superagent" } });
   await waitFor(() => !tg.queued().includes(id), "the redelivered update was fetched and confirmed");
   await new Promise((r) => setTimeout(r, 200));
   assert.equal(count(), 1);
@@ -422,7 +425,7 @@ test("a confirmation left unanswered in the app follows the owner to Telegram, s
   const hhmm = (h: number) => `${String(h % 24).padStart(2, "0")}:00`;
   await env.client.call("notices.set", { inputs_after_s: 1, quiet_from: hhmm(hour + 23), quiet_to: hhmm(hour + 2) });
   const before = tg.messagesTo(OWNER.id).length;
-  const t = await env.client.call("threads.create", { kind: "loose", agent_id: "roby" });
+  const t = await env.client.call("threads.create", { kind: "loose", agent_id: "superagent" });
   await env.client.call("threads.send", { thread: t.id, text: "launch the probe" });
   await new Promise((r) => setTimeout(r, 400));
   assert.equal(tg.messagesTo(OWNER.id).length, before, "it waits in the app first");
@@ -434,6 +437,33 @@ test("a confirmation left unanswered in the app follows the owner to Telegram, s
   tg.press(OWNER, markup.inline_keyboard[1]?.[0]?.callback_data ?? "");
   await env.settle(t.id);
   await env.client.call("notices.set", { inputs_after_s: 120 });
+});
+
+test("a message an agent sends the owner on a chat app arrives without sound in quiet hours", async () => {
+  const { store } = env.core;
+  store.persons.owner();
+  if (!store.persons.ownerAddress("tg"))
+    store.persons.link(OWNER_ID, { channel: "tg", external_id: String(OWNER.id), label: "Telegram" });
+  const prefs = await env.client.call("notices.get", {});
+  const hour = new Date().getHours();
+  const hhmm = (h: number) => `${String(h % 24).padStart(2, "0")}:00`;
+  // What goes to the platform: the outbox item the owner's chat app gets.
+  const send = async (text: string) => {
+    const sent = await env.client.call("channels.message", { person: OWNER_ID, text, channel: "tg" });
+    assert.ok("thread" in sent, "the owner's own request is sent, never withheld");
+    const chat = store.threads.get(sent.thread)?.channel;
+    const item = chat && store.channels.outbox.last(chat.id, chat.conversation);
+    assert.equal(item?.text, text);
+    return item?.body;
+  };
+  try {
+    await env.client.call("notices.set", { ...prefs, quiet_from: hhmm(hour + 23), quiet_to: hhmm(hour + 2) });
+    assert.equal((await send("the report, at night"))?.silent, true);
+    await env.client.call("notices.set", { ...prefs, quiet_from: hhmm(hour + 3), quiet_to: hhmm(hour + 4) });
+    assert.equal((await send("the report, by day"))?.silent, undefined);
+  } finally {
+    await env.client.call("notices.set", prefs);
+  }
 });
 
 test("a contact never sees what went wrong inside APX; the owner does", async () => {
@@ -479,7 +509,7 @@ test("a refused connection is retried (nothing went out); two quick saves leave 
       type: "telegram",
       label: "x",
       enabled: true,
-      agent_id: "roby",
+      agent_id: "superagent",
       strangers: "pair",
       concurrency: "queue",
       owner_thread: "home",
@@ -490,7 +520,8 @@ test("a refused connection is retried (nothing went out); two quick saves leave 
   const err = await offline.send("1", { text: "hi" }).catch((e: unknown) => e);
   assert.equal((err as { kind?: string }).kind, "retry");
 
-  const save = () => env.client.call("channels.set", { id: "tg", channel: { type: "telegram", agent_id: "roby" } });
+  const save = () =>
+    env.client.call("channels.set", { id: "tg", channel: { type: "telegram", agent_id: "superagent" } });
   await Promise.all([save(), save()]);
   await new Promise((r) => setTimeout(r, 200));
   const a = tg.polls();
@@ -502,7 +533,7 @@ test("a refused connection is retried (nothing went out); two quick saves leave 
 test("a routine's news reaches the owner without buttons; the owner's 👍/👎 reaction rates it", async () => {
   const r = await env.client.call("routines.set", {
     name: "rated-probe",
-    agent: "roby",
+    agent: "superagent",
     schedule: { kind: "manual" },
     action: "message",
     prompt: "Rate me",
@@ -530,14 +561,18 @@ test("a routine's news reaches the owner without buttons; the owner's 👍/👎 
 });
 
 test("a notice the owner's chosen channel refuses goes to the next channel that knows them", async () => {
-  await env.client.call("channels.set", { id: "dc", channel: { type: "discord", agent_id: "roby" }, token: TOKEN });
+  await env.client.call("channels.set", {
+    id: "dc",
+    channel: { type: "discord", agent_id: "superagent" },
+    token: TOKEN,
+  });
   env.core.store.persons.link(OWNER_ID, { channel: "dc", external_id: "424242", label: "Discord" });
   const prefs = await env.client.call("notices.get", {});
   await env.client.call("notices.set", { ...prefs, channel: "dc" });
   try {
     const r = await env.client.call("routines.set", {
       name: "fallback-probe",
-      agent: "roby",
+      agent: "superagent",
       schedule: { kind: "manual" },
       action: "message",
       prompt: "Evening brief",
@@ -560,5 +595,170 @@ test("a notice the owner's chosen channel refuses goes to the next channel that 
   } finally {
     await env.client.call("notices.set", prefs);
     await env.client.call("channels.set", { id: "dc", channel: null });
+  }
+});
+
+test("with the app only chosen, news stays in the app: no channel message, still in the tray", async () => {
+  const prefs = await env.client.call("notices.get", {});
+  await env.client.call("notices.set", { ...prefs, channel: "none" });
+  try {
+    const r = await env.client.call("routines.set", {
+      name: "app-only-probe",
+      agent: "superagent",
+      schedule: { kind: "manual" },
+      action: "message",
+      prompt: "App only brief",
+      enabled: true,
+    });
+    await env.client.call("routines.run", { routine: r.id });
+    const tray = async () => (await env.client.call("notifications.list", {})).notifications;
+    await waitFor(
+      async () => (await tray()).some((n) => n.kind === "routine" && /App only brief/.test(n.body)),
+      "in the tray",
+    );
+    await waitFor(() => env.core.store.nudges.list(5).some((n) => n.state === "no_channel"), "kept off the channels");
+    assert.ok(!tg.messagesTo(OWNER.id).some((m) => /App only brief/.test(String(m.body.text))));
+  } finally {
+    await env.client.call("notices.set", prefs);
+  }
+});
+
+test("a teammate's question reaches the owner's chat app as one line saying who waits, answered in the app", async () => {
+  await env.client.call("notices.set", { inputs_after_s: 1 });
+  try {
+    const before = tg.messagesTo(OWNER.id).length;
+    const t = await env.client.call("threads.create", { kind: "loose", agent_id: "vera" });
+    await env.client.call("threads.send", { thread: t.id, text: "launch the probe" });
+    await waitFor(() => tg.messagesTo(OWNER.id).length > before, "a line on Telegram");
+    const line = tg.messagesTo(OWNER.id).at(-1)?.body;
+    assert.match(String(line?.text), /^Vera te espera: /);
+    assert.match(String(line?.text), /Respondele en APX/);
+    assert.equal(line?.reply_markup, undefined, "no buttons: the card is answered in the app");
+    const pending = (await env.client.call("runs.pending", { thread: t.id })).inputs[0];
+    await env.client.call("runs.respond", { input: pending?.id ?? "", decision: "deny" });
+    await env.settle(t.id);
+  } finally {
+    await env.client.call("notices.set", { inputs_after_s: 120 });
+  }
+});
+
+test("with no chat app for notices, the owner's chat app hears only what follows their word (DECISIONS.md#d-161)", async () => {
+  const store = env.core.store;
+  const prefs = await env.client.call("notices.get", {});
+  store.settings.set(GREETED_KEY, "1");
+  await env.client.call("notices.set", { ...prefs, channel: "none", inputs_after_s: 1 });
+  try {
+    // The owner writes on Telegram: that conversation is still answered there.
+    const before = tg.messagesTo(OWNER.id).length;
+    tg.message(OWNER, "set the scene");
+    await waitFor(() => tg.messagesTo(OWNER.id).length > before, "the answer to the owner's own words");
+    await env.settle("home");
+    // An agent the owner adds gives the super-agent an unasked turn in Home: it stays in the app.
+    const told = tg.messagesTo(OWNER.id).length;
+    await env.client.call("agents.create", { slug: "northwind-helper", name: "Northwind helper", role: "helper" });
+    await waitFor(() => store.runs.list("home").some((r) => r.input?.origin.kind === "added"), "the super-agent told");
+    await env.settle("home");
+    // A teammate's question is answered in the app, with nothing on the chat app.
+    const t = await env.client.call("threads.create", { kind: "loose", agent_id: "vera" });
+    await env.client.call("threads.send", { thread: t.id, text: "launch the probe" });
+    await waitFor(async () => (await env.client.call("runs.pending", { thread: t.id })).inputs.length > 0, "a card");
+    await new Promise((r) => setTimeout(r, 1500));
+    assert.equal(tg.messagesTo(OWNER.id).length, told, "nothing unasked reached the chat app");
+    const pending = (await env.client.call("runs.pending", { thread: t.id })).inputs[0];
+    await env.client.call("runs.respond", { input: pending?.id ?? "", decision: "deny" });
+    await env.settle(t.id);
+  } finally {
+    await env.client.call("notices.set", prefs);
+  }
+});
+
+test("an agent writing to the owner unasked goes through the notice budget; asked by the owner it just goes (DECISIONS.md#d-035)", async () => {
+  const store = env.core.store;
+  const prefs = await env.client.call("notices.get", {});
+  const { quiet_from: _f, quiet_to: _t, ...open } = prefs;
+  await env.client.call("notices.set", { ...open, budget_per_day: 1, project_gap_min: 0, kind_gap_min: 0 });
+  const pings = () =>
+    tg.sent.filter((m) => m.method === "sendMessage" && String(m.body.text).includes("Ping from the agent")).length;
+  try {
+    const t = await env.client.call("threads.create", { kind: "loose", agent_id: "superagent" });
+    await env.client.call("threads.send", { thread: t.id, text: "ping me on telegram" });
+    await waitFor(() => pings() === 1, "the owner's own request goes");
+    await env.settle(t.id);
+    // Today's one unasked message is already out: a routine's ping is held back, and the agent is told.
+    store.nudges.add({ kind: "routine:other", text: "earlier news", state: "sent", exempt: false });
+    const r = await env.client.call("routines.set", {
+      name: "Ping",
+      agent: "superagent",
+      schedule: { kind: "manual" },
+      prompt: "ping me on telegram",
+    });
+    const run = await env.client.call("routines.run", { routine: r.id });
+    await env.settle(run.thread_id);
+    const told = await env.client.call("threads.get", { thread: run.thread_id });
+    assert.ok(
+      told.messages.some((m) => m.parts.some((p) => p.type === "text" && p.text.includes("notice budget"))),
+      "the agent heard why",
+    );
+    assert.equal(pings(), 1, "nothing past the cap reached Telegram");
+    await env.client.call("routines.remove", { routine: r.id });
+  } finally {
+    await env.client.call("notices.set", prefs);
+  }
+});
+
+test("with the app only chosen, an agent writing to the owner unasked reaches the tray, never the chat app (DECISIONS.md#d-161)", async () => {
+  const { store } = env.core;
+  store.persons.owner();
+  if (!store.persons.ownerAddress("tg"))
+    store.persons.link(OWNER_ID, { channel: "tg", external_id: String(OWNER.id), label: "Telegram" });
+  const prefs = await env.client.call("notices.get", {});
+  const { quiet_from: _f, quiet_to: _t, ...open } = prefs;
+  await env.client.call("notices.set", { ...open, channel: "none", budget_per_day: 0, kind_gap_min: 0 });
+  const pings = () =>
+    tg.sent.filter((m) => m.method === "sendMessage" && String(m.body.text).includes("Ping from the agent")).length;
+  const before = pings();
+  try {
+    const r = await env.client.call("routines.set", {
+      name: "App only ping",
+      agent: "superagent",
+      schedule: { kind: "manual" },
+      prompt: "ping me on telegram",
+    });
+    const run = await env.client.call("routines.run", { routine: r.id });
+    await env.settle(run.thread_id);
+    assert.equal(pings(), before, "nothing reached Telegram");
+    const told = await env.client.call("threads.get", { thread: run.thread_id });
+    assert.ok(
+      told.messages.some((m) => m.parts.some((p) => p.type === "text" && p.text.includes("only in the APX app"))),
+      "the agent heard where it went",
+    );
+    const tray = (await env.client.call("notifications.list", {})).notifications;
+    assert.ok(
+      tray.some((n) => n.kind === "agent" && /Ping from the agent/.test(n.body)),
+      "in the tray",
+    );
+    await env.client.call("routines.remove", { routine: r.id });
+  } finally {
+    await env.client.call("notices.set", prefs);
+  }
+});
+
+test("with its own chat chosen, the owner's words on the channel are answered there, not in Home (DECISIONS.md#d-129)", async () => {
+  const save = (owner_thread: "home" | "own") =>
+    env.client.call("channels.set", { id: "tg", channel: { type: "telegram", agent_id: "superagent", owner_thread } });
+  await save("own");
+  try {
+    await waitFor(
+      async () => (await env.client.call("channels.list", {})).channels[0]?.status === "running",
+      "running",
+    );
+    const before = tg.messagesTo(OWNER.id).length;
+    tg.message(OWNER, "in my own chat");
+    await waitFor(() => tg.messagesTo(OWNER.id).length > before, "the answer on Telegram");
+    assert.match(String(tg.messagesTo(OWNER.id).at(-1)?.body.text), /you said: in my own chat/);
+    const own = env.core.store.threads.byConversation("tg", String(OWNER.id));
+    assert.equal(own?.kind, "channel", "its own chat, not Home");
+  } finally {
+    await save("home");
   }
 });

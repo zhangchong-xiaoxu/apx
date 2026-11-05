@@ -88,7 +88,7 @@ test("a stream ending without a finish reason retries malformed tool arguments",
     return response(call('{"path":"notes.md"'), true);
   });
   await assert.rejects(llm.complete({ ...request(), onText() {} }), /stream cut inside the arguments of file_write/);
-  assert.equal(attempts, 4, "two bounded attempts per model");
+  assert.equal(attempts, 8, "four bounded attempts per model");
 });
 
 for (const stream of [false, true]) {
@@ -99,7 +99,7 @@ for (const stream of [false, true]) {
       return response(call('{"path":"notes.md","content":"partial"}'), stream);
     });
     await assert.rejects(llm.complete({ ...request(), ...(stream ? { onText() {} } : {}) }), /tool calls.*finish/);
-    assert.equal(attempts, 4);
+    assert.equal(attempts, 8);
   });
 }
 
@@ -127,7 +127,7 @@ for (const transport of ["anthropic-messages", "chatgpt-responses"] as const) {
       return new Response(event.map((e) => `data: ${JSON.stringify(e)}\n\n`).join(""));
     }, transport);
     await assert.rejects(llm.complete({ ...request(), onText() {} }), /tool calls.*finish/);
-    assert.equal(attempts, 4);
+    assert.equal(attempts, 8);
   });
 }
 
@@ -319,7 +319,7 @@ for (const stream of [false, true]) {
           }
         : {}),
     });
-    assert.deepEqual(seen, ["broken", "broken", "good"]);
+    assert.deepEqual(seen, ["broken", "broken", "broken", "broken", "good"]);
     assert.equal(out.message.content, "The file was not written.");
     assert.match(out.failed?.[0]?.why ?? "", /tool.*markup/);
     if (stream) assert.equal(shown, out.message.content, "the rejected stream is replaced");

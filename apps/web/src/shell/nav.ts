@@ -17,7 +17,17 @@ export type PanelKind =
   | "processes"
   | "document";
 
-export type View = "inbox" | "project" | "app" | "tasks" | "resources" | "computers" | "channel" | "engine";
+export type View =
+  | "inbox"
+  | "project"
+  | "app"
+  | "tasks"
+  | "flows"
+  | "resources"
+  | "files"
+  | "computers"
+  | "channel"
+  | "engine";
 
 export const PROJECT_TABS = [
   { id: "overview", label: "project.tab.overview" },
@@ -104,6 +114,14 @@ export type NavState = {
   focus: string | undefined;
   /** The task open beside a tasks list (the Tasks screen or a project's Tasks tab). */
   taskId: string | undefined;
+  /** Project filter of the global Flows screen; undefined lists every project. */
+  flowProject: string | undefined;
+  /** The flow open on the Flows screen (its runs), and whether its editor is open over it. */
+  flowId: string | undefined;
+  flowEdit: boolean;
+  /** The Flows screen shows the project's tables instead of its Flows, with one of them open. */
+  flowTables: boolean;
+  flowTable: string | undefined;
   /** A task open over any other screen (from a chat), so the owner does not leave it. */
   peekTaskId: string | undefined;
 };
@@ -132,7 +150,7 @@ const PANELS: readonly PanelKind[] = [
   "document",
 ];
 const TAB_IDS: readonly string[] = PROJECT_TABS.map((t) => t.id);
-const VIEWS: readonly string[] = ["tasks", "resources", "computers"];
+const VIEWS: readonly string[] = ["tasks", "flows", "resources", "files", "computers"];
 
 /** Deep links: #thread=<id>&panel=<kind>, #app=<id>, #project=<id>&tab=<tab>, #view=tasks&task=<id>. */
 function fromHash(): Partial<NavState> {
@@ -157,6 +175,15 @@ function fromHash(): Partial<NavState> {
         }
       : {}),
     ...(view && VIEWS.includes(view) ? { view: view as View } : {}),
+    ...(view === "flows"
+      ? {
+          flowProject: h.get("scope") ?? undefined,
+          flowId: h.get("flow") ?? undefined,
+          flowEdit: h.get("edit") === "1",
+          flowTables: h.get("tab") === "tables",
+          flowTable: h.get("tab") === "tables" ? (h.get("table") ?? undefined) : undefined,
+        }
+      : {}),
     ...(app ? { view: "app" as const, appId: app } : {}),
     ...(channel ? { view: "channel" as const, channelId: channel, channelThread: h.get("chat") ?? undefined } : {}),
     // An engine's view opens on one of its sessions or on none: never on the chat the app started with.
@@ -196,73 +223,51 @@ export const nav = createStore<NavState>({
   focus: undefined,
   taskId: undefined,
   peekTaskId: undefined,
+  flowProject: undefined,
+  flowId: undefined,
+  flowEdit: false,
+  flowTables: false,
+  flowTable: undefined,
   ...fromHash(),
 });
 
-/** A place the owner can go back to (overlays like config/palette stay out). */
-type Place = Pick<
-  NavState,
-  | "view"
-  | "projectId"
-  | "projectTab"
-  | "threadId"
-  | "appId"
-  | "channelId"
-  | "channelThread"
-  | "engineId"
-  | "taskId"
-  | "resourcesTab"
-  | "listInFront"
-  | "panel"
-  | "panelWide"
-  | "browserTab"
-  | "panelDocument"
-  | "panelWidget"
-  | "panelAgent"
-  | "panelThread"
-  | "panelParent"
->;
+/** A place the owner can go back to (overlays like config/palette stay out); `SAME` tells two places apart. */
+const PLACE = [
+  "view",
+  "projectId",
+  "projectTab",
+  "threadId",
+  "appId",
+  "channelId",
+  "channelThread",
+  "engineId",
+  "taskId",
+  "flowProject",
+  "flowId",
+  "flowEdit",
+  "flowTables",
+  "flowTable",
+  "resourcesTab",
+  "listInFront",
+  "panel",
+  "panelWide",
+  "browserTab",
+  "panelDocument",
+  "panelWidget",
+  "panelAgent",
+  "panelThread",
+  "panelParent",
+] as const satisfies readonly (keyof NavState)[];
+const SAME: readonly (typeof PLACE)[number][] = PLACE.filter(
+  (k) => k !== "taskId" && !k.startsWith("panel") && k !== "browserTab",
+);
+type Place = Pick<NavState, (typeof PLACE)[number]>;
 
 const MAX_HISTORY = 50;
 
-function placeOf(s: NavState): Place {
-  return {
-    view: s.view,
-    projectId: s.projectId,
-    projectTab: s.projectTab,
-    threadId: s.threadId,
-    appId: s.appId,
-    channelId: s.channelId,
-    channelThread: s.channelThread,
-    engineId: s.engineId,
-    taskId: s.taskId,
-    resourcesTab: s.resourcesTab,
-    listInFront: s.listInFront,
-    panel: s.panel,
-    panelWide: s.panelWide,
-    browserTab: s.browserTab,
-    panelDocument: s.panelDocument,
-    panelWidget: s.panelWidget,
-    panelAgent: s.panelAgent,
-    panelThread: s.panelThread,
-    panelParent: s.panelParent,
-  };
-}
+const placeOf = (s: NavState): Place => Object.fromEntries(PLACE.map((k) => [k, s[k]])) as Place;
 
-function samePlace(a: Place, b: Place): boolean {
-  return (
-    a.view === b.view &&
-    a.projectId === b.projectId &&
-    a.projectTab === b.projectTab &&
-    a.threadId === b.threadId &&
-    a.appId === b.appId &&
-    a.channelId === b.channelId &&
-    a.channelThread === b.channelThread &&
-    a.engineId === b.engineId &&
-    a.resourcesTab === b.resourcesTab &&
-    a.listInFront === b.listInFront
-  );
-}
+const samePlace = (a: Place, b: Place): boolean => SAME.every((k) => a[k] === b[k]);
 
 type HistState = { canBack: boolean; canForward: boolean };
 const hist = createStore<HistState>({ canBack: false, canForward: false });
@@ -306,8 +311,19 @@ nav.subscribe(() => {
     h.set("tab", s.projectTab);
     if (s.projectTab === "chats" && s.threadId) h.set("thread", s.threadId);
     if (s.projectTab === "tasks" && s.taskId) h.set("task", s.taskId);
-  } else if (s.view === "tasks" || s.view === "resources" || s.view === "computers") {
+  } else if (
+    s.view === "tasks" ||
+    s.view === "flows" ||
+    s.view === "resources" ||
+    s.view === "files" ||
+    s.view === "computers"
+  ) {
     h.set("view", s.view);
+    if (s.view === "flows" && s.flowProject) h.set("scope", s.flowProject);
+    if (s.view === "flows" && s.flowId) h.set("flow", s.flowId);
+    if (s.view === "flows" && s.flowId && s.flowEdit) h.set("edit", "1");
+    if (s.view === "flows" && !s.flowId && s.flowTables) h.set("tab", "tables");
+    if (s.view === "flows" && !s.flowId && s.flowTables && s.flowTable) h.set("table", s.flowTable);
     if (s.view === "tasks" && s.taskId) h.set("task", s.taskId);
   } else if (s.view === "channel" && s.channelId) {
     h.set("channel", s.channelId);
@@ -400,6 +416,12 @@ export const go = {
     applyingHistory = false;
     currentPlace = placeOf(nav.get());
   },
+  /** A chat opened where it lives (an engine's session beside its engine), pointing at one of its messages. */
+  message(threadId: string, messageId: string, engine?: string) {
+    if (engine) go.engine(engine, threadId);
+    else go.thread(threadId);
+    go.focus(`msg:${messageId}`);
+  },
   /** Always the Inbox, whatever is open (running pill, deep links). */
   inboxThread(threadId: string) {
     nav.set({ view: "inbox", threadId, listInFront: false });
@@ -433,7 +455,22 @@ export const go = {
   app(appId: string) {
     nav.set({ view: "app", appId });
   },
-  view(view: "tasks" | "resources" | "computers") {
+  /** The Flows screen; with a flow, its runs, and with `edit` its editor over them. */
+  flows(flowProject?: string, flowId?: string, flowEdit = false) {
+    nav.set({
+      view: "flows",
+      flowProject,
+      flowId,
+      flowEdit: Boolean(flowId) && flowEdit,
+      flowTables: false,
+      flowTable: undefined,
+    });
+  },
+  /** The Flows screen's Tables: a project's tables, with one open. */
+  tables(flowProject?: string, flowTable?: string) {
+    nav.set({ view: "flows", flowProject, flowId: undefined, flowEdit: false, flowTables: true, flowTable });
+  },
+  view(view: "tasks" | "resources" | "files" | "computers") {
     nav.set({ view });
   },
   /** A task: beside a tasks list when one is open, else over the current screen (a chat, a notice…). */

@@ -428,13 +428,17 @@ export function createConnector(opts: {
      */
     async change(): Promise<void> {
       connectionRevision++;
-      opts.disconnected();
       openedRemote = false;
+      opts.disconnected();
       forgetConnection(dataDir);
       conn = undefined;
-      tunnel?.stop();
+      const previousTunnel = tunnel;
       tunnel = undefined;
-      await open();
+      try {
+        await open();
+      } finally {
+        previousTunnel?.stop();
+      }
     },
     stop(): void {
       connectionRevision++;

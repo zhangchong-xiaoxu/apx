@@ -34,7 +34,20 @@ export const world = {
       llm: string;
       discord: string;
       slack: { bot: string; app: string };
+      /** A service on this computer that Flow HTTP steps may call. */
+      service: string;
     },
+  /** What reached that service: each request's method, path, headers and body. */
+  serviceCalls: async () =>
+    (
+      (await (await fetch(`${control}/service/calls`)).json()) as {
+        calls: { method: string; url: string; headers: Record<string, string>; body: string }[];
+      }
+    ).calls,
+  /** Stops the core's clock at `at` (ISO), or lets it run again with null. */
+  clock: async (at: string | null) => {
+    await post(`${control}/clock`, { at });
+  },
   desktopTrash: async () => (await (await fetch(`${control}/desktop/trash`)).json()) as { paths: string[] },
   telegram: async (from: { id: number; name: string }, text: string) => {
     await fetch(`${control}/tg/message`, { method: "POST", body: JSON.stringify({ from, text }) });
@@ -110,8 +123,9 @@ export async function until<T>(fn: () => Promise<T | undefined | false>, ms = 10
   }
 }
 
-// Noise that is not the app's: the favicon, and a fetch the browser aborts when a test navigates away.
-const IGNORED = [/favicon/i, /net::ERR_ABORTED/];
+// Noise that is not the app's: the favicon, a fetch the browser aborts when a test navigates away, and this kit's own
+// init script refused by a preview frame that runs no scripts (the signature preview).
+const IGNORED = [/favicon/i, /net::ERR_ABORTED/, /^Blocked script execution in 'about:srcdoc'.*'allow-scripts'/];
 
 export const test = base.extend<{
   page: Page;

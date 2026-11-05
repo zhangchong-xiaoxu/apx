@@ -6,7 +6,7 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { z } from "zod";
-import { OWNER_ID } from "../domain/persons.ts";
+import { meansOwner, OWNER_ID } from "../domain/persons.ts";
 import type { Store } from "../domain/store.ts";
 import { channelsOn } from "./directory.ts";
 import { folderAccess, readsOutside, workDir } from "./folders.ts";
@@ -99,7 +99,7 @@ export function messageTools(store: Store, home: string): Tool[] {
   };
   /** The owner's contact a name (or id) points at ("me": the owner); several or none: why, with the names there are. */
   const resolve = (to: string): { id: string; name: string } | { problem: string } => {
-    if (/^(me|owner|yo|a mi|a mí)$/i.test(to.trim())) {
+    if (meansOwner(to)) {
       const owner = store.persons.get(OWNER_ID);
       if (owner) return owner;
     }
@@ -159,6 +159,13 @@ export function messageTools(store: Store, home: string): Tool[] {
           ...(a.channel ? { channel: a.channel } : {}),
           ...(files.ids.length ? { files: files.ids } : {}),
         });
+        if ("withheld" in r) {
+          if (r.withheld === "app_only")
+            return `in the owner's tray: they chose to be told only in the APX app, so it went to no chat app${files.ids.length ? " (the files stay in this chat)" : ""}. Do not send it again.`;
+          return r.withheld === "held"
+            ? `held: the owner's quiet hours are on; the text goes when they end${files.ids.length ? ", without the files" : ""}. Do not send it again.`
+            : "not sent: the owner's notice budget did not let it through (today's cap, another notice too soon, or a kind they marked unhelpful). Do not retry; it stays in this chat.";
+        }
         return sentNote(who.name, r, files.ids.length, "contact_chat");
       },
     }),

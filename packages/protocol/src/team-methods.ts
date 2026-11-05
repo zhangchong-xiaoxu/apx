@@ -1,5 +1,6 @@
 // Methods behind the Team screen: agent templates (APX's own and the v1 vault's, read-only) and installing them.
 import { z } from "zod";
+import { TURN_STEPS } from "./constants.ts";
 import { Agent, Id, Organization, ProjectKind } from "./domain.ts";
 import { Routine, RoutineAction, Schedule } from "./office.ts";
 
@@ -58,15 +59,13 @@ export const AgentLimits = z.object({
 });
 export type AgentLimits = z.infer<typeof AgentLimits>;
 
-export const MAX_AGENT_STEPS = 150;
-
 /**
  * One agent's own limits: runs and tokens are inside the conversation's; past those, that agent waits while others may
  * go on. Steps cap provider requests in one run, including retries and the final report. A field unset or 0 adds no
  * limit of its own.
  */
 export const AgentBudget = AgentLimits.partial().extend({
-  steps: z.number().int().min(0).max(MAX_AGENT_STEPS).optional(),
+  steps: z.number().int().min(0).max(TURN_STEPS).optional(),
 });
 export type AgentBudget = z.infer<typeof AgentBudget>;
 /** Each agent's own budget, by agent id: only the agents the owner gave one. */
@@ -128,22 +127,16 @@ export const teamMethods = {
     effect: true,
     access: "human",
   },
+  /** The limits in force (0: none) and `defaults`, what turning them on starts from. */
   "agents.limits": {
     params: z.object({}).strict(),
-    result: AgentLimits.extend({ defaults: AgentLimits, agents: AgentBudgets, fan_out_ask: z.boolean() }),
+    result: AgentLimits.extend({ defaults: AgentLimits, agents: AgentBudgets }),
     effect: false,
     access: "human",
   },
   "agents.set_limits": {
     params: AgentLimits.strict(),
     result: AgentLimits,
-    effect: true,
-    access: "human",
-  },
-  /** Whether the super-agent asks before handing work to several agents in one turn. */
-  "agents.set_fan_out_ask": {
-    params: z.object({ ask: z.boolean() }).strict(),
-    result: z.object({ ask: z.boolean() }),
     effect: true,
     access: "human",
   },

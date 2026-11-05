@@ -15,13 +15,13 @@
   --apx-font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --apx-font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 
-  --apx-text-2xs: 11px;
-  --apx-text-xs: 12px;
-  --apx-text-sm: 13px;
-  --apx-text-md: 14px;
-  --apx-text-lg: 16px;
-  --apx-text-xl: 20px;
-  --apx-text-2xl: 28px;
+  --apx-text-2xs: calc(11px * var(--apx-text-scale, 1));
+  --apx-text-xs: calc(12px * var(--apx-text-scale, 1));
+  --apx-text-sm: calc(13px * var(--apx-text-scale, 1));
+  --apx-text-md: calc(14px * var(--apx-text-scale, 1));
+  --apx-text-lg: calc(16px * var(--apx-text-scale, 1));
+  --apx-text-xl: calc(20px * var(--apx-text-scale, 1));
+  --apx-text-2xl: calc(28px * var(--apx-text-scale, 1));
   --apx-leading: 1.45;
 
   --apx-weight-regular: 400;
@@ -137,6 +137,8 @@
   --apx-fill: #272726;
   --apx-fill-hover: #2e2e2c;
   --apx-fill-strong: #353533;
+  /* A field reads as a field on any panel or row in the dark: its fill alone is too close to the surface. */
+  --apx-input-border: rgb(255 255 255 / 0.07);
   /* A hovered row inside a menu or popup: the plain fill barely shows on a raised surface in the dark. */
   --apx-popup-hover: var(--apx-fill-strong);
   --apx-fg: #ededeb;

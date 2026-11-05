@@ -176,6 +176,8 @@ export const enChannels = {
     "Their messages aren't answered on their own: you get the suggested answer, to send it, edit it or drop it.",
   "ch.saved": "Contact saved.",
   "ch.youToAgent": "You → {agent}",
+  "em.account": "Email account",
+  "em.addAccount": "Add email account",
   "em.lead": "A mailbox for the agent: it reads the mail that arrives and answers in the same thread.",
   "em.step1": "Give the agent a mailbox of its own (a new Gmail or Outlook account, or one on your domain).",
   "em.step2":
@@ -278,43 +280,7 @@ export const enChannels = {
   "im.answer": "Answer chats",
   "im.answerHint":
     "The people who write to you on iMessage get answered by your agent, once you approve them. Your own messages are never answered.",
-  "hooks.title": "Public address",
-  "hooks.lead":
-    "This channel delivers its messages to a web address, so APX needs one the internet can reach. Only the webhook door is published: never the panel or the API.",
-  "hooks.how": "How it is published",
-  "hooks.off": "Off",
-  "hooks.offBody": "No public address: this channel cannot receive messages.",
-  "hooks.tailscale": "Tailscale",
-  "hooks.tailscaleBody":
-    "Tailscale Funnel gives a fixed https address on port 8443. Free; Funnel must be allowed for this device in your tailnet.",
-  "hooks.ngrok": "ngrok",
-  "hooks.ngrokBody":
-    "APX starts ngrok for you. A free account usually keeps the same address; if ngrok ever gives a new one, this screen tells you.",
-  "hooks.custom": "My own",
-  "hooks.customBody": "Your own https address, in front of the webhook port (a proxy or a server you run).",
-  "hooks.tsMissing": "Tailscale is not installed on this computer.",
-  "hooks.tsDisconnected": "Tailscale is installed but not connected (or MagicDNS is off).",
-  "hooks.ngrokMissing": "ngrok is not installed: install it and run “ngrok config add-authtoken <your token>” once.",
-  "hooks.domain": "Reserved domain",
-  "hooks.domainHint": "Optional: your ngrok domain keeps the address the same across restarts.",
-  "hooks.ownUrl": "Your address",
-  "hooks.ownUrlHint": "It must forward to 127.0.0.1:{port} on this computer.",
-  "hooks.address": "This channel's address",
-  "hooks.addressHint": "Paste it into the platform as the messaging endpoint or webhook URL.",
-  "hooks.copy": "Copy",
-  "hooks.copied": "Address copied",
-  "hooks.notUp": "Not up yet",
-  "hooks.mayChange":
-    "This ngrok address is new: paste it into the platform. If ngrok gives another one after a restart, this says so again.",
   "hooks.failed": "The public address could not change: {error}",
-  "hooks.err.funnel_failed":
-    "Tailscale Funnel did not start: it may need turning on for this device in the tailnet's policy.",
-  "hooks.err.ngrok_timeout": "ngrok did not give an address in time.",
-  "hooks.err.ngrok_failed":
-    "ngrok could not open the address. Is it signed in (“ngrok config add-authtoken <your token>”)?",
-  "hooks.err.ngrok_stopped": "ngrok stopped. APX starts it again on its own.",
-  "hooks.err.failed": "The public address could not be set up.",
-  "hooks.errDetail": "What it said: {detail}",
   "tm.lead":
     "Talk with your agents from Microsoft Teams, in personal chats and the channels you list. Teams delivers to a public address, set below.",
   "tm.step1":

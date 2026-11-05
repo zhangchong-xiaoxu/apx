@@ -35,7 +35,7 @@ async function runRoutine(id: string) {
 }
 
 test("a chat turn the owner watches gets the same steps as background work", async () => {
-  const t = await env.client.call("threads.create", { kind: "loose", agent_id: "roby" });
+  const t = await env.client.call("threads.create", { kind: "loose", agent_id: "superagent" });
   await env.client.call("threads.send", { thread: t.id, text: "search everything" });
   await env.settle(t.id);
   assert.equal(steps(t.id), MAX_STEPS);
@@ -44,7 +44,7 @@ test("a chat turn the owner watches gets the same steps as background work", asy
 test("a routine gets the default steps, its own limit wins, and null puts the default back", async () => {
   const base = {
     name: "Long review",
-    agent: "roby",
+    agent: "superagent",
     schedule: { kind: "manual" as const },
     prompt: "Review every open issue.",
   };
@@ -67,7 +67,7 @@ test("a routine's limit is bounded", async () => {
   await assert.rejects(
     env.client.call("routines.set", {
       name: "Too long",
-      agent: "roby",
+      agent: "superagent",
       schedule: { kind: "manual" },
       prompt: "x",
       max_steps: 1000,
@@ -76,9 +76,9 @@ test("a routine's limit is bounded", async () => {
 });
 
 test("an agent's step budget caps each run and a routine's smaller limit still wins", async () => {
-  await env.client.call("agents.set_agent_limits", { agent: "roby", limits: { steps: 25 }, merge: false });
+  await env.client.call("agents.set_agent_limits", { agent: "superagent", limits: { steps: 25 }, merge: false });
   try {
-    const t = await env.client.call("threads.create", { kind: "loose", agent_id: "roby" });
+    const t = await env.client.call("threads.create", { kind: "loose", agent_id: "superagent" });
     await env.client.call("threads.send", { thread: t.id, text: "search everything" });
     await env.settle(t.id);
     assert.equal(calls(t.id), 25);
@@ -86,7 +86,7 @@ test("an agent's step budget caps each run and a routine's smaller limit still w
 
     const base = {
       name: "Bounded review",
-      agent: "roby",
+      agent: "superagent",
       schedule: { kind: "manual" as const },
       prompt: "Review every open issue.",
     };
@@ -95,14 +95,14 @@ test("an agent's step budget caps each run and a routine's smaller limit still w
     const smaller = await env.client.call("routines.set", { ...base, id: routine.id, max_steps: 20 });
     assert.equal(await runRoutine(smaller.id), 20);
 
-    await env.client.call("agents.set_agent_limits", { agent: "roby", limits: { steps: 1 }, merge: true });
-    const single = await env.client.call("threads.create", { kind: "loose", agent_id: "roby" });
+    await env.client.call("agents.set_agent_limits", { agent: "superagent", limits: { steps: 1 }, merge: true });
+    const single = await env.client.call("threads.create", { kind: "loose", agent_id: "superagent" });
     await env.client.call("threads.send", { thread: single.id, text: "search everything" });
     await env.settle(single.id);
     assert.equal(calls(single.id), 1);
     assert.equal(steps(single.id), 0, "a one-call cap leaves only the report");
   } finally {
-    await env.client.call("agents.set_agent_limits", { agent: "roby", limits: null, merge: false });
+    await env.client.call("agents.set_agent_limits", { agent: "superagent", limits: null, merge: false });
   }
 });
 
@@ -141,8 +141,8 @@ for (const failures of [1, 2]) {
         default: { model: "fake/fake-1", router: true },
         router: { rules: [], chain: ["fake/fake-2"] },
       });
-      await local.client.call("agents.set_agent_limits", { agent: "roby", limits: { steps: 3 }, merge: false });
-      const thread = await local.client.call("threads.create", { kind: "loose", agent_id: "roby" });
+      await local.client.call("agents.set_agent_limits", { agent: "superagent", limits: { steps: 3 }, merge: false });
+      const thread = await local.client.call("threads.create", { kind: "loose", agent_id: "superagent" });
       await local.client.call("threads.send", { thread: thread.id, text: "search everything" });
       const result = await local.settle(thread.id);
       assert.equal(result.runs[0]?.state, "completed");
@@ -192,8 +192,12 @@ for (const budget of [2, 3]) {
         default: { model: "fake/fake-1", router: true },
         router: { rules: [], chain: ["fake/fake-2"] },
       });
-      await local.client.call("agents.set_agent_limits", { agent: "roby", limits: { steps: budget }, merge: false });
-      const thread = await local.client.call("threads.create", { kind: "loose", agent_id: "roby" });
+      await local.client.call("agents.set_agent_limits", {
+        agent: "superagent",
+        limits: { steps: budget },
+        merge: false,
+      });
+      const thread = await local.client.call("threads.create", { kind: "loose", agent_id: "superagent" });
       await local.client.call("threads.send", { thread: thread.id, text: "search everything" });
       const result = await local.settle(thread.id);
       assert.equal(result.runs[0]?.state, "completed");
@@ -205,6 +209,61 @@ for (const budget of [2, 3]) {
       const notice = result.messages.flatMap((message) => message.parts).find((part) => part.type === "notice");
       assert.equal(notice?.code, "engine.fallback");
       assert.match(String(notice?.vars?.why), /HTTP 503/);
+    } finally {
+      await local.core.close();
+      await local.cleanup();
+    }
+  });
+}
+
+for (const effort of ["", "#high"]) {
+  test(`the final report reuses the last healthy fallback${effort ? " with its effort" : ""}`, async () => {
+    await using dir = tempDir("apx-call-last-fallback-");
+    const requests: Array<{ model: string; tools: boolean }> = [];
+    const gateway = createLlm({
+      providers: () => [
+        {
+          id: "fake",
+          transport: "openai-chat",
+          base_url: "http://fake.test",
+          key: NO_KEY,
+          models: ["fake-1", "fake-2"],
+        },
+      ],
+      secrets: createSecrets(dir.path, "file", {}),
+      firstByteMs: 1000,
+      retryDelayMs: 0,
+      fetchImpl: async (_url, init) => {
+        const body = JSON.parse(String(init?.body)) as { model: string; tools?: unknown[] };
+        const tools = Boolean(body.tools?.length);
+        requests.push({ model: body.model, tools });
+        if (body.model === "fake-1") return new Response("overloaded", { status: 503 });
+        const delta = tools
+          ? callTool("search", "memory_search", { query: "research" }).message
+          : { content: "Out of steps: here is what is left." };
+        return new Response(
+          `data: ${JSON.stringify({ choices: [{ delta, finish_reason: tools ? "tool_calls" : "stop" }] })}\n\n` +
+            "data: [DONE]\n\n",
+        );
+      },
+    });
+    const local = await startCore({ llm: gateway });
+    try {
+      await local.client.call("models.set_config", {
+        default: { model: "fake/fake-1", router: true },
+        router: { rules: [], chain: [`fake/fake-2${effort}`] },
+      });
+      await local.client.call("agents.set_agent_limits", { agent: "superagent", limits: { steps: 6 }, merge: false });
+      const thread = await local.client.call("threads.create", { kind: "loose", agent_id: "superagent" });
+      await local.client.call("threads.send", { thread: thread.id, text: "search everything" });
+      const result = await local.settle(thread.id);
+      assert.equal(result.runs[0]?.state, "completed");
+      assert.equal(result.runs[0]?.end_reason, "step_limit");
+      assert.deepEqual(requests, [
+        ...Array.from({ length: 4 }, () => ({ model: "fake-1", tools: true })),
+        { model: "fake-2", tools: true },
+        { model: "fake-2", tools: false },
+      ]);
     } finally {
       await local.core.close();
       await local.cleanup();

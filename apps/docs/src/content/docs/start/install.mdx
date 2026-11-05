@@ -1,6 +1,6 @@
 ---
 title: Install
-description: Install APX as a desktop app, on a server or VPS, or from a checkout of the code.
+description: Install APX, the AI agent workspace, on macOS, Windows or Linux, on a server or VPS, or from source.
 sidebar:
   order: 2
 ---
@@ -10,7 +10,8 @@ import InstallCommand from "../../../components/InstallCommand.astro";
 import Terminal from "../../../components/Terminal.astro";
 
 APX is one background process, the **core**, plus the apps that talk to it. Pick how you want to run it: the desktop
-app brings its own core, a server install runs the core with no screen, and a checkout runs the code as it is.
+app brings its own core, a [server install](/devices/server/) runs the core with no screen, and a checkout runs the code as it is.
+After installing, follow [First steps](/start/first-steps/) to connect a model and set up your first project.
 
 <Aside type="note" title="Updates">
 New versions come out often and APX updates itself. Your data stays in `~/.apx/v2` across updates, and APX v1's files are
@@ -187,7 +188,7 @@ APX only adds `AGENTS.md` and `.apc/` to them.
 - ~/.apx/v2/
   - apx.db all state: agents, threads, tasks, memory, settings (SQLite)
   - core.env the core's token, host and public address, when set
-  - secrets.json secret values, where the system keychain is not used
+  - secrets.json secret values, only where there is no system keyring
   - skills/ your global skills
   - extensions/
   - projects/ APX's side of each project, such as its widgets
@@ -197,7 +198,9 @@ APX only adds `AGENTS.md` and `.apc/` to them.
   - app/ the installed core, for server installs
 </FileTree>
 
-On macOS, secret values go to your login Keychain; elsewhere they go to `secrets.json` with owner-only permissions.
+Secret values go to your login Keychain on macOS, to your keyring (Secret Service) on Linux and to `secrets.dpapi`,
+sealed with DPAPI, on Windows. Only a server with no keyring keeps them in `secrets.json`, readable only by you. See
+[Configuration](/reference/configuration/).
 
 ## Updates
 
@@ -218,9 +221,10 @@ works offline; only asking about them in that chat runs a turn. The notes are co
 English. A new install starts quiet, and `APX_WHATS_NEW=off` turns the chat off.
 
 When a release brings something your super-agent can now do for you (say, update your widgets), it tells you once, in
-its own words and your language, on your preferred channel, with a button for each thing it offers. Only that message
-calls a model, and only when something applies to you; a new install is told nothing. `APX_NEWS=off` turns it off, and
-`apx news` lists what there is.
+its own words and your language, in its chat in the app (marked unread). If you picked a chat app for notices, the
+message goes there too, with a button for each thing it offers; without one, the app is where you read it. Only that
+message calls a model, and only when something applies to you; a new install is told nothing. `APX_NEWS=off` turns it
+off, and `apx news` lists what there is.
 
 ## Uninstall
 

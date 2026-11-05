@@ -1,4 +1,4 @@
-import { type AgentBudget, MAX_AGENT_STEPS } from "@apx/protocol";
+import { type AgentBudget, TURN_STEPS } from "@apx/protocol";
 import { Input } from "@apx/ui";
 import { useEffect, useRef, useState } from "react";
 import { client } from "../../data/client.ts";
@@ -7,7 +7,7 @@ import { useT } from "../../i18n/index.ts";
 type Key = keyof AgentBudget;
 /** Tokens are typed in thousands, as in Settings › Agents. */
 const SCALE: Record<Key, number> = { runs: 1, tokens: 1000, steps: 1 };
-const MAX: Record<Key, number> = { runs: 10_000, tokens: 1_000_000, steps: MAX_AGENT_STEPS };
+const MAX: Record<Key, number> = { runs: 10_000, tokens: 1_000_000, steps: TURN_STEPS };
 
 /**
  * One agent's limits: turns and tokens without the owner, and model calls per run. Empty fields: none of its own.

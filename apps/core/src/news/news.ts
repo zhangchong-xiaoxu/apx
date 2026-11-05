@@ -2,10 +2,12 @@
 // message in its voice and the owner's language, on their preferred channel. A release with nothing that applies costs
 // no model call; a fresh install is told nothing. See rules/DECISIONS.md#d-117
 import { buttonId } from "../channels/notices.ts";
+import { postAgentWords } from "../domain/agent-words.ts";
 import type { Presentation } from "../domain/channels.ts";
+import { ownerTimeZone } from "../domain/owner.ts";
 import { HOME_THREAD_ID } from "../domain/seed.ts";
 import type { Store } from "../domain/store.ts";
-import { previewOf } from "../domain/threads.ts";
+import { lastTalk } from "../engine/last-talk.ts";
 import type { Log } from "../log.ts";
 import type { Llm } from "../providers/llm.ts";
 import { compareVersions } from "../release-notes.ts";
@@ -20,13 +22,16 @@ const TIMEOUT_MS = 60_000;
 const MAX_OUTPUT_TOKENS = 400;
 const MAX_CHARS = 1200;
 
+type Words = { en: string; es: string };
+
 export type NewsItem = {
   id: string;
   since: string;
-  title: string;
+  title: Words;
+  about: Words;
   seen: boolean;
   applies: boolean;
-  actions: string[];
+  actions: { label: Words; prompt: string }[];
 };
 
 export type NewsTold = {
@@ -75,9 +80,10 @@ export function createNews(deps: {
       id: e.id,
       since: e.since,
       title: e.title,
+      about: e.about,
       seen: seen.has(e.id),
       applies: e.applies(facts),
-      actions: e.actions.map((a) => a.label.en),
+      actions: e.actions.map((a) => ({ label: a.label, prompt: a.prompt })),
     }));
   }
 
@@ -131,28 +137,20 @@ export function createNews(deps: {
     const lang = store.settings.get("owner_language") || "es";
     const actions = told.length === 1 ? (told[0]?.actions ?? []) : told.flatMap((e) => e.actions.slice(0, 1));
     const shown = actions.slice(0, MAX_ACTIONS);
-    const voiced = await voice(boss, told, lang, actions.length - shown.length);
+    const talk = lastTalk(store, home, new Date(), ownerTimeZone(store));
+    const voiced = await voice(boss, told, lang, actions.length - shown.length, talk);
     const text =
       voiced ??
       plainText(
         told,
         shown.map((a) => a.label.en),
       );
-    store.tx(() => {
-      store.messages.add({
-        thread_id: home.id,
-        author: { kind: "agent", id: boss.id },
-        parts: [{ type: "text", text }],
-      });
-      // The agent reads its message as its own words when the owner answers it here.
-      store.modelLog.append(home.id, undefined, [
-        {
-          role: "user",
-          content: `<system_note>\nAPX was updated; you told the owner what is new for them.\n</system_note>`,
-        },
-        { role: "assistant", content: text },
-      ]);
-      store.threads.patch(home.id, { preview: previewOf(text), unread: (home.unread ?? 0) + 1 });
+    postAgentWords(store, {
+      thread_id: home.id,
+      agent_id: boss.id,
+      text,
+      note: `<system_note>\nAPX was updated; you told the owner what is new for them.\n</system_note>`,
+      unread: true,
     });
     const buttons = shown.map((a) => {
       const entry = told.find((e) => e.actions.includes(a));
@@ -174,6 +172,7 @@ export function createNews(deps: {
     told: NewsEntry[],
     lang: string,
     moreActions: number,
+    talk: string | undefined,
   ): Promise<string | undefined> {
     const models = deps.models(boss.id);
     if (!models.length) return undefined;
@@ -182,7 +181,7 @@ export function createNews(deps: {
       models,
       messages: [
         { role: "system", content: voicePrompt(boss) },
-        { role: "user", content: newsInput(told, lang, moreActions) },
+        { role: "user", content: newsInput(told, lang, moreActions, talk) },
       ],
       tools: [],
       maxOutputTokens: MAX_OUTPUT_TOKENS,
@@ -213,7 +212,7 @@ const voicePrompt = (boss: { name: string; personality?: string | undefined }) =
   `You are ${boss.name}, the owner's assistant in APX, the app you run in.${boss.personality ? ` Your personality: ${boss.personality}` : ""}`;
 
 /** A few hundred characters: what is new for this owner, and how the message should read. */
-export function newsInput(told: NewsEntry[], lang: string, moreActions: number): string {
+export function newsInput(told: NewsEntry[], lang: string, moreActions: number, talk?: string): string {
   const items = told.map((e) => `- ${e.text}`).join("\n");
   const offers = told
     .flatMap((e) => (told.length === 1 ? e.actions : e.actions.slice(0, 1)))
@@ -223,12 +222,16 @@ export function newsInput(told: NewsEntry[], lang: string, moreActions: number):
   return [
     "APX was updated. What is new that you can now do for the owner:",
     items,
-    `Write them a short message (two to four sentences, plain text, no Markdown) in your voice, in their language (${lang}), saying what this means for them and offering: ${offers}.${moreActions > 0 ? ` Add that there are ${moreActions} more things you can show them.` : ""} They can pick one or just answer you. Write only the message.`,
-  ].join("\n");
+    `Write them one or two short sentences in your voice, in their language (${lang}): the one thing that matters most to them in **bold** (the only Markdown), then offer: ${offers}.${told.length > 1 ? " Do not list the rest: say the whole list is in Help › What's new." : ""}${moreActions > 0 ? ` Mention there are ${moreActions} more things you can show them.` : ""} They can pick one or just answer you. Write only the message.`,
+    talk ? `[last talk] ${talk}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
-/** Without a model: the entries as they are, in English. */
+/** Without a model: the first entry in bold, the rest counted (Help › What's new has them), in English. */
 function plainText(told: NewsEntry[], offers: string[]): string {
-  const items = told.map((e) => `- ${e.text}`).join("\n");
-  return `APX has something new for you:\n\n${items}${offers.length ? `\n\nWant me to: ${offers.join(", or ")}? Just answer me.` : ""}`;
+  const [first, ...rest] = told;
+  const more = rest.length ? ` (and ${rest.length} more in Help › What's new)` : "";
+  return `APX has something new for you: **${first?.title.en ?? ""}**${more}.${offers.length ? ` Want me to: ${offers.join(", or ")}? Just answer me.` : ""}`;
 }

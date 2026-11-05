@@ -919,4 +919,221 @@ export const MIGRATIONS: readonly string[] = [
     media_id TEXT PRIMARY KEY REFERENCES media(id) ON DELETE CASCADE
   );
   `,
+  `
+  CREATE TABLE flows (
+    id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    enabled INTEGER NOT NULL, predicates TEXT NOT NULL, table_key TEXT NOT NULL
+  );
+  CREATE TABLE flow_events (
+    flow_id TEXT NOT NULL REFERENCES flows(id) ON DELETE CASCADE, event_id TEXT NOT NULL,
+    state TEXT NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY(flow_id, event_id)
+  );
+  CREATE TABLE flow_rows (
+    flow_id TEXT NOT NULL REFERENCES flows(id) ON DELETE CASCADE, key TEXT NOT NULL,
+    value TEXT NOT NULL, PRIMARY KEY(flow_id, key)
+  );
+  `,
+  `
+  ALTER TABLE flows ADD COLUMN name TEXT NOT NULL DEFAULT 'Flow';
+  ALTER TABLE flows ADD COLUMN action TEXT NOT NULL DEFAULT '{"kind":"none"}';
+  ALTER TABLE flows ADD COLUMN read_keys TEXT NOT NULL DEFAULT '[]';
+  ALTER TABLE flow_events ADD COLUMN payload TEXT;
+  ALTER TABLE flow_events ADD COLUMN action TEXT;
+  ALTER TABLE flow_events ADD COLUMN run_id TEXT REFERENCES runs(id);
+  ALTER TABLE flow_events ADD COLUMN thread_id TEXT REFERENCES threads(id);
+  ALTER TABLE flow_events ADD COLUMN error TEXT;
+  CREATE INDEX flow_events_pending ON flow_events(state, created_at);
+  `,
+  `CREATE TABLE retired_flows (id TEXT PRIMARY KEY);`,
+  `
+  ALTER TABLE flow_events ADD COLUMN executor TEXT NOT NULL DEFAULT 'legacy';
+  CREATE TABLE flow_graph_drafts (
+    flow_id TEXT PRIMARY KEY REFERENCES flows(id) ON DELETE CASCADE,
+    version INTEGER NOT NULL, graph TEXT NOT NULL, published_revision INTEGER,
+    discarded INTEGER NOT NULL DEFAULT 0 CHECK(discarded IN (0,1))
+  );
+  CREATE TABLE flow_graph_revisions (
+    flow_id TEXT NOT NULL REFERENCES flows(id) ON DELETE CASCADE,
+    revision INTEGER NOT NULL, graph TEXT NOT NULL, created_at TEXT NOT NULL,
+    PRIMARY KEY(flow_id, revision)
+  );
+  CREATE TABLE flow_graph_events (
+    flow_id TEXT NOT NULL, event_id TEXT NOT NULL, revision INTEGER NOT NULL,
+    payload TEXT NOT NULL, deadline_at TEXT NOT NULL,
+    PRIMARY KEY(flow_id, event_id),
+    UNIQUE(flow_id, event_id, revision),
+    FOREIGN KEY(flow_id, event_id) REFERENCES flow_events(flow_id, event_id) ON DELETE CASCADE,
+    FOREIGN KEY(flow_id, revision) REFERENCES flow_graph_revisions(flow_id, revision) ON DELETE CASCADE
+  );
+  CREATE TABLE flow_graph_nodes (
+    flow_id TEXT NOT NULL, event_id TEXT NOT NULL, revision INTEGER NOT NULL, node_id TEXT NOT NULL,
+    state TEXT NOT NULL, input TEXT, output TEXT,
+    run_id TEXT REFERENCES runs(id), thread_id TEXT REFERENCES threads(id), error TEXT,
+    PRIMARY KEY(flow_id, event_id, revision, node_id),
+    FOREIGN KEY(flow_id, event_id, revision) REFERENCES flow_graph_events(flow_id, event_id, revision) ON DELETE CASCADE
+  );
+  CREATE INDEX flow_graph_events_revision ON flow_graph_events(flow_id, revision);
+  CREATE INDEX flow_graph_nodes_revision ON flow_graph_nodes(flow_id, revision);
+  `,
+  // Graph runs: how each run and step ended and when; `phase` marks a model call sent (DECISIONS.md#d-167).
+  `
+  ALTER TABLE flow_events ADD COLUMN stopped_at INTEGER;
+  ALTER TABLE flow_graph_events ADD COLUMN state TEXT NOT NULL DEFAULT 'pending';
+  ALTER TABLE flow_graph_events ADD COLUMN ended_at TEXT;
+  ALTER TABLE flow_graph_events ADD COLUMN stopped_by TEXT;
+  ALTER TABLE flow_graph_nodes ADD COLUMN started_at TEXT;
+  ALTER TABLE flow_graph_nodes ADD COLUMN ended_at TEXT;
+  ALTER TABLE flow_graph_nodes ADD COLUMN phase TEXT;
+  CREATE INDEX flow_graph_events_state ON flow_graph_events(state);
+  `,
+  // What started each Flow run and, for a schedule, when it was due; `since` is where the next tick is counted from.
+  `
+  ALTER TABLE flow_events ADD COLUMN source TEXT NOT NULL DEFAULT 'webhook';
+  ALTER TABLE flow_events ADD COLUMN scheduled_at TEXT;
+  CREATE TABLE flow_schedules (
+    flow_id TEXT PRIMARY KEY REFERENCES flows(id) ON DELETE CASCADE, since TEXT NOT NULL
+  );
+  `,
+  // Event reminders left the routines for Google Calendar's own settings: a routine kept for them goes, with its runs.
+  `DELETE FROM routines WHERE action = 'calendar';`,
+  // Each message a Flow sent as the owner, for its hourly limit; ticks a schedule skipped while a run was going.
+  `
+  CREATE TABLE flow_sends (
+    flow_id TEXT NOT NULL REFERENCES flows(id) ON DELETE CASCADE, kind TEXT NOT NULL, at TEXT NOT NULL
+  );
+  CREATE INDEX flow_sends_flow ON flow_sends(flow_id, kind, at);
+  ALTER TABLE flow_schedules ADD COLUMN skipped INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE flow_schedules ADD COLUMN skipped_at TEXT;
+  `,
+  // The mail routine became Gmail's mail check (DECISIONS.md#d-171): its switch, the profile's minutes and its point
+  // in the inbox carry over; the routine goes, with its runs.
+  `
+  INSERT INTO meta(key, value)
+    SELECT 'setting:mail_check', json_object(
+      'enabled', json(CASE WHEN r.enabled THEN 'true' ELSE 'false' END),
+      'every_min', COALESCE((SELECT json_extract(value, '$.values.mail_every_min') FROM meta WHERE key = 'setting:profile'), 5),
+      'important_only', json('false'))
+    FROM routines r
+    WHERE r.action = 'mail' AND NOT EXISTS (SELECT 1 FROM meta WHERE key = 'setting:mail_check')
+    ORDER BY r.enabled DESC LIMIT 1;
+  INSERT INTO meta(key, value)
+    SELECT 'setting:mail_seen', m.value FROM meta m JOIN routines r ON m.key = 'setting:mail_seen:' || r.id
+    WHERE r.action = 'mail' AND NOT EXISTS (SELECT 1 FROM meta WHERE key = 'setting:mail_seen')
+    ORDER BY r.enabled DESC LIMIT 1;
+  DELETE FROM meta WHERE substr(key, 1, 18) = 'setting:mail_seen:';
+  DELETE FROM routines WHERE action = 'mail';
+  `,
+  // Tables a project's Flows save to by name and read back (DECISIONS.md#d-173); newest first by updated_at.
+  `
+  CREATE TABLE flow_tables (
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE, name TEXT NOT NULL, key TEXT NOT NULL,
+    value TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY(project_id, name, key)
+  );
+  CREATE INDEX flow_tables_recent ON flow_tables(project_id, name, updated_at);
+  `,
+  // Which agent saved a Flow's draft (null: the owner): turning it on opens it for review instead (DECISIONS.md#d-174).
+  `ALTER TABLE flow_graph_drafts ADD COLUMN saved_by TEXT;`,
+  // A project's tables exist on their own, with their columns in order (DECISIONS.md#d-176): every table that has rows
+  // or that a drawing names is kept, its columns taken from the fields of its rows (`value` for a row that is not one).
+  `
+  CREATE TABLE flow_table_defs (
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE, name TEXT NOT NULL,
+    columns TEXT NOT NULL DEFAULT '[]', created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+    PRIMARY KEY(project_id, name)
+  );
+  INSERT INTO flow_table_defs (project_id, name, columns, created_at, updated_at)
+    SELECT project_id, name, '[]', MIN(updated_at), MAX(updated_at) FROM flow_tables GROUP BY project_id, name;
+  INSERT OR IGNORE INTO flow_table_defs (project_id, name, columns, created_at, updated_at)
+    SELECT DISTINCT f.project_id, json_extract(n.value, '$.table'), '[]',
+      strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+    FROM (
+      SELECT flow_id, graph FROM flow_graph_drafts WHERE discarded = 0
+      UNION ALL SELECT flow_id, graph FROM flow_graph_revisions
+    ) g
+    JOIN flows f ON f.id = g.flow_id
+    JOIN projects p ON p.id = f.project_id, json_each(g.graph, '$.nodes') n
+    WHERE json_extract(n.value, '$.kind') IN ('table_read', 'table_write') AND json_type(n.value, '$.table') = 'text';
+  UPDATE flow_table_defs SET columns = (
+    SELECT json_group_array(col ORDER BY at) FROM (
+      SELECT col, MIN(at) AS at FROM (
+        SELECT j.key AS col, t.updated_at || printf(':%08d', j.id) AS at
+        FROM flow_tables t, json_each(t.value) j
+        WHERE t.project_id = flow_table_defs.project_id AND t.name = flow_table_defs.name
+          AND json_type(t.value) = 'object'
+        UNION ALL
+        SELECT 'value', t.updated_at || ':00000000' FROM flow_tables t
+        WHERE t.project_id = flow_table_defs.project_id AND t.name = flow_table_defs.name
+          AND json_type(t.value) <> 'object'
+      )
+      WHERE length(col) BETWEEN 1 AND 64 AND col NOT GLOB '*[^A-Za-z0-9_-]*' AND substr(col, 1, 1) <> '-'
+        AND col NOT IN ('rows', 'row', '__proto__', 'constructor', 'prototype')
+      GROUP BY col ORDER BY at LIMIT 50
+    )
+  );
+  `,
+  // A Flow's public address is its own path (DECISIONS.md#d-178): a Flow from before keeps its identifier, so every
+  // address that answered still does. Test runs are marked, and the drawing a test ran is a revision marked too.
+  `
+  ALTER TABLE flows ADD COLUMN path TEXT NOT NULL DEFAULT '';
+  UPDATE flows SET path = id;
+  CREATE UNIQUE INDEX flows_path ON flows(path);
+  ALTER TABLE flow_events ADD COLUMN test INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE flow_events ADD COLUMN headers TEXT;
+  ALTER TABLE flow_graph_revisions ADD COLUMN test INTEGER NOT NULL DEFAULT 0;
+  `,
+  // Each save that changes a Flow's drawing leaves an entry the owner can look at and bring back
+  // (DECISIONS.md#d-179). Flows from before start with what they published and their waiting draft.
+  `
+  CREATE TABLE flow_graph_history (
+    flow_id TEXT NOT NULL REFERENCES flows(id) ON DELETE CASCADE,
+    entry INTEGER NOT NULL,
+    at TEXT NOT NULL,
+    kind TEXT NOT NULL CHECK(kind IN ('draft','published','restored')),
+    saved_by TEXT,
+    restored_from INTEGER,
+    revision INTEGER,
+    steps INTEGER NOT NULL,
+    graph TEXT NOT NULL,
+    PRIMARY KEY(flow_id, entry)
+  );
+  INSERT INTO flow_graph_history(flow_id,entry,at,kind,revision,steps,graph)
+    SELECT flow_id, row_number() OVER (PARTITION BY flow_id ORDER BY revision), created_at, 'published', revision,
+      coalesce(json_array_length(graph,'$.nodes'),0), graph
+    FROM flow_graph_revisions WHERE test = 0;
+  INSERT INTO flow_graph_history(flow_id,entry,at,kind,saved_by,steps,graph)
+    SELECT d.flow_id, coalesce((SELECT max(h.entry) FROM flow_graph_history h WHERE h.flow_id=d.flow_id),0)+1,
+      strftime('%Y-%m-%dT%H:%M:%fZ','now'), 'draft', d.saved_by, coalesce(json_array_length(d.graph,'$.nodes'),0), d.graph
+    FROM flow_graph_drafts d WHERE d.discarded = 0;
+  DELETE FROM flow_graph_history WHERE entry <= (
+    SELECT max(h.entry) - 50 FROM flow_graph_history h WHERE h.flow_id = flow_graph_history.flow_id);
+  `,
+  // A table's columns may be required: a save never leaves one empty (DECISIONS.md#d-180). None is, to begin with.
+  `
+  ALTER TABLE flow_table_defs ADD COLUMN required TEXT NOT NULL DEFAULT '[]';
+  `,
+  // Which files each message shows, kept by the messages themselves: the Files screen lists them and jumps to the message.
+  `
+  CREATE TABLE message_media (
+    message_id TEXT NOT NULL, media_id TEXT NOT NULL, name TEXT, PRIMARY KEY (message_id, media_id)
+  );
+  CREATE INDEX message_media_media ON message_media(media_id);
+  INSERT OR IGNORE INTO message_media(message_id, media_id, name)
+    SELECT m.id, json_extract(p.value, '$.media_id'), json_extract(p.value, '$.name')
+    FROM messages m, json_each(m.parts) p
+    WHERE m.parts LIKE '%"media_id"%' AND json_extract(p.value, '$.media_id') IS NOT NULL;
+  CREATE TRIGGER message_media_ai AFTER INSERT ON messages WHEN new.parts LIKE '%"media_id"%' BEGIN
+    INSERT OR IGNORE INTO message_media(message_id, media_id, name)
+      SELECT new.id, json_extract(p.value, '$.media_id'), json_extract(p.value, '$.name')
+      FROM json_each(new.parts) p WHERE json_extract(p.value, '$.media_id') IS NOT NULL;
+  END;
+  CREATE TRIGGER message_media_au AFTER UPDATE OF parts ON messages BEGIN
+    DELETE FROM message_media WHERE message_id = old.id;
+    INSERT OR IGNORE INTO message_media(message_id, media_id, name)
+      SELECT new.id, json_extract(p.value, '$.media_id'), json_extract(p.value, '$.name')
+      FROM json_each(new.parts) p WHERE json_extract(p.value, '$.media_id') IS NOT NULL;
+  END;
+  CREATE TRIGGER message_media_ad AFTER DELETE ON messages BEGIN
+    DELETE FROM message_media WHERE message_id = old.id;
+  END;
+  `,
 ];

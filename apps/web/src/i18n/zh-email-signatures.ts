@@ -1,6 +1,11 @@
 import type { enEmailSignatures } from "./en-email-signatures.ts";
 
 export const zhEmailSignatures: Record<keyof typeof enEmailSignatures, string> = {
+  "signature.defaultTitle": "默认邮件签名",
+  "signature.defaultLead": "没有单独签名的 Gmail 和 SMTP 账户可使用此备用签名。连接账户前也可以编辑。",
+  "signature.accountLead": "此账户会覆盖默认签名。关闭自动签名并保存即可不使用任何签名；选择默认签名可移除此覆盖。",
+  "signature.useDefault": "使用默认签名",
+  "signature.reload": "重新加载签名",
   "signature.title": "邮件签名",
   "signature.lead": "每个 Gmail 或 SMTP 账户使用一个签名，适用于新邮件和回复。你也可以要求不添加。",
   "signature.account": "邮箱账户",
@@ -10,9 +15,20 @@ export const zhEmailSignatures: Record<keyof typeof enEmailSignatures, string> =
   "signature.html": "HTML 签名（可选）",
   "signature.htmlHint":
     "支持基础格式（p、div、span、b、strong、em、i、u、br）、链接（a）和 HTTPS 图片（img）。属性值必须使用双引号。不支持脚本、样式或嵌入图片。必须填写纯文本版本。",
-  "signature.importHint": "没有导入 Gmail 签名的权限，请在此复制签名。不会更改 Gmail 设置或已有草稿。",
+  "signature.importOwnClient": "若要从 Gmail 导入签名，请使用自己的 Google 客户端连接；否则请在此粘贴。",
+  "signature.import": "从 Gmail 导入",
+  "signature.imported": "已从 Gmail 导入签名：请检查并保存",
+  "signature.importNone": "此账户在 Gmail 中没有签名",
+  "signature.importError": "无法从 Gmail 导入签名：{error}",
+  "signature.format": "签名格式",
+  "signature.htmlTab": "格式化",
+  "signature.textTab": "纯文本",
+  "signature.preview": "签名预览",
+  "signature.textHint": "在无格式邮件中使用。启用签名时必须填写。",
+  "signature.needsText": "缺少纯文本签名。",
   "signature.noAccounts": "请在资源中连接 Gmail，或在设置中添加 Email 渠道，然后配置签名。",
   "signature.loading": "正在加载签名…",
+  "signature.save": "保存签名",
   "signature.saved": "签名设置已保存",
   "signature.error": "无法保存签名。请检查必填文本和支持的 HTML，然后重试。",
   "signature.remove": "移除签名",

@@ -28,10 +28,15 @@ muestra la misma versión y el `code_sha`.
 
 Si el core no está corriendo, vas a ver:
 
-<Terminal command="apx status">{`apx: the core is not running (try: apx service install, or pnpm dev)`}</Terminal>
+<Terminal command="apx status">{`apx: Core not running: See why and what to do: apx doctor`}</Terminal>
 
-Arrancalo con la app de escritorio, con `apx service install` (o `apx service restart` si el servicio ya existe), o
-con `pnpm dev` desde el código. Si arranca y se cae, leé su log.
+`apx doctor` revisa esta computadora sin el core: qué dice el log del core sobre su último arranque, si el servicio
+está instalado y corriendo, y si salió un APX más nuevo. Termina con el comando a correr. Si una versión no puede
+arrancar (su log muestra `ERR_MODULE_NOT_FOUND`), `apx update` la reemplaza aunque el core esté caído, en un APX
+instalado con el script de instalación; la app de escritorio se reemplaza bajando la más nueva.
+
+Si no, arrancalo con la app de escritorio, con `apx service install` (o `apx service restart` si el servicio ya
+existe), o con `pnpm dev` desde el código. Si arranca y se cae, leé su log.
 
 ## Dónde están los logs
 
@@ -120,6 +125,38 @@ El core rechaza el reemplazo implícito de límites de un cliente anterior cuand
 modelo o el pedido incluye el campo `steps`. Así evita que una copia desactualizada borre o restaure ese límite sin
 avisar. Recargá o actualizá el cliente. Los clientes directos del protocolo deben enviar `merge: true` para cambiar
 solo los campos indicados, o `merge: false` para reemplazar o quitar los límites del agente.
+
+## Una actualización de la app no se instala
+
+Si **Reiniciar ahora** no puede poner la versión nueva, la ventana de actualización dice por qué, o después de un
+minuto avisa que APX no se reinició. Salí de APX (Cmd+Q en macOS, **Salir de APX** desde el ícono de la bandeja en los
+demás) y volvé a abrirlo. En macOS y Linux, una versión ya descargada se instala cuando APX se cierra; en Windows,
+elegí **Reiniciar ahora** otra vez cuando esté abierto. Si APX no se cierra, forzá la salida (Monitor de Actividad en
+macOS, Administrador de tareas en Windows).
+
+La app de escritorio anota cada paso de su propia actualización (descarga, reinicio, salida y, en macOS, el cambio de
+`APX.app`) en `update.log`, dentro de su carpeta de logs: `~/Library/Logs/APX/update.log` en macOS,
+`%APPDATA%\APX\logs\update.log` en Windows, `~/.config/APX/logs/update.log` en Linux. En macOS, si queda una carpeta
+`.APX-<versión>.update` junto a `APX.app`, es una versión descargada que nunca se puso en su lugar; APX la borra la
+próxima vez que arranca.
+
+## macOS le pide a “node” acceso a Documentos
+
+El core corre como `node`, la copia de Node que viene con APX. La primera vez que lee un proyecto en una carpeta que
+macOS protege (Documentos, Escritorio, Descargas, iCloud Drive, un disco externo o de red), macOS pregunta si “node”
+puede abrirla. Cuando el core arranca solo al iniciar sesión, esa ventana puede quedar detrás de otras, o aparecer sin
+nadie frente a la computadora.
+
+- Elegí **Permitir**. APX lee el proyecto apenas respondés; no hace falta nada más.
+- Mientras nadie responde, APX arranca y funciona como siempre. Los ajustes de ese proyecto dicen que su carpeta
+  todavía no se abrió, y sus agentes no trabajan en su carpeta; tus otros proyectos siguen igual.
+- Si elegiste **No permitir**, o la ventana ya no está: abrí **Ajustes del Sistema › Privacidad y seguridad › Archivos
+  y carpetas**, activá la carpeta debajo de “node” y reiniciá APX (`apx service restart`, o salí y abrí la app de
+  escritorio).
+- Para que no pregunte, guardá los proyectos en una carpeta que macOS no protege, como `~/work/…`.
+
+Antes de la 2.12.4 el core esperaba la respuesta para arrancar: la app de escritorio se quedaba en **Conectando con
+APX** y `apx status` no encontraba ningún core hasta que alguien respondía la ventana.
 
 ## El puerto ya está en uso
 

@@ -9,8 +9,10 @@ import { baseRef, effortLabel, splitRef } from "../data/models.ts";
 import { useData } from "../data/state.ts";
 import { useT } from "../i18n/index.ts";
 import {
+  BrowserPart,
   ChoicesPart,
   ConnectPart,
+  FlowCard,
   InputPart,
   MediaGroup,
   ReceivedDialog,
@@ -22,7 +24,6 @@ import { copyableQuote } from "./CopyableQuote.tsx";
 import { runnableCode } from "./codeRunner.tsx";
 import { linkMenu } from "./LinkMenu.tsx";
 import { MessageActions } from "./MessageActions.tsx";
-import { BrowserPart } from "./parts/BrowserPart.tsx";
 import { ChangesPart } from "./parts/ChangesPart.tsx";
 import { FilePart } from "./parts/FilePart.tsx";
 import { ImageGenerationPreview } from "./parts/ImageGenerationPreview.tsx";
@@ -178,6 +179,7 @@ function cardKey(p: Part, i: number): string {
   if (p.type === "subthread") return `t:${p.thread_id}`;
   if (p.type === "browser") return `b:${p.tab}`;
   if (p.type === "input") return `i:${p.input_id}`;
+  if (p.type === "flow") return `f:${p.flow}`;
   return `${p.type}:${i}`;
 }
 
@@ -196,7 +198,11 @@ function renderCard(p: Part, agent: Agent | undefined, message: Msg): ReactNode 
         </Suspense>
       );
     case "browser":
-      return <BrowserPart part={p} agent={agent} threadId={message.thread_id} />;
+      return (
+        <Suspense fallback={null}>
+          <BrowserPart part={p} agent={agent} threadId={message.thread_id} />
+        </Suspense>
+      );
     case "image":
       // One with a source is in its message's picture grid; one without has nothing to show.
       return null;
@@ -224,6 +230,12 @@ function renderCard(p: Part, agent: Agent | undefined, message: Msg): ReactNode 
       return (
         <Suspense fallback={null}>
           <ConnectPart part={p} threadId={message.thread_id} messageId={message.id} />
+        </Suspense>
+      );
+    case "flow":
+      return (
+        <Suspense fallback={null}>
+          <FlowCard part={p} />
         </Suspense>
       );
     default:

@@ -7,22 +7,22 @@ import { type Attachment, type Origin, type RunInput, type RunRecord, TERMINAL }
 import type { Store } from "../domain/store.ts";
 import { Canceled, DeadlineExceeded, Shutdown, Superseded } from "../errors.ts";
 import type { Harnesses } from "../harness/index.ts";
-import { systemNote } from "../harness/native.ts";
 import type { Log } from "../log.ts";
 import type { RuntimeHomes } from "../skills/runtimes.ts";
 import { fromTeam } from "../tools/result.ts";
 import type { Tool } from "../tools/types.ts";
-import { agentTrip, pausedNotice, trip } from "./breaker.ts";
+import { agentTrip, keepWhilePaused, trip } from "./breaker.ts";
+import { frameInput } from "./context.ts";
 import { actionsNote, actionsOf, createDelegations, endedAs, endNote } from "./delegation.ts";
 import type { Display } from "./display.ts";
 import type { Hooks } from "./hooks.ts";
 import { createInputs, type InputWaits } from "./inputs.ts";
 import { createJobs } from "./jobs.ts";
 import { A2A_CAP_MS } from "./limits.ts";
+import type { MailSource } from "./mail-check.ts";
 import type { MemoryIndex } from "./memory-index.ts";
 import { relayEnded } from "./owner-relay.ts";
 import type { Permissions } from "./permissions.ts";
-import type { MailSource } from "./pipeline.ts";
 import type { ProfileRoot } from "./profiles.ts";
 import { recoverInterrupted } from "./recovery.ts";
 import { droppedResult, outcomeNote } from "./run-outcome.ts";
@@ -239,8 +239,28 @@ export function createEngine(deps: {
   /** Running turns: run id → its abort controller, thread and deadline. */
   const active = new Map<string, { ac: AbortController; thread: string; clock: Clock }>();
   const live = new Map<string, Display>();
-  /** Owner text steered into a running turn, not yet taken by its loop. */
-  const steered = new Map<string, string[]>();
+  /**
+   * What reaches a running turn between its steps, not yet taken by its loop: the owner's words, or (`apx`) a result
+   * that would otherwise start a turn of its own, such as a background command's end (DECISIONS.md#d-162).
+   */
+  const steered = new Map<string, Array<{ text: string; apx?: Admit }>>();
+  /** The running turn of `agentId` in `threadId` whose loop takes text mid-turn (ours), if any. */
+  const steerable = (threadId: string, agentId?: string): RunRecord | undefined => {
+    for (const [runId, a] of active) {
+      if (a.thread !== threadId || a.ac.signal.aborted) continue;
+      const run = store.runs.get(runId);
+      if (run?.harness !== "native" || (agentId && run.agent_id !== agentId)) return undefined;
+      return run;
+    }
+    return undefined;
+  };
+  /** Hands a result to the agent's running turn instead of a turn of its own; false when none can take it. */
+  const steerResult = (a: Admit): boolean => {
+    const run = steerable(a.thread_id, a.agent_id);
+    if (!run) return false;
+    steered.set(run.id, [...(steered.get(run.id) ?? []), { text: frameInput(a.origin, a.text), apx: a }]);
+    return true;
+  };
   const waiters = new Map<string, Set<(run: RunRecord) => void>>();
   let stopping = false;
 
@@ -254,22 +274,17 @@ export function createEngine(deps: {
       const agent = store.agents.get(child.agent_id);
       const name = store.threads.context(child.thread_id).worker?.name ?? agent?.name ?? child.agent_id;
       const session = store.threads.get(child.thread_id)?.session;
-      const paused = pausedNotice(store, parent.thread_id, name);
-      if (paused) {
-        // The result is kept for the caller's next turn (when the owner writes), and the owner sees why it stopped.
-        store.modelLog.append(parent.thread_id, child.id, [
-          systemNote(
-            `A task you delegated to ${name} ended (${endedAs(child)}) while agents were paused:\n${fromTeam("delegation_result", { from: name }, answer.slice(0, 4000))}\n${endNote(child, { session, stopped })}${outcome ? outcomeNote(outcome) : ""}${actionsNote(actionsOf(store, child))}`,
-          ),
-        ]);
-        store.messages.add({
+      // Paused: the result is kept for the caller's next turn, and the owner sees why it stopped.
+      if (
+        keepWhilePaused(store, {
           thread_id: parent.thread_id,
-          author: { kind: "system" },
-          parts: [paused],
-        });
-        store.threads.mergeContext(parent.thread_id, { kept: parent.agent_id });
+          agent_id: parent.agent_id,
+          who: name,
+          run_id: child.id,
+          note: `A task you delegated to ${name} ended (${endedAs(child)}) while agents were paused:\n${fromTeam("delegation_result", { from: name }, answer.slice(0, 4000))}\n${endNote(child, { session, stopped })}${outcome ? outcomeNote(outcome) : ""}${actionsNote(actionsOf(store, child))}`,
+        })
+      )
         return;
-      }
       admit({
         thread_id: parent.thread_id,
         agent_id: parent.agent_id,
@@ -294,7 +309,7 @@ export function createEngine(deps: {
     },
   });
 
-  const jobs = createJobs({ store, home: deps.home, log, admit: (a) => admit(a) });
+  const jobs = createJobs({ store, home: deps.home, log, admit: (a) => admit(a), steer: (a) => steerResult(a) });
 
   // The turn's clock stops while it waits for the owner: their time to answer is not the agent's time to work.
   const inputs = createInputs({
@@ -393,9 +408,9 @@ export function createEngine(deps: {
     active.set(run.id, { ac, thread: run.thread_id, clock });
     try {
       const takeSteered = () => {
-        const texts = steered.get(run.id) ?? [];
+        const taken = steered.get(run.id) ?? [];
         steered.set(run.id, []);
-        return texts;
+        return taken.map((s) => (s.apx ? s.text : `[The owner adds, while you work]\n${s.text}`));
       };
       // Waiting on a delegate at work is the turn at work too.
       const delegate: typeof delegations.delegate = (...a) => delegations.delegate(...a).finally(clock.busy());
@@ -411,9 +426,17 @@ export function createEngine(deps: {
     } finally {
       clock.stop();
       active.delete(run.id);
-      // Steered text the turn ended before taking is not lost: it runs next, as a normal message.
-      for (const text of steered.get(run.id) ?? [])
-        admit({ thread_id: run.thread_id, agent_id: run.agent_id, trigger: "user", origin: { kind: "user" }, text });
+      // Steered text the turn ended before taking is not lost: it runs next, as a normal message or result.
+      for (const s of steered.get(run.id) ?? [])
+        admit(
+          s.apx ?? {
+            thread_id: run.thread_id,
+            agent_id: run.agent_id,
+            trigger: "user",
+            origin: { kind: "user" },
+            text: s.text,
+          },
+        );
       steered.delete(run.id);
       live.delete(run.id);
       delegations.callerEnded(run.id);
@@ -487,14 +510,9 @@ export function createEngine(deps: {
     release: (threadId: string) => delegations.release(threadId),
     /** Hands owner text to the thread's running turn when its loop can take it mid-turn (ours); else undefined. */
     steer(threadId: string, text: string): RunRecord | undefined {
-      for (const [runId, a] of active) {
-        if (a.thread !== threadId || a.ac.signal.aborted) continue;
-        const run = store.runs.get(runId);
-        if (run?.harness !== "native") return undefined;
-        steered.set(runId, [...(steered.get(runId) ?? []), text]);
-        return run;
-      }
-      return undefined;
+      const run = steerable(threadId);
+      if (run) steered.set(run.id, [...(steered.get(run.id) ?? []), { text }]);
+      return run;
     },
     /** The owner's answer to something an agent asked (runs.respond). */
     respond: inputs.respond,

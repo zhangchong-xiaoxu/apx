@@ -70,6 +70,7 @@ function harness(options: { lang?: Lang; platform?: string; enabled?: boolean; m
   let restarts = 0;
   let status: DesktopUpdate = initial;
   let result: Awaited<ReturnType<ReturnType<typeof createDesktopUpdater>["install"]>> = { ok: true, ready: true };
+  let restarted: ReturnType<ReturnType<typeof createDesktopUpdater>["restart"]> = { ok: true };
   const updater = {
     enabled: options.enabled ?? true,
     mode: options.mode ?? "auto",
@@ -83,6 +84,7 @@ function harness(options: { lang?: Lang; platform?: string; enabled?: boolean; m
     },
     restart: () => {
       restarts++;
+      return restarted;
     },
   } as ReturnType<typeof createDesktopUpdater>;
   const menu = createUpdateMenu({ updater, window, lang: options.lang ?? "en", platform: options.platform ?? "linux" });
@@ -94,6 +96,9 @@ function harness(options: { lang?: Lang; platform?: string; enabled?: boolean; m
     },
     result: (r: typeof result) => {
       result = r;
+    },
+    restarted: (r: typeof restarted) => {
+      restarted = r;
     },
   };
 }
@@ -149,6 +154,16 @@ test("an explicit release installs and restarts only with consent", async () => 
   await click(h.menu.item({ ...initial, latest: "2.1.0" }));
   assert.deepEqual(h.counts(), { checks: 0, installs: 1, restarts: 1 });
   assert.match(String(messages[0]?.detail), /when you quit APX/);
+});
+
+test("a restart from the menu that cannot go ahead shows the reason", async () => {
+  const h = harness();
+  h.restarted({ ok: false, error: "The new version is no longer ready. Check for updates again." });
+  await click(h.menu.item({ ...initial, ready: "2.1.0" }));
+  assert.equal(h.counts().restarts, 1);
+  assert.equal(messages[0]?.type, "warning");
+  assert.equal(messages[0]?.message, "APX could not update");
+  assert.equal(messages[0]?.detail, "The new version is no longer ready. Check for updates again.");
 });
 
 test("install failures show the reason; drag updates explain manual replacement instead of restarting", async () => {

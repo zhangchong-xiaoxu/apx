@@ -11,7 +11,7 @@ Measured on a fresh install: the secretary, a new chat, default settings, no ski
 | Part | Budget | Now (2026-10-25) |
 |---|---|---|
 | System prompt | 10,000 chars (about 2,300 tokens) | 5,425 chars (the permission mode's text said here once instead of in every turn; the delegate and web rules short, their details in their tools) |
-| Tool definitions (39, without the browser) | 30,000 chars (about 7,100 tokens) | 22,349 chars, about 5,300 tokens (the channel and contact tools and make_image only once a channel or an image service is on; repeats of system rules out of descriptions) |
+| Tool definitions (40, without the browser) | 30,000 chars (about 7,100 tokens) | 23,874 chars on 2026-10-29, about 5,700 tokens (apx_flow, 521 chars, [D-181](DECISIONS.md#d-181); the channel and contact tools and make_image only once a channel or an image service is on; repeats of system rules out of descriptions) |
 | A turn's input before the message | — | 264 chars: one `[context]` line (time, channel, mode) and the roster when it changed |
 | Browser tools (8, lent by the desktop app) | — | 811 tokens |
 
@@ -20,8 +20,9 @@ is for what a new owner needs to find their way, not for padding. A channel turn
 3,900 chars) and the rule for them; an image service adds make_image (about 600).
 
 A realistic owner has its own budget in the same test: a WhatsApp channel with stickers, the computer allowed,
-instructions of their own, an "about" and a project with a 20,000-character AGENTS.md. Its project chat sends 7,010
-chars of system prompt besides that AGENTS.md, which goes whole (budget 7,500), and 26,620 of tools (29,000); its
+instructions of their own, an "about" and a project with a 20,000-character AGENTS.md. Its project chat sends 7,801
+chars of system prompt besides that AGENTS.md, which goes whole (budget 8,000: an agent that can change a project's
+files is told to look at a visible change running, [D-166](DECISIONS.md#d-166)), and 26,620 of tools (29,000); its
 WhatsApp turn's input is 265 chars before the message (600). Before the fixed instructions left the turn they were about
 27,000 and 2,250.
 

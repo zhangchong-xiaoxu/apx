@@ -140,8 +140,6 @@ export const zhTeam: Partial<Record<MessageKey, string>> = {
     "这些轮次在等你之前可消耗的新词元数（单位：千）；模型提供方从缓存中读取的不计算在内。留空：不限制。",
   "limits.thousands": "千",
   "limits.none": "不限制",
-  "limits.off": "取消限制",
-  "limits.offHint": "智能体会一直自行运行直到完成，无论耗时多久、花费多少。",
   "agentedit.group.general": "常规",
   "agentedit.group.abilities": "能力",
   "agentedit.group.permissions": "权限",

@@ -14,6 +14,7 @@ export const BY_TOOL: Readonly<Record<string, string>> = {
   "routines.run": "routine_set",
   "pairing.respond": "answer_contact_request",
   "browser.import_cookies": "browser_use_my_login",
+  "browser.evaluate": "browser_evaluate",
   "asana.write": "asana",
 };
 
@@ -36,12 +37,16 @@ const AS_OWNER = "the owner's own word: their answer, their send, their read";
 export const OWNER_ONLY: Readonly<Record<string, string>> = {
   "routines.mail_set": AS_OWNER,
   "routines.mail_retry": AS_OWNER,
+  "email.signature_import": "it only fills the owner's signature editor with Gmail's; saving it is theirs",
   "engines.set_usage": "the owner chooses whether APX queries and displays their external account limits",
   "secrets.set": SECRET,
   "providers.set": SECRET,
   "services.set": SECRET,
   "clients.create": SECRET,
   "clients.revoke": SECRET,
+  "public_routes.rotate": SECRET,
+  "public_routes.revoke": SECRET,
+  "flows.token_rotate": SECRET,
   "chatgpt.connect": SECRET,
   "chatgpt.disconnect": SECRET,
   "integrations.connect": SECRET,
@@ -57,11 +62,17 @@ export const OWNER_ONLY: Readonly<Record<string, string>> = {
   "tools.grant_set": POWER,
   "tools.revoke": POWER,
   "mcp.trust": POWER,
+  // A drawing is published and run by hand through apx_flow's card or in the panel's Flows editor (DECISIONS.md#d-184).
+  "flows.draft_discard": "the owner deletes a Flow draft on purpose",
+  "flows.cancel_run": "the owner stops a Flow run they are looking at",
+  "flows.test_start": "a test sends, calls, runs and writes for real, with what the owner approved in the editor",
+  "flows.test_stop": "the owner stops waiting for the test event they started",
+  "flows.history_restore": "the owner brings back an earlier drawing from the Flow's page, having looked at it",
+  "flows.path_set": "a new address stops the old one, which the services that call it still use",
   "mcp.approveTool": POWER,
   "environments.enable": POWER,
   "environments.bind": POWER,
   "telemetry.set": POWER,
-  "agents.set_fan_out_ask": POWER,
   "desktop.set": MACHINE,
   "desktop.install": MACHINE,
   "desktop.install_cancel": MACHINE,
@@ -100,12 +111,14 @@ export const OWNER_ONLY: Readonly<Record<string, string>> = {
   "terminal.resize": PANEL,
   "terminal.close": PANEL,
   "threads.compact": PANEL,
+  "threads.flow_editor": "the Flow editor says which Flow its own chat draws; agents read it in that chat's turns",
   "threads.delete": PANEL,
   "threads.fork": PANEL,
   "threads.read": PANEL,
   "threads.rewind": PANEL,
   "media.upload": PANEL,
   "media.discard": PANEL,
+  "media.reveal": PANEL,
   "tasks.detach": PANEL,
   "documents.open": PANEL,
   "channels.open": PANEL,
@@ -128,6 +141,20 @@ export const OWNER_ONLY: Readonly<Record<string, string>> = {
   "telemetry.seen": AS_OWNER,
   "system.news_tell": AS_OWNER,
   "environments.control": AS_OWNER,
+};
+
+/**
+ * Flow and table methods apx_flow leaves out that change nothing, by reason. With FLOW_SETTINGS and OWNER_ONLY they place
+ * every `flows.*` and `tables.*` method; flow-tool.test.ts fails on one left out (rules/FLOWS.md#agents-reach-it).
+ */
+export const FLOW_ELSEWHERE: Readonly<Record<string, string>> = {
+  "flows.history_get": "an agent reads a version with flows.history {flow, entry}",
+  "flows.next_runs": "the editor's preview of a schedule's next times while the owner types it",
+  "flows.outward": "the editor's list of what a drawing sends out, shown before the owner publishes it",
+  "flows.path_check": "the editor checks a new address is free before the owner sets it",
+  "flows.token": "the webhook card shows its key to the owner; a key never reaches a model",
+  "flows.try": "the owner tries a Flow's rules on a sample event in the editor",
+  "flows.try_graph": "the owner tries one step on sample input in the editor",
 };
 
 /** Not decided yet: what the owner changes in the panel and the super-agent cannot, the next ones to place. */

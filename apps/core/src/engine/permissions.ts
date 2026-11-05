@@ -15,7 +15,8 @@ import {
   type workDir,
 } from "../tools/folders.ts";
 import { actingAs, reachOf, withProjectAutonomy } from "../tools/policy.ts";
-import { callersOf } from "./ancestry.ts";
+import { judgeCommand } from "../tools/shell.ts";
+import { ancestors } from "./ancestry.ts";
 
 type ThreadOf = Parameters<typeof workDir>[2] & { id: string; parent_id?: string | undefined };
 
@@ -24,6 +25,12 @@ export type Caller = { id: string; run_id: string; thread_id: string; call_id?: 
 
 export type Permissions = ReturnType<typeof createPermissions>;
 
+/** A fenced agent keeps to its folders: what the folder rule would put to the owner is refused, as for APX's tools. */
+function fenced<A extends Access | undefined>(thread: FolderThread, r: A): A {
+  if (thread.reach !== "fenced" || !r || !("refused" in r) || !r.offer) return r;
+  return { refused: r.refused } as A;
+}
+
 export function createPermissions(o: { store: Store; home: string }) {
   const { store, home } = o;
   /** Each running call's thread as the executor let it run (lent folders included), by run and call. */
@@ -31,11 +38,19 @@ export function createPermissions(o: { store: Store; home: string }) {
   const key = (runId: string, callId: string) => `${runId}\n${callId}`;
 
   /** The agent as it acts in a thread: its own mode, else its project's; a helper in its callers' (DECISIONS.md#d-106). */
-  const agentIn = (agent: AgentRecord, threadId: string): AgentRecord =>
-    actingAs(
-      withProjectAutonomy(store, agent),
-      callersOf(store, threadId).map((a) => withProjectAutonomy(store, a)),
-    );
+  const agentIn = (agent: AgentRecord, threadId: string): AgentRecord => {
+    // A Flow step's mode is the one the owner picked on it, over the agent's own, and its helpers work in it too
+    // (DECISIONS.md#d-172).
+    const asIn = (a: AgentRecord, thread: string) => {
+      const mode = store.threads.context(thread).flow_step?.autonomy;
+      return mode ? { ...a, autonomy: mode } : withProjectAutonomy(store, a);
+    };
+    const callers = ancestors(store, threadId).flatMap((t) => {
+      const a = store.agents.get(t.agent_ids[0] ?? "");
+      return a ? [asIn(a, t.id)] : [];
+    });
+    return actingAs(asIn(agent, threadId), callers);
+  };
 
   /** The thread as the folder rule sees it for an agent as it acts (agentIn): its reach and the folders granted for good. */
   function scope<T extends ThreadOf>(agent: AgentRecord, thread: T): T & FolderThread {
@@ -76,7 +91,20 @@ export function createPermissions(o: { store: Store; home: string }) {
     /** What an outside agent may do with a path its own tool names, from the folder it works in. */
     harnessPath(thread: FolderThread, file: string, write: boolean): Access {
       const roots = harnessRoots(store, home, thread);
-      return judge(roots, file, roots[0]?.dir ?? home, { home, project: Boolean(thread.project_id), write });
+      return fenced(
+        thread,
+        judge(roots, file, roots[0]?.dir ?? home, { home, project: Boolean(thread.project_id), write }),
+      );
+    },
+    /**
+     * A command an outside agent runs, by the shell tool's folder rule: refused, offered to the owner as a folder card
+     * (as ours is), or undefined when its folders allow it.
+     */
+    harnessCommand(thread: FolderThread, command: string, cwd: string) {
+      return fenced(
+        thread,
+        judgeCommand(harnessRoots(store, home, thread), command, cwd, { home, project: Boolean(thread.project_id) }),
+      );
     },
   };
 }

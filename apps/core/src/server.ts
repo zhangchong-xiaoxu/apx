@@ -14,6 +14,7 @@ import {
 import { prepareLocalTarget } from "../../../packages/install/src/paths.ts";
 import { desktopSessionEnv } from "../../../packages/install/src/session.ts";
 import { createAccess, type TailscaleRun } from "./access.ts";
+import { createProjectReader, type ReadProjectFiles } from "./apc/project-reader.ts";
 import { createApcSync } from "./apc/sync.ts";
 import type { TemplateRoot } from "./apc/templates.ts";
 import { createBus } from "./bus.ts";
@@ -43,14 +44,17 @@ import { openDb } from "./db/db.ts";
 import { type DesktopOps, systemDesktop } from "./desktop.ts";
 import { signatureFor } from "./domain/email-signature-settings.ts";
 import { cleanUpCapturedNotes } from "./domain/memory-capture-cleanup.ts";
+import { parseRef } from "./domain/refs.ts";
 import { TERMINAL } from "./domain/runs.ts";
 import { seed } from "./domain/seed.ts";
 import { createStore } from "./domain/store.ts";
 import { announceRelease } from "./domain/whats-new.ts";
 import { createAttention } from "./engine/attention.ts";
 import { keepAwake, sleepWatch } from "./engine/awake.ts";
+import { calendarReminders } from "./engine/calendar-reminders.ts";
 import { createEngine, type RunTimers } from "./engine/engine.ts";
 import type { InputWaits } from "./engine/inputs.ts";
+import { mailCheck } from "./engine/mail-check.ts";
 import { createMemoryIndex } from "./engine/memory-index.ts";
 import { createMemoryMaintenance } from "./engine/memory-maintenance.ts";
 import { createNoticePush } from "./engine/notice-push.ts";
@@ -67,6 +71,9 @@ import { type ComputerConfig, createComputer } from "./environments/computer.ts"
 import { managedVmConfig } from "./environments/managed.ts";
 import { computerWatchdog } from "./environments/watchdog.ts";
 import { errorMessage } from "./errors.ts";
+import { flowHttpPolicy } from "./flow-http.ts";
+import { notifyDestination } from "./flow-outward.ts";
+import { createFlows } from "./flows.ts";
 import { thisRunner, writeApxCommand } from "./harness/apx-command.ts";
 import type { CliStatus } from "./harness/detect.ts";
 import { which } from "./harness/detect.ts";
@@ -76,6 +83,7 @@ import { readIdentity } from "./identity.ts";
 import { createIdleTrim } from "./idle-memory.ts";
 import { type IMessageOps, systemIMessage } from "./imessage.ts";
 import { createAsana } from "./integrations/asana.ts";
+import { calendarApi } from "./integrations/calendar.ts";
 import { gmailApi } from "./integrations/gmail.ts";
 import { createGoogle } from "./integrations/google.ts";
 import { apxGoogleClient, clientFromPair } from "./integrations/google-client.ts";
@@ -91,8 +99,11 @@ import { createNodeBroker } from "./nodes/broker.ts";
 import { createHeadlessBrowser } from "./nodes/headless-browser.ts";
 import { officeScheduler } from "./office-wiring.ts";
 import { createChatgptLogin } from "./providers/chatgpt-login.ts";
-import { createLlm, type Llm } from "./providers/llm.ts";
+import { createLlm, type Llm, NO_KEY, type SignIn } from "./providers/llm.ts";
 import { providerRegistry } from "./providers/registry.ts";
+import { createPublicCredentials } from "./public-credentials.ts";
+import { nativePublicRoutes, publishedPublicRoutes } from "./public-routes.ts";
+import { createPublicTunnel, type NgrokStart } from "./public-tunnel.ts";
 import { localReleases, type ReleaseSource } from "./release-notes.ts";
 import { useLocalEmbedder } from "./rpc/embeddings.ts";
 import { internalCaller } from "./rpc/internal.ts";
@@ -128,7 +139,6 @@ import type { Tool } from "./tools/types.ts";
 import { listenHooks } from "./transport/hooks.ts";
 import { createUpdates, type Runner } from "./updates.ts";
 import { createUsage, type UsageOptions } from "./usage.ts";
-import { createWebhooks, type NgrokStart } from "./webhooks.ts";
 
 /** `apx mcp --run` (token in APX_RUN_TOKEN): how an external harness (Codex) reaches the tools of its run. */
 const TERMINAL_MAIN = path.resolve(import.meta.dirname, "../../terminal/src/main.ts");
@@ -192,6 +202,8 @@ export type CoreOptions = {
   releases?: ReleaseSource;
   /** The Linux VM's memory and disk for system.usage; none until a VM is set up. */
   vmUsage?: UsageOptions["vm"];
+  /** Reads a project folder at start (by default in a worker thread); tests hold one or answer it. */
+  projectRead?: ReadProjectFiles;
 };
 
 export async function createCore(config: CoreConfig, opts: CoreOptions = {}) {
@@ -218,8 +230,8 @@ export async function createCore(config: CoreConfig, opts: CoreOptions = {}) {
 
   const broker = createNodeBroker();
   const push = createPush({ expoUrl: config.expoPushUrl, onError: (err) => log.warn({ err }, "push not delivered") });
-  broker.onEvent((_node, event) => {
-    if (event.type !== "tabs.changed") return;
+  broker.onEvent((node, event) => {
+    if (event.type !== "tabs.changed" || broker.withCap(BROWSER_CAP)?.session !== node.session) return;
     // A node's tabs are checked here, once: operators trust what the core pushes.
     const raw = (event.payload as { tabs?: unknown[] }).tabs ?? [];
     const tabs = raw.flatMap((t) => {
@@ -278,8 +290,15 @@ export async function createCore(config: CoreConfig, opts: CoreOptions = {}) {
   const catalog = createCatalog({ store, secrets, providers: providers.active, home: config.home, signIns });
   const engineIds = knownEngines(store, providers);
   // Live: an ACP agent or a provider added later is recognized without a restart.
-  const apc = createApcSync({ store, log, engines: { has: (id) => engineIds.harness.has(id) || providers.has(id) } });
-  apc.sync();
+  const projectReader = opts.projectRead ? undefined : createProjectReader();
+  // Folders are read after the core listens (load below): one macOS privacy prompt must not keep it from starting.
+  const apc = createApcSync({
+    store,
+    log,
+    engines: { has: (id) => engineIds.harness.has(id) || providers.has(id) },
+    read: opts.projectRead ?? projectReader?.read,
+    ...(opts.runTimers ? { timers: opts.runTimers } : {}),
+  });
   // The port this core answers on: the configured one, or the one the OS gave (tests listen on 0).
   let listening = config.port || 7440;
   const imessage =
@@ -412,13 +431,78 @@ export async function createCore(config: CoreConfig, opts: CoreOptions = {}) {
   });
   const noticePush = createNoticePush({ store, bus, push });
   let hooksPort = config.hooksPort;
-  const webhooks = createWebhooks({
+  const webhooks = createPublicTunnel({
     store,
     port: () => hooksPort,
     log,
     ...(opts.tailscale ? { tailscale: opts.tailscale } : {}),
     ...(opts.ngrok ? { ngrok: opts.ngrok } : {}),
   });
+  // A graph's model step names one exact model of an active provider that has its key (or sign-in).
+  const flowModel = (ref: string) => {
+    const { engine: id, model, effort } = parseRef(ref);
+    const provider = providers.active().find((p) => p.id === id);
+    return Boolean(
+      provider &&
+        model &&
+        !effort &&
+        (provider.key === NO_KEY ||
+          secrets.has(provider.key) ||
+          Boolean((signIns as Record<string, SignIn | undefined>)[provider.key]?.has())),
+    );
+  };
+  const flows = createFlows({
+    store,
+    dispatch: () => routed,
+    log,
+    llm,
+    model: flowModel,
+    cancelThread: (thread) => engine.cancel(thread),
+    timers: opts.runTimers,
+    clock: opts.clock,
+    // A notify step's destination is its revision's: channel and person or room by id (flow-outward.ts).
+    notifier: {
+      send(node, text, flow) {
+        const d = notifyDestination(store, node);
+        if (!d) throw new Error("destination unavailable");
+        const sent =
+          "room" in d && d.room
+            ? channels.postToRoom(d.channel.id, d.room.id, text)
+            : channels.messageContact((d as { person: { id: string } }).person.id, text, {
+                channel: d.channel.id,
+                exact: true,
+                flow,
+              });
+        return { outbox: sent.outbox };
+      },
+      // A channel that isn't running won't take it: no point waiting, it is withdrawn at once.
+      settled: (outbox, ms) => {
+        const item = store.channels.outbox.get(outbox);
+        const running = channels.info().find((c) => c.id === item?.channel)?.status === "running";
+        return running ? channels.settled(outbox, ms) : Promise.resolve({ state: item?.state ?? "failed" });
+      },
+      withdraw(outbox) {
+        const item = store.channels.outbox.get(outbox);
+        // Part of a long message already went out: that one is not taken back.
+        if (!item || item.body.skip) return false;
+        if (!store.channels.outbox.withdraw(outbox, "withdrawn: the channel was not running")) return false;
+        if (item.message_id) store.messages.setDelivery(item.message_id, "failed");
+        return true;
+      },
+    },
+    outside: {
+      secret: (ref, project) => secrets.resolveIn(ref, project) !== undefined,
+      allowHttp: config.flowHttpAllow,
+      home: config.home,
+    },
+    http: { policy: flowHttpPolicy(config.flowHttpAllow), secret: (ref, project) => secrets.resolveIn(ref, project) },
+    home: config.home,
+    tell: (event) => bus.emit(event),
+  });
+  const stopFlowEvents = bus.on((event) => {
+    if (event.type === "run.updated" && event.run.ended_at) flows.kick();
+  });
+  const publicCredentials = createPublicCredentials({ store, secrets, endpoints: flows.publicEndpoints });
   const channels = createChannels({
     store,
     home: config.home,
@@ -450,7 +534,7 @@ export async function createCore(config: CoreConfig, opts: CoreOptions = {}) {
       nextcloud: (c, secret) => nextcloudAdapter(c, secret, { dir: path.join(config.home, "channels", c.id) }),
       irc: (c, secret) => ircAdapter(c, secret),
       twitch: (c, secret) => twitchAdapter(c, secret),
-      // These deliver to a webhook: they answer through the public address (webhooks.ts).
+      // These deliver signed webhooks through the shared public ingress address.
       line: (c, secret) => lineAdapter(c, secret, { dir: path.join(config.home, "channels", c.id) }),
       teams: (c, secret) => teamsAdapter(c, secret, { dir: path.join(config.home, "channels", c.id) }),
     },
@@ -466,12 +550,6 @@ export async function createCore(config: CoreConfig, opts: CoreOptions = {}) {
     ...(opts.roomBurstMs !== undefined ? { roomBurstMs: opts.roomBurstMs } : {}),
     ...(opts.followUpTimers ? { followUpTimers: opts.followUpTimers } : {}),
     ...(opts.suggestBurstMs !== undefined ? { suggestBurstMs: opts.suggestBurstMs } : {}),
-    pushOwner: (deviceId, text) => {
-      const target = store.devices.pushTarget(deviceId);
-      if (!target) return false;
-      void push(target, { title: "APX", body: text.slice(0, 3500) });
-      return true;
-    },
   });
   const news = createNews({
     store,
@@ -508,12 +586,6 @@ export async function createCore(config: CoreConfig, opts: CoreOptions = {}) {
     mcpServers: mcp.serversFor,
     hasCap: (cap) => Boolean(broker.withCap(cap)) || (cap === BROWSER_CAP && Boolean(headless?.available())),
     desktopLinked: () => Boolean(broker.withCap(BROWSER_CAP)),
-    // Mail routines read the inbox only with the owner's own Google client: APX's can only send.
-    mail: {
-      readable: (project) => google.usable("gmail", project) && google.full("gmail"),
-      historyId: () => gmailApi(google).historyId(),
-      arrived: (from) => gmailApi(google).arrived(from),
-    },
     afterRun: (run) => {
       upkeep.afterRun(run);
       memoryMaintenance.afterRun(run);
@@ -556,6 +628,29 @@ export async function createCore(config: CoreConfig, opts: CoreOptions = {}) {
     attention,
     notifyOwner: (body, threadId) => channels.notifyOwner(body, "notice", threadId),
     openHeld: () => channels.openHeld((a) => engine.admit(a)),
+    flowTick: (at) => flows.tick(at),
+    checks: (remind) => [
+      calendarReminders({
+        store,
+        source: {
+          readable: () => google.usable("google-calendar", undefined),
+          between: async (from, to) =>
+            // The lead can be days: enough events that a busy week is not cut short.
+            (await calendarApi(google).list({ from, to, max: 250, calendar: "primary" })).events,
+        },
+        remind: (texts, events) => remind(texts, `event:${events.map((e) => e.id).join(",")}`),
+      }),
+      mailCheck({
+        store,
+        admit: (a) => engine.admit(a),
+        // The inbox is read only with the owner's own Google client: APX's can only send.
+        source: {
+          readable: () => google.usable("gmail", undefined) && google.full("gmail"),
+          historyId: () => gmailApi(google).historyId(),
+          arrived: (from) => gmailApi(google).arrived(from),
+        },
+      }),
+    ],
     log,
     ...(opts.clock ? { now: opts.clock } : {}),
   });
@@ -604,6 +699,9 @@ export async function createCore(config: CoreConfig, opts: CoreOptions = {}) {
       addresses: () => reachableAt(config.host, listening, config.publicUrl),
       terminals,
       webhooks,
+      publicCredentials,
+      flows,
+      flowModel,
       integrationFetch: opts.integrationFetch,
       access: createAccess({
         home: config.home,
@@ -680,8 +778,18 @@ export async function createCore(config: CoreConfig, opts: CoreOptions = {}) {
   }
   const url = transport.url;
   selfUrl = url;
+  void apc.load().catch((err) => log.warn({ err: errorMessage(err) }, "projects not read"));
   engine.start();
-  const hookListener = await listenHooks({ port: config.hooksPort, deliver: channels.webhook, log });
+  const nativeRoutes = nativePublicRoutes({ store, deliver: channels.webhook });
+  const publishedRoutes = publishedPublicRoutes(store);
+  const flowRoutes = publicCredentials.protect(flows.routes);
+  const flowTestRoutes = flows.tests.routes(publicCredentials);
+  const hookListener = await listenHooks({
+    port: config.hooksPort,
+    routes: (pathname) =>
+      nativeRoutes(pathname) ?? publishedRoutes(pathname) ?? flowRoutes(pathname) ?? flowTestRoutes(pathname),
+    log,
+  });
   hooksPort = hookListener.port;
   // Not awaited: ngrok may take 15 s, and a channel reads its public address when it needs it (hookBase).
   void webhooks.start();
@@ -692,6 +800,7 @@ export async function createCore(config: CoreConfig, opts: CoreOptions = {}) {
       .atBoot(previousRelease)
       .catch((err) => log.warn({ err: errorMessage(err, 200) }, "release news not told; the next start tries again"));
   scheduler.start();
+  flows.kick();
   updates.start();
   telemetry.start();
   const idleTrim = createIdleTrim();
@@ -717,6 +826,7 @@ export async function createCore(config: CoreConfig, opts: CoreOptions = {}) {
     secrets,
     channels,
     scheduler,
+    flows,
     telemetry,
     computer: vm,
     async close() {
@@ -735,6 +845,8 @@ export async function createCore(config: CoreConfig, opts: CoreOptions = {}) {
       localModels.cancel();
       headless?.close();
       scheduler.stop();
+      stopFlowEvents();
+      await flows.close();
       await news.stop();
       attention.stop();
       noticePush.stop();
@@ -750,6 +862,7 @@ export async function createCore(config: CoreConfig, opts: CoreOptions = {}) {
       services.close();
       await mcp.close();
       apc.close();
+      projectReader?.close();
       await transport.close();
       db.close();
     },
