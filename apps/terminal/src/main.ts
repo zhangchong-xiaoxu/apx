@@ -93,6 +93,7 @@ Usage:
   apx artifacts [list] [--project <id>] [--json]   Widgets and apps agents made
   apx artifacts push <name> <file.html> [--title t] [--app] [--connect <origin,…>] [--project <id>]   Show a built page
   apx artifacts dir <name> [--project <id>]   Where a built artifact keeps its source (created if missing)
+  apx artifacts store <name> get [key] | set <patch.json> [--project <id>]   Read or patch its cached data
   apx artifacts export <name> [--memory] [--out <file>] [--project <id>]   Save one as an .apxart file
   apx artifacts import <file.apxart> [--project <id>]   Load an .apxart file into this APX
   apx sessions projects codex|claude   Claude Code or Codex projects and chats on this computer

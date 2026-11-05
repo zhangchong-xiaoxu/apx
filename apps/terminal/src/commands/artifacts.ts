@@ -2,7 +2,7 @@
 // one between APX installs as an .apxart file (export, import).
 import fs from "node:fs";
 import path from "node:path";
-import { ARTIFACT_FILE_EXT, type ArtifactBundle } from "@apx/protocol";
+import { ARTIFACT_FILE_EXT, type ArtifactBundle, methods } from "@apx/protocol";
 import type { ApxClient } from "@apx/protocol/client";
 import { apxHome } from "./local.ts";
 
@@ -11,6 +11,8 @@ const USAGE = `usage:
   apx artifacts list [--project <id>] [--json]
   apx artifacts push <name> <file.html> [--title <title>] [--app] [--connect <origin,…>] [--project <id>]
   apx artifacts dir <name> [--project <id>]
+  apx artifacts store <name> get [key] [--project <id>]
+  apx artifacts store <name> set <patch.json> [--project <id>]
   apx artifacts export <name> [--memory] [--out <file>] [--project <id>]
   apx artifacts import <file.apxart> [--project <id>]`;
 
@@ -79,6 +81,25 @@ export async function artifacts(client: ApxClient, [sub, ...rest]: string[], opt
       const dir = artifactSourceDir(apxHome(), rest[0] ?? "", opts.project);
       fs.mkdirSync(dir, { recursive: true });
       console.log(dir);
+      return;
+    }
+    case "store": {
+      const [nameArg, action, input] = rest;
+      const name = named(nameArg);
+      if (!["get", "set"].includes(action ?? "") || (action === "set" && !input) || rest.length > 3)
+        throw new Error(USAGE);
+      const patch =
+        action === "set"
+          ? methods["surfaces.store_set"].params.shape.patch.parse(JSON.parse(fs.readFileSync(input ?? "", "utf8")))
+          : undefined;
+      const { surfaces } = await client.call("surfaces.list", opts.project ? { project_id: opts.project } : {});
+      const surface = surfaces.find((s) => s.name === name && s.project_id === opts.project);
+      if (!surface) throw new Error(`no artifact named ${name} in ${opts.project ?? "global"}`);
+      const result =
+        patch !== undefined
+          ? await client.call("surfaces.store_set", { surface: surface.id, patch })
+          : await client.call("surfaces.store_get", { surface: surface.id, ...(input ? { keys: [input] } : {}) });
+      console.log(JSON.stringify(result));
       return;
     }
     case "export": {

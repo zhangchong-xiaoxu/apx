@@ -137,6 +137,10 @@ Up to 5 MB per artifact; you see only its key names and size.
 
 - `await APX.store.get(key)` (undefined when missing), `APX.store.set(key, value)`, `APX.store.remove(key)`,
   `await APX.store.keys()`. `APX.store.persistent` is false outside APX.
+- A local script can update the same cache without pushing the HTML again:
+  `apx artifacts store <name> set <patch.json> --project <id>`. The file is a JSON object; a `null` value removes
+  that key. Write only public-safe summaries, never credentials or raw logs. Read it back with
+  `apx artifacts store <name> get [key] --project <id>`. Without `--project` only global artifacts are matched.
 - `APX.live(key, loader, {every, render})` keeps one reading fresh: it paints the stored one at once
   (`render(value, {stale: true, at})`), then runs `loader()`, stores `{value, at}` and paints again
   (`{stale: false, at}`, `at` in epoch ms); with `every` (ms) it repeats while the page is visible. A failed load calls
@@ -202,4 +206,3 @@ unless it declares `apx-live`. An app that wants a centered column, widget-like,
 pauses by itself; pause your own timers, sockets and animations with `APX.onVisible((shown) => …)` (returns an
 unsubscribe; `APX.visible()` says it now). What must survive closing goes to `APX.state`, `APX.store` or `APX.db`.
 Anything that deletes the owner's data asks first: `if (await APX.confirm("Delete this expense?", {danger: true}))`.
-

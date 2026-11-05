@@ -83,6 +83,7 @@ Vite) into the same single page and show it with the terminal:
 apx artifacts dir expenses --project <project-id>     # where its source lives
 apx artifacts push expenses dist/index.html --app --project <project-id>
 apx artifacts list
+apx artifacts store expenses set patch.json --project <project-id>   # update its saved data, no rebuild
 ```
 
 The source lives in APX's folder, under `artifact-sources/<project>/<name>`, never in your project's own files. Your
