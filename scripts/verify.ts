@@ -30,6 +30,19 @@ const LABELS: Record<string, string> = {
 
 const ROOT_SCRIPT = /^pnpm\s+(?:run\s+)?([\w:.-]+)$/;
 
+/** Whether `version` meets a `>=X[.Y[.Z]]` engines range; any other range form is not judged here. */
+export function meetsEngine(version: string, range: string | undefined): boolean {
+  const min = /^>=\s*v?(\d+(?:\.\d+){0,2})$/.exec(range?.trim() ?? "")?.[1];
+  if (!min) return true;
+  const have = version.replace(/^v/, "").split(".").map(Number);
+  const need = min.split(".").map(Number);
+  for (let i = 0; i < 3; i++) {
+    const diff = (have[i] ?? 0) - (need[i] ?? 0);
+    if (diff !== 0) return diff > 0;
+  }
+  return true;
+}
+
 /**
  * The steps a plan runs: a `pnpm <script>` whose body is a chain (`a && b`) becomes its parts, recursively; a
  * single-command script stays `pnpm <script>`. A command already run earlier in the plan is not run again.
@@ -225,11 +238,14 @@ async function main(argv: string[]) {
   const plan = PLANS[name];
   if (!plan) throw new Error(`unknown plan "${name}" (${Object.keys(PLANS).join(", ")})`);
   const root = path.dirname(import.meta.dirname);
-  const scripts = (
-    JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8")) as {
-      scripts: Record<string, string>;
-    }
-  ).scripts;
+  const manifest = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8")) as {
+    scripts: Record<string, string>;
+    engines?: { node?: string };
+  };
+  // A run under another Node fails late and proves nothing (LOCAL_VERIFICATION.md#before-you-start-a-task).
+  if (!meetsEngine(process.version, manifest.engines?.node))
+    throw new Error(`Node ${process.version} does not meet engines.node "${manifest.engines?.node}" (see .nvmrc)`);
+  const scripts = manifest.scripts;
   const out = process.stderr;
   // A Ctrl-C reaches the running step too; the run ends when it does, with the line cleared and 130.
   const stop = new AbortController();

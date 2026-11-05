@@ -3,7 +3,16 @@ import fs from "node:fs";
 import path from "node:path";
 import { test } from "node:test";
 import { tempDir } from "../apps/core/src/testkit/platform.ts";
-import { clock, expand, PLANS, progress, readHistory, runSteps, type Step, statusLine } from "./verify.ts";
+import { clock, expand, meetsEngine, PLANS, progress, readHistory, runSteps, type Step, statusLine } from "./verify.ts";
+
+test("a run under a Node older than engines.node is refused before any step", () => {
+  assert.equal(meetsEngine("v22.19.0", ">=24.11"), false);
+  assert.equal(meetsEngine("v24.10.9", ">=24.11"), false);
+  assert.equal(meetsEngine("v24.11.0", ">=24.11"), true);
+  assert.equal(meetsEngine("v25.0.0", ">= 24.11"), true);
+  assert.equal(meetsEngine("v22.0.0", "^22 || ^24"), true);
+  assert.equal(meetsEngine("v22.0.0", undefined), true);
+});
 
 const CLEAR = "\r\x1b[2K";
 const node = (code: string) => `node -e "${code}"`;
