@@ -11,7 +11,7 @@ superseded_by:
 
 ## 摘要
 
-修复 APX 原生 agent loop 中不完整、格式错误或重复的工具调用可能造成的重试、provider 转换失败和副作用风险；为单个 agent 增加每次 run 的模型调用上限。以 provider 请求历史投影处理兼容性，不篡改已保存的对话。已随 `v2.12.7`（`05a4eb5b1ec0`）发布，本机桌面版已更新；research agent 的 `steps=25` 与真实 LiteLLM 验证仍未完成。
+修复 APX 原生 agent loop 中不完整、格式错误或重复的工具调用可能造成的重试、provider 转换失败和副作用风险；为单个 agent 增加每次 run 的模型调用上限。以 provider 请求历史投影处理兼容性，不篡改已保存的对话。已随 `v2.12.7`（`05a4eb5b1ec0`）发布，本机桌面版已更新，Topic researcher 已设 `steps=25`；真实 LiteLLM 验证仍未完成。
 
 ## 背景与问题
 
@@ -82,7 +82,7 @@ superseded_by:
 - [x] Windows `fetch` 禁用端口查明为本机 TCP 动态端口范围从 1024 起，已改回 49152 起（机器侧，不改产品）；见 [FAILURE_LEDGER](../../rules/FAILURE_LEDGER.md)。
 - [x] `05a4eb5` 的 GitHub verify 全绿后由 `release:check` 打 `v2.12.7` tag，发布成功。
 - [x] 桌面版由用户在“设置 > 关于”更新；`/health` 显示 `2.12.7 / 05a4eb5b1e`。agent 未执行备份步骤。
-- [ ] 设置并读回 Topic researcher（`91904e24b12e-topic-researcher`）的 `steps=25`。
+- [x] (2026-11-05) 设置并读回 Topic researcher（`91904e24b12e-topic-researcher`）的 `steps=25`：`25 model calls/run`。
 
 ## 进度
 
@@ -112,4 +112,4 @@ superseded_by:
 
 ## 结果与回顾
 
-工具调用防护和模型调用预算随 `v2.12.7` 发布，本机已运行该版本。未完成：Topic researcher 的 `steps=25` 尚未设置；LiteLLM 真实 gateway、provider 缓存和实际账单均未端到端验证，不能将累计 tokens 解读为实际费用。过程复盘：一个会话叠加了诊断、修复、SDK 对照、新功能、落后 373 个提交的合并与发版，加上 Windows 环境问题，导致耗时过长；改进见 D-186 与 [FAILURE_LEDGER](../../rules/FAILURE_LEDGER.md)。
+工具调用防护和模型调用预算随 `v2.12.7` 发布，本机已运行该版本。Topic researcher 已设 `steps=25`。未完成：LiteLLM 真实 gateway、provider 缓存和实际账单均未端到端验证，不能将累计 tokens 解读为实际费用。过程复盘：一个会话叠加了诊断、修复、SDK 对照、新功能、落后 373 个提交的合并与发版，加上 Windows 环境问题，导致耗时过长；改进见 D-186 与 [FAILURE_LEDGER](../../rules/FAILURE_LEDGER.md)。

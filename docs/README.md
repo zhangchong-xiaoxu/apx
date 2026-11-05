@@ -8,7 +8,7 @@
 
 | # | 标题 | 状态 | 一句话决定 |
 | --- | --- | --- | --- |
-| [0001](decisions/0001-tool-call-safeguards-and-model-call-budgets.md) | 防止无效工具调用并限制长运行模型成本 | active | 在 APX 原生 harness 边界校验工具批次，并为每个 agent 设置可选的单次 run 模型调用上限；已随 v2.12.7 发布，research agent 限额待设置。 |
+| [0001](decisions/0001-tool-call-safeguards-and-model-call-budgets.md) | 防止无效工具调用并限制长运行模型成本 | active | 在 APX 原生 harness 边界校验工具批次，并为每个 agent 设置可选的单次 run 模型调用上限；已随 v2.12.7 发布，Topic researcher 已设 25 次上限。 |
 
 ## 其他文档
 
