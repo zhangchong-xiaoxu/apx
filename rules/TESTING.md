@@ -179,6 +179,7 @@ pnpm preflight                     # check:private, check:schema, lint, typechec
 pnpm verify                        # preflight, all-suite execution coverage, then lightness budgets
 pnpm verify --stream               # the same, with every step's output as it runs
 ```
+Which of these to run at which point of a task, and how to avoid rerunning the long unit step: [`LOCAL_VERIFICATION.md`](LOCAL_VERIFICATION.md).
 Both run through `scripts/verify.ts`, which expands the root scripts they name (`preflight:static`, `test`,
 `test:coverage:all`) into steps and stops at the first failure with its exit code. In a terminal it keeps one status
 line: step k of N, a bar, time for the step and in total, and the time left estimated from each step's last passing
