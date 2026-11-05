@@ -11,7 +11,7 @@
 ## 下一步
 
 1. 给 Topic researcher 设置模型调用上限并读回：`apx agents limits 91904e24b12e-topic-researcher steps=25`，或在 Team 里右键该 agent 编辑。
-2. 修复 FAILURE_LEDGER 中的 `gate` 项：`scripts/check-private-terms.ts` 在 Windows 上不运行（独立 `fix/` 分支，附测试）。
+2. 已推送的 `05a4eb5b1`（`v2.12.7`）与 `e4b794181` 含个人邮箱和 AI trailer（规则 17）；是否改写 `master` 历史待用户决定。
 3. 按需观察 FAILURE_LEDGER 中 macOS `browser-consent-vm` 与 perf `turn_p95_ms`，达到阈值即修。
 
 ## 进行中 / 卡住
@@ -31,7 +31,7 @@ apx agents limits                           # 预期：列出默认与各 agent 
 node scripts/verify.ts preflight            # Node < 24.11 时预期立即报错退出
 ```
 
-注意：Windows 上 `pnpm check:private` 目前不执行扫描（见 FAILURE_LEDGER），不能当作隐私检查通过。
+注意：`check:private` 在 Windows 上空跑的问题已修复；修复前在 Windows 上的扫描结果都不可信。
 
 ## 资料入口
 

@@ -31,7 +31,6 @@ instead of another rerun. Product failures are fixed in the change, not listed h
 |---|---|---|---|
 | `apps/core/src/tools/browser-consent-vm.test.ts`, "VM … consent respects … before its successful result returns" (macOS unit part 2/2) | timing (suspected) | 2026-11-05 [run 42018505526](https://github.com/zhangchong-xiaoxu/apx/actions/runs/42018505526) attempt 1: failed after 6.1 s, passed on rerun. 2026-11-05 [run 42006240746](https://github.com/zhangchong-xiaoxu/apx/actions/runs/42006240746) attempt 1: the part hung right after `browser-consent-revoke.test.ts` and was cancelled; same file not confirmed. | At the second confirmed occurrence, investigate the browser consent VM tests' waits. |
 | `scripts/perf.ts` `turn_p95_ms` (Linux static job) | timing | 2026-11-05 [run 42018505526](https://github.com/zhangchong-xiaoxu/apx/actions/runs/42018505526) attempt 1: 262.3 ms against a 60 ms budget on a docs and scripts change; passed on rerun. | Count further misses. |
-| `pnpm check:private` on Windows | gate | 2026-11-05 local: `scripts/check-private-terms.ts` compares `import.meta.url` with `` `file://${process.argv[1]}` ``, which never match on Windows, so the scan silently does not run. CI runs it on Linux. | Fix with `fileURLToPath` and `path.resolve` as `scripts/verify.ts` does, with a test. |
 
 ## Fixed
 
@@ -40,3 +39,4 @@ instead of another rerun. Product failures are fixed in the change, not listed h
 | `e2e/specs/57-agent-budget.spec.ts` after `29-team-actions.spec.ts`; `59-widget-media.spec.ts` | isolation | 2026-11-05 [run 42006240746](https://github.com/zhangchong-xiaoxu/apx/actions/runs/42006240746): agent limits left behind; `/^Northwind/` matched two buttons. | `05a4eb5b1` restores budgets after each team test and clicks the exact name. |
 | Mobile Jest finds no tests under `.worktrees/` on Windows | gate | 2026-11-05 local. | `1965388cb`. |
 | `fetch failed: bad port` (6566) in tests listening on port 0, test process then hangs | environment | 2026-11-05 local Windows: TCP dynamic port range started at 1024. | Machine range restored to 49152–65535. |
+| `pnpm check:private` and `check:commits` on Windows | gate | 2026-11-05 local: the entry compared `import.meta.url` with `` `file://${process.argv[1]}` ``, never equal on Windows, so neither scan ran; commits with a personal email and an AI trailer reached `master` (`05a4eb5b1`, `e4b794181`). | This change: `path.resolve` + `fileURLToPath`, with a test that runs the command. |

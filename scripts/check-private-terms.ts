@@ -180,7 +180,7 @@ function readCommits(range: string[]): Commit[] {
     });
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const files = termFiles();
   const { matchers, allow, errors } = parseTerms(files.map((f) => fs.readFileSync(f, "utf8")).join("\n"));
   for (const e of errors) console.error(`check:private: ${e}`);

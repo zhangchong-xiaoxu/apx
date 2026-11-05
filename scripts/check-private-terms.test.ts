@@ -1,6 +1,15 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 import { type Commit, scanCommits } from "./check-private-terms.ts";
+
+test("run as a command it scans and reports on every platform, never exits silently", () => {
+  const script = fileURLToPath(new URL("./check-private-terms.ts", import.meta.url));
+  const run = spawnSync(process.execPath, [script, "--commits", "HEAD..HEAD"], { encoding: "utf8" });
+  assert.equal(run.status, 0, run.stderr);
+  assert.match(run.stdout, /check:private: ok in 0 commit\(s\)/);
+});
 
 const me = "1234567+acme@users.noreply.github.com";
 const commit = (c: Partial<Commit>): Commit => ({
