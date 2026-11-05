@@ -29,7 +29,9 @@ test("version and help work offline, including short flags and JSON", () => {
   }
   const r = cli("--version", "--json");
   assert.equal(JSON.parse(r.stdout).generation, 2);
-  assert.match(cli("--help").stdout, /apx mcp run/);
+  const help = cli("--help");
+  assert.match(help.stdout, /apx mcp run/);
+  assert.match(help.stdout, /apx agents limits[^\n]*steps=/);
 });
 
 test("the help the top-level help advertises is help, not an error", () => {
