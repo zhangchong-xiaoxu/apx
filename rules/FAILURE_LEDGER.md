@@ -30,7 +30,7 @@ instead of another rerun. Product failures are fixed in the change, not listed h
 | Check | Class | Seen | Next step |
 |---|---|---|---|
 | `apps/core/src/tools/browser-consent-vm.test.ts`, "VM … consent respects … before its successful result returns" (macOS unit part 2/2) | timing (suspected) | 2026-11-05 [run 42018505526](https://github.com/zhangchong-xiaoxu/apx/actions/runs/42018505526) attempt 1: failed after 6.1 s, passed on rerun. 2026-11-05 [run 42006240746](https://github.com/zhangchong-xiaoxu/apx/actions/runs/42006240746) attempt 1: the part hung right after `browser-consent-revoke.test.ts` and was cancelled; same file not confirmed. | At the second confirmed occurrence, investigate the browser consent VM tests' waits. |
-| `scripts/perf.ts` `turn_p95_ms` (Linux static job) | timing | 2026-11-05 [run 42018505526](https://github.com/zhangchong-xiaoxu/apx/actions/runs/42018505526) attempt 1: 262.3 ms against a 60 ms budget on a docs and scripts change; passed on rerun. | Count further misses. |
+| `scripts/perf.ts` `turn_p95_ms` (Linux static job) | timing | 2026-11-05 [run 42018505526](https://github.com/zhangchong-xiaoxu/apx/actions/runs/42018505526) attempt 1: 262.3 ms against a 60 ms budget on a docs and scripts change; passed on rerun. 2026-11-05 [run 42029894492](https://github.com/zhangchong-xiaoxu/apx/actions/runs/42029894492) attempt 1: 157.3 ms on a desktop-only change (embedded browser tab mute). | Second occurrence: investigate the perf turn p95 on its own branch; do not rerun again. |
 
 ## Fixed
 
