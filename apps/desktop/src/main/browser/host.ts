@@ -226,6 +226,7 @@ export class BrowserHost extends EventEmitter<{ changed: [] }> {
         });
         if (!this.#tabs.has(tab.id)) return { resolved: false, url: "", title: "" };
         tab.control = resolved ? { kind: "agent", by: p.by, since: new Date().toISOString() } : { kind: "idle" };
+        if (resolved) tab.wc.setAudioMuted(true);
         this.emit("changed");
         return { resolved, url: tab.wc.getURL(), title: tab.wc.getTitle() };
       }
@@ -270,6 +271,8 @@ export class BrowserHost extends EventEmitter<{ changed: [] }> {
       },
     });
     const wc = view.webContents;
+    // Autoplaying pages stay silent while an agent drives; the owner taking control unmutes.
+    if (control.kind === "agent") wc.setAudioMuted(true);
     // Popups stay in the same tab and keep the same owner/profile.
     wc.setWindowOpenHandler(({ url: next }) => {
       try {
@@ -349,7 +352,9 @@ export class BrowserHost extends EventEmitter<{ changed: [] }> {
 
   /** The human takes the wheel: every agent call on this tab now fails with paused_by_user. */
   takeControl(id: string): void {
-    this.#get(id).control = { kind: "user", since: new Date().toISOString() };
+    const tab = this.#get(id);
+    tab.control = { kind: "user", since: new Date().toISOString() };
+    tab.wc.setAudioMuted(false);
     this.emit("changed");
   }
 
@@ -444,6 +449,7 @@ export class BrowserHost extends EventEmitter<{ changed: [] }> {
     }
     if (tab.control.kind !== "agent" || tab.control.by !== by) {
       tab.control = { kind: "agent", by, since: new Date().toISOString() };
+      tab.wc.setAudioMuted(true);
       this.emit("changed");
     }
     return tab;

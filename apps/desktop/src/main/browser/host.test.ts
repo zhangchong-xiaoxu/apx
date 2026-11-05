@@ -15,6 +15,10 @@ class Contents extends EventEmitter {
     clearCache: async () => {},
   };
   setWindowOpenHandler() {}
+  muted = false;
+  setAudioMuted(muted: boolean) {
+    this.muted = muted;
+  }
   isDestroyed() {
     return this.destroyed;
   }
@@ -232,4 +236,16 @@ test("navigation still updates URL and invalidates document consent without reti
   assert.notEqual(host.list()[0]?.consent_epoch, before);
   assert.equal(host.active, tab.id);
   wc.close();
+});
+
+test("tabs an agent drives are muted until the owner takes control", async () => {
+  const host = new BrowserHost();
+  const own = await opened(host);
+  assert.equal(own.wc.muted, false);
+  await host.handle("browser.navigate", { tab: own.tab.id, url: "https://example.com/v", by: "agent-a" });
+  assert.equal(own.wc.muted, true);
+  host.takeControl(own.tab.id);
+  assert.equal(own.wc.muted, false);
+  const driven = await host.open("https://example.com", "shared", { kind: "agent", by: "agent-a", since: "" });
+  assert.equal((driven.view as unknown as View).contents.muted, true);
 });
