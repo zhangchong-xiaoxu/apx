@@ -40,11 +40,14 @@ export function teamHandlers(
       saveUnattendedLimits(store, limits);
       return unattendedLimits(store);
     },
-    "agents.set_agent_limits": ({ agent, limits }) => {
+    "agents.set_agent_limits": ({ agent, limits, merge }) => {
       if (!store.agents.get(agent)) throw notFound(`agent ${agent}`);
       const current = store.settings.read("agent_limits");
+      if (merge === undefined && (current.agents?.[agent]?.steps || limits?.steps !== undefined))
+        throw badRequest("model-call limits require an up-to-date client: reload or update it before changing limits");
       const others = Object.fromEntries(Object.entries(current.agents ?? {}).filter(([id]) => id !== agent));
-      const agents = limits && (limits.runs || limits.tokens) ? { ...others, [agent]: limits } : others;
+      const next = limits && merge ? { ...current.agents?.[agent], ...limits } : limits;
+      const agents = next && (next.runs || next.tokens || next.steps) ? { ...others, [agent]: next } : others;
       store.settings.write("agent_limits", { ...current, agents });
       return { agents };
     },

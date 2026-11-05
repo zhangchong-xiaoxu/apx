@@ -33,6 +33,8 @@ export type LlmRequest = {
   /** Stable per conversation (a thread id), for providers' prompt caches. */
   cacheKey?: string | undefined;
   maxOutputTokens?: number | undefined;
+  /** Called before each request, with untried targets and failures if a reserved final call must take over. */
+  beforeModelCall?: ((remaining: readonly string[], failed: readonly ModelFailure[]) => void) | undefined;
 };
 
 export type Llm = {
@@ -48,6 +50,7 @@ const TRANSPORTS: Record<ProviderConfig["transport"], Transport> = {
 };
 
 type Target = { provider: ProviderConfig; model: string; effort?: string | undefined };
+const targetRef = (t: Target) => `${t.provider.id}/${t.model}${t.effort ? `#${t.effort}` : ""}`;
 
 /** A provider signed in rather than keyed (oauth:<name>): whether it is, and a fresh token with its headers. */
 export type SignIn = {
@@ -106,7 +109,7 @@ export function createLlm(opts: {
       let broken: ProviderError | undefined;
       const skipped = new Set<string>();
       const failed: ModelFailure[] = [];
-      const history = req.tools.length ? req.messages : toolHistoryAsText(req.messages);
+      const history = req.tools.length ? toolHistoryForProvider(req.messages) : toolHistoryAsText(req.messages);
       const need = tokensOf({ ...req, messages: history });
       const messages = withImageBytes(history, opts.media);
       // A model known not to read images refuses a call carrying any: it gets the words alone.
@@ -119,7 +122,7 @@ export function createLlm(opts: {
           streamed = true;
           req.onText?.(s);
         });
-      for (const t of list) {
+      for (const [index, t] of list.entries()) {
         if (skipped.has(t.provider.id)) continue;
         const ref = `${t.provider.id}/${t.model}`;
         const window = opts.windowOf?.(ref) ?? contextWindow(ref);
@@ -150,8 +153,16 @@ export function createLlm(opts: {
           continue;
         }
         let renewedToken = false;
+        let attemptFailure: ModelFailure | undefined;
         for (let attempt = 0; attempt < 2; attempt++) {
           req.signal.throwIfAborted();
+          if (req.beforeModelCall) {
+            const next = list.slice(index + (attempt > 0 ? 1 : 0)).filter((target) => !skipped.has(target.provider.id));
+            req.beforeModelCall(
+              (next.length ? next : [t]).map(targetRef),
+              attemptFailure ? [...failed, attemptFailure] : failed,
+            );
+          }
           try {
             const out = await TRANSPORTS[t.provider.transport]({
               baseUrl: t.provider.base_url,
@@ -170,7 +181,6 @@ export function createLlm(opts: {
             });
             if (out.message.tool_calls?.length && !req.tools.length)
               throw new ProviderError("empty", "the model returned tool calls while tools are disabled");
-            for (const call of out.message.tool_calls ?? []) parseToolArguments(call);
             if (/^\s*<\uFF5C\uFF5CDSML\uFF5C\uFF5C calls>/.test(out.message.content ?? ""))
               throw new ProviderError("empty", "the model returned tool-call markup instead of an answer");
             if (t.provider.transport === "openai-chat") checkNotCut(out.usage, need);
@@ -184,6 +194,7 @@ export function createLlm(opts: {
             if (req.signal.aborted) throw req.signal.reason ?? err;
             last = err instanceof ProviderError ? err : new ProviderError("network", String(err));
             last.message = `${ref}: ${last.message}`;
+            attemptFailure = { model: ref, why: last.message.slice(ref.length + 2, ref.length + 302) };
             if (streamed) {
               streamed = false;
               req.onText?.("");
@@ -259,6 +270,53 @@ function toolHistoryAsText(messages: ChatItem[]): ChatItem[] {
     }
     return m;
   });
+}
+
+/** Providers require valid tool JSON; preserve rejected arguments as an explicit tool result. */
+function toolHistoryForProvider(messages: ChatItem[]): ChatItem[] {
+  const out: ChatItem[] = [];
+  for (let index = 0; index < messages.length; index++) {
+    const m = messages[index];
+    if (!m) continue;
+    if (m.role !== "assistant" || !m.tool_calls?.length) {
+      out.push(m);
+      continue;
+    }
+    if (new Set(m.tool_calls.map((call) => call.id)).size !== m.tool_calls.length) {
+      const group: ChatItem[] = [m];
+      while (messages[index + 1]?.role === "tool") {
+        const result = messages[++index];
+        if (result) group.push(result);
+      }
+      out.push(...toolHistoryAsText(group), {
+        role: "user",
+        content:
+          "<system_note>\nPast tool calls had duplicate IDs, so their recorded results cannot be matched reliably. Verify any side effects before retrying.\n</system_note>",
+      });
+      continue;
+    }
+    const results = new Set<string>();
+    for (let i = index + 1; i < messages.length; i++) {
+      const result = messages[i];
+      if (result?.role !== "tool") break;
+      results.add(result.tool_call_id);
+    }
+    let changed = false;
+    const missing: ChatItem[] = [];
+    const tool_calls = m.tool_calls.map((call) => {
+      try {
+        parseToolArguments(call);
+        return call;
+      } catch (err) {
+        if (!(err instanceof ProviderError)) throw err;
+        changed = true;
+        if (!results.has(call.id)) missing.push({ role: "tool", tool_call_id: call.id, content: err.message });
+        return { ...call, function: { ...call.function, arguments: "{}" } };
+      }
+    });
+    out.push(...(changed ? [{ ...m, tool_calls }, ...missing] : [m]));
+  }
+  return out;
 }
 
 /**

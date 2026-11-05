@@ -55,6 +55,23 @@ export type NewsEntry = {
 
 export const NEWS: readonly NewsEntry[] = [
   {
+    id: "agent-run-step-budgets",
+    since: "2.12.7",
+    title: "Cap an agent's model calls per run",
+    applies: () => true,
+    text:
+      "Each agent can now have its own cap on model calls per run, in its Team settings or with `apx agents limits`. " +
+      "Retries, fallback models and the final report count toward it, and a routine may also stop the run sooner. " +
+      "This applies to APX's native model loop; it caps calls, not the tokens in an individual call.",
+    actions: [
+      {
+        label: { en: "Limit my research agent", es: "Limitar mi agente de investigación" },
+        prompt:
+          "Help me set a cap of 25 model calls per run for my research agent. Identify the right agent first and ask me before changing anything.",
+      },
+    ],
+  },
+  {
     id: "computer-linux-windows",
     since: "2.11.2",
     title: "Your agents' computer, on Linux and Windows",

@@ -184,12 +184,11 @@ export const chatgptResponses: Transport = async (req) => {
           else if (it?.type === "function_call") {
             const a = it.id ? args.get(it.id) : undefined;
             const id = it.call_id ?? a?.call_id ?? it.id ?? `call_${calls.length}`;
-            if (!calls.some((c) => c.id === id))
-              calls.push({
-                id,
-                type: "function",
-                function: { name: it.name ?? a?.name ?? "", arguments: it.arguments ?? a?.arguments ?? "{}" },
-              });
+            calls.push({
+              id,
+              type: "function",
+              function: { name: it.name ?? a?.name ?? "", arguments: it.arguments ?? a?.arguments ?? "{}" },
+            });
           }
           break;
         case "response.completed":
@@ -211,6 +210,8 @@ export const chatgptResponses: Transport = async (req) => {
     }
     out ||= whole || refusal;
     if (!out && !calls.length) throw new ProviderError("empty", emptyWhy(ended));
+    if (calls.length && !ended)
+      throw new ProviderError("empty", "stream tool calls ended before the response finished");
     const message: AssistantItem = {
       role: "assistant",
       content: out || null,
@@ -220,7 +221,7 @@ export const chatgptResponses: Transport = async (req) => {
     return {
       message,
       model: req.model,
-      finish: calls.length ? "tool_calls" : finish,
+      finish: calls.length && finish !== "length" ? "tool_calls" : finish,
       ...(usage ? { usage } : {}),
     } satisfies Completion;
   } finally {

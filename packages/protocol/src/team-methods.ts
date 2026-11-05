@@ -58,11 +58,16 @@ export const AgentLimits = z.object({
 });
 export type AgentLimits = z.infer<typeof AgentLimits>;
 
+export const MAX_AGENT_STEPS = 150;
+
 /**
- * One agent's own share of that, inside the conversation's: past it that agent waits while others may go on. A field
- * unset or 0 adds no limit of its own.
+ * One agent's own limits: runs and tokens are inside the conversation's; past those, that agent waits while others may
+ * go on. Steps cap provider requests in one run, including retries and the final report. A field unset or 0 adds no
+ * limit of its own.
  */
-export const AgentBudget = AgentLimits.partial();
+export const AgentBudget = AgentLimits.partial().extend({
+  steps: z.number().int().min(0).max(MAX_AGENT_STEPS).optional(),
+});
 export type AgentBudget = z.infer<typeof AgentBudget>;
 /** Each agent's own budget, by agent id: only the agents the owner gave one. */
 export const AgentBudgets = z.record(z.string(), AgentBudget);
@@ -142,9 +147,14 @@ export const teamMethods = {
     effect: true,
     access: "human",
   },
-  /** Gives one agent a budget of its own (null takes it away); returns every agent's. */
+  /**
+   * Replaces one agent's budget, or merges fields when requested; null takes it away. If a model-call cap exists
+   * or `steps` is supplied, callers must explicitly set `merge` so older clients cannot overwrite stale data.
+   */
   "agents.set_agent_limits": {
-    params: z.object({ agent: z.string().min(1), limits: AgentBudget.strict().nullable() }).strict(),
+    params: z
+      .object({ agent: z.string().min(1), limits: AgentBudget.strict().nullable(), merge: z.boolean().optional() })
+      .strict(),
     result: z.object({ agents: AgentBudgets }),
     effect: true,
     access: "human",

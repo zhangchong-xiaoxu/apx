@@ -16,7 +16,7 @@ import { createNews } from "./news.ts";
 
 const quiet: Log = { info: () => {}, warn: () => {}, error: () => {} };
 /** The entries the upgrade tests below count on: one that every owner gets would be told on each of them. */
-const SOME_NEWS = NEWS.filter((e) => e.id !== "super-agent-settings");
+const SOME_NEWS = NEWS.filter((e) => !["super-agent-settings", "agent-run-step-budgets"].includes(e.id));
 
 function setup(o: { entries?: readonly NewsEntry[]; models?: string[]; fail?: boolean; noGoogle?: boolean } = {}) {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "apx-news-"));
@@ -75,6 +75,20 @@ test("coordinated update news only applies to owners with a paired Desktop", () 
     assert.equal(update.applies(newsFacts(store)), false);
     store.devices.create("Computer", "desktop");
     assert.equal(update.applies(newsFacts(store)), true);
+  } finally {
+    done();
+  }
+});
+
+test("model-call limit news offers an approved research-agent example", () => {
+  const entry = NEWS.find((item) => item.id === "agent-run-step-budgets");
+  assert.ok(entry);
+  const { news, done } = setup({ entries: [entry] });
+  try {
+    assert.equal(news.list()[0]?.applies, true);
+    assert.deepEqual(news.list()[0]?.actions, ["Limit my research agent"]);
+    assert.match(entry.text, /native model loop/);
+    assert.match(newsAction(entry.id, 0)?.prompt ?? "", /25 model calls per run.*ask me/);
   } finally {
     done();
   }

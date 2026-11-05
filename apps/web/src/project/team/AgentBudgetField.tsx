@@ -1,47 +1,83 @@
-import type { AgentBudget } from "@apx/protocol";
+import { type AgentBudget, MAX_AGENT_STEPS } from "@apx/protocol";
 import { Input } from "@apx/ui";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { client } from "../../data/client.ts";
 import { useT } from "../../i18n/index.ts";
 
 type Key = keyof AgentBudget;
 /** Tokens are typed in thousands, as in Settings › Agents. */
-const SCALE: Record<Key, number> = { runs: 1, tokens: 1000 };
-const MAX: Record<Key, number> = { runs: 10_000, tokens: 1_000_000 };
+const SCALE: Record<Key, number> = { runs: 1, tokens: 1000, steps: 1 };
+const MAX: Record<Key, number> = { runs: 10_000, tokens: 1_000_000, steps: MAX_AGENT_STEPS };
 
 /**
- * One agent's own budget of turns and tokens without the owner, inside the chat's limits: past it this agent waits
- * while the others go on. Empty fields: none of its own.
+ * One agent's limits: turns and tokens without the owner, and model calls per run. Empty fields: none of its own.
  */
 export function AgentBudgetField({ agentId }: { agentId: string }) {
   const t = useT();
   const [budget, setBudget] = useState<AgentBudget>();
   const [draft, setDraft] = useState<Partial<Record<Key, string>>>({});
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const pending = useRef(false);
   useEffect(() => {
     let live = true;
     void client
       .call("agents.limits", {})
-      .then((r) => live && setBudget(r.agents[agentId] ?? {}))
-      .catch(() => live && setBudget(undefined));
+      .then((r) => {
+        if (live) {
+          setBudget(r.agents[agentId] ?? {});
+          setError("");
+        }
+      })
+      .catch((failure) => {
+        if (live) {
+          setBudget(undefined);
+          setError(failure instanceof Error ? failure.message : String(failure));
+        }
+      });
     return () => {
       live = false;
     };
   }, [agentId]);
-  if (!budget) return null;
+  if (!budget) return error ? <span role="alert">{error}</span> : null;
   const field = (key: Key) => {
     const own = budget[key];
     const shown = draft[key] ?? (own ? String(Math.round(own / SCALE[key])) : "");
-    const commit = () => {
+    const commit = (badInput: boolean) => {
       const typed = draft[key];
-      setDraft((d) => ({ ...d, [key]: undefined }));
+      if (pending.current) return;
+      const number = Number(typed);
+      if (
+        key === "steps" &&
+        (badInput || (typed?.trim() && (!Number.isInteger(number) || number < 0 || number > MAX.steps)))
+      ) {
+        setError(t("team.budget.stepsInvalid", { max: MAX.steps }));
+        return;
+      }
       if (typed === undefined) return;
-      const n = Math.round(Number(typed) || 0);
-      const next = { ...budget, [key]: n > 0 ? Math.min(MAX[key], n) * SCALE[key] : 0 };
+      pending.current = true;
+      setSaving(true);
+      setDraft((d) => ({ ...d, [key]: undefined }));
+      const n = Math.round(number || 0);
+      const value = n > 0 ? Math.min(MAX[key], n) * SCALE[key] : 0;
+      const next = { ...budget, [key]: value };
       setBudget(next);
+      setError("");
       void client
-        .call("agents.set_agent_limits", { agent: agentId, limits: next.runs || next.tokens ? next : null })
+        .call("agents.set_agent_limits", {
+          agent: agentId,
+          limits: { [key]: value },
+          merge: true,
+        })
         .then((r) => setBudget(r.agents[agentId] ?? {}))
-        .catch(() => setBudget(budget));
+        .catch((failure) => {
+          setBudget(budget);
+          setError(failure instanceof Error ? failure.message : String(failure));
+        })
+        .finally(() => {
+          pending.current = false;
+          setSaving(false);
+        });
     };
     return (
       <span className="tgquiet__word teambudget__field">
@@ -50,6 +86,7 @@ export function AgentBudgetField({ agentId }: { agentId: string }) {
           type="number"
           min={0}
           max={MAX[key]}
+          disabled={saving}
           className="nudge__num"
           placeholder={t("limits.none")}
           value={shown}
@@ -57,17 +94,19 @@ export function AgentBudgetField({ agentId }: { agentId: string }) {
             const typed = e.currentTarget.value;
             setDraft((d) => ({ ...d, [key]: typed }));
           }}
-          onBlur={commit}
-          onKeyDown={(e) => e.key === "Enter" && commit()}
+          onBlur={(e) => commit(e.currentTarget.validity.badInput)}
+          onKeyDown={(e) => e.key === "Enter" && commit(e.currentTarget.validity.badInput)}
         />
         {t(`team.budget.${key}Unit`)}
       </span>
     );
   };
   return (
-    <div className="teambudget" title={t("team.budget.hint")}>
+    <div className="teambudget" title={t("team.budget.hint")} aria-busy={saving}>
       {field("runs")}
       {field("tokens")}
+      {field("steps")}
+      {error && <span role="alert">{error}</span>}
     </div>
   );
 }

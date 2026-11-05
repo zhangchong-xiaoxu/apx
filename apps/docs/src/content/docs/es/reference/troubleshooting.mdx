@@ -85,12 +85,26 @@ viejas siguen ahí.
 
 ## Un modelo devuelve llamadas a herramientas inválidas
 
-Los argumentos truncados o que no son un objeto se rechazan antes de ejecutarlos. APX reintenta dentro de su
-política acotada habitual y después prueba el siguiente modelo configurado. Nunca reemplaza JSON inválido por
-argumentos vacíos ni ejecuta un bloque de llamadas impreso como texto común. Si todos los modelos devuelven una
-salida inválida, el turno falla de forma visible. El texto transmitido de un intento rechazado se limpia antes de
-cada reintento, incluso con el mismo modelo. El JSON válido que no cumple el esquema de una herramienta sigue
-devolviendo un error de validación al modelo para que lo corrija.
+Los argumentos malformados o que no son un objeto en una respuesta completa se rechazan antes de ejecutarlos y se
+devuelven al modelo como un error de herramienta para que pueda corregirlos. APX no reintenta ni cambia de modelo
+solo porque los argumentos completos sean inválidos. Al enviar ese historial a un proveedor, los argumentos
+malformados se proyectan como `{}` únicamente para cumplir el formato de llamadas a herramientas del proveedor; el
+error explícito de la herramienta se conserva y la transcripción guardada no cambia.
+
+Si una respuesta termina con el motivo `length` y contiene llamadas a herramientas, APX descarta la respuesta
+completa y no ejecuta ninguna llamada, aunque el JSON se pueda analizar. Reintenta desde el último historial completo
+hasta dos veces, pidiendo al modelo argumentos más pequeños o que explique qué falta. Si las llamadas siguen
+truncadas, desactiva las herramientas para el resumen final. También descarta y reintenta un lote con IDs de llamadas
+duplicados sin ejecutar ninguna. Si el flujo termina sin indicar que terminaron las llamadas, APX reintenta dentro de
+su política acotada habitual y después prueba el siguiente modelo configurado, aunque los argumentos parezcan
+completos. Nunca ejecuta un bloque de llamadas impreso como texto común. El texto transmitido de un intento rechazado
+se limpia antes de cada reintento, incluso con el mismo modelo.
+El JSON válido que no cumple el esquema de una herramienta sigue devolviendo un error de validación al modelo para
+que lo corrija.
+
+El historial anterior con IDs de llamadas duplicados se envía como texto no confiable con una advertencia de que sus
+resultados guardados no se pueden asociar con certeza; la transcripción guardada no cambia. Verificá los efectos antes
+de reintentar esas llamadas.
 
 Cuando se desactivan las herramientas para el resumen final, las llamadas y los resultados anteriores se envían
 como texto citado y no confiable, en lugar de bloques estructurados. Así se evita que un gateway rechace un pedido
@@ -99,6 +113,13 @@ herramientas durante ese resumen final.
 
 Un aviso de modelo alternativo significa que otro modelo respondió, no que se guardó el archivo solicitado.
 Revisá las tarjetas de herramientas y el archivo real antes de dar el trabajo por entregado.
+
+## Un cliente no puede cambiar los límites de un agente
+
+El core rechaza el reemplazo implícito de límites de un cliente anterior cuando ya existe un límite de llamadas al
+modelo o el pedido incluye el campo `steps`. Así evita que una copia desactualizada borre o restaure ese límite sin
+avisar. Recargá o actualizá el cliente. Los clientes directos del protocolo deben enviar `merge: true` para cambiar
+solo los campos indicados, o `merge: false` para reemplazar o quitar los límites del agente.
 
 ## El puerto ya está en uso
 

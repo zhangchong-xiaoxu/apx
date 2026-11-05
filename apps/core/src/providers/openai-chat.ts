@@ -29,6 +29,9 @@ type Chunk = {
   error?: { message?: string };
 };
 
+const MAX_TOKENS = 16_000;
+const EPHEMERAL = { type: "ephemeral" } as const;
+
 const finishOf = (reason: string | null | undefined): Finish =>
   reason === "stop" ? "stop" : reason === "tool_calls" ? "tool_calls" : reason === "length" ? "length" : "other";
 
@@ -38,6 +41,15 @@ const usageOf = (u: Chunk["usage"]): Usage | undefined => {
   return { input: u.prompt_tokens ?? 0, output: u.completion_tokens ?? 0, ...(cached ? { cached } : {}) };
 };
 
+function parses(json: string): boolean {
+  try {
+    JSON.parse(json);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** User items with images become content parts (text, then each image as a data URL); the rest go as they are. */
 function wire(items: TransportRequest["messages"]): unknown[] {
   return items.map((m) => {
@@ -46,11 +58,12 @@ function wire(items: TransportRequest["messages"]): unknown[] {
       const { images: _i, ...rest } = m;
       return rest;
     }
+    const { images, ...rest } = m;
     return {
-      role: "user",
+      ...rest,
       content: [
         { type: "text", text: m.content },
-        ...m.images.flatMap((i) =>
+        ...images.flatMap((i) =>
           i.data ? [{ type: "image_url", image_url: { url: `data:${i.mime};base64,${i.data}` } }] : [],
         ),
       ],
@@ -60,14 +73,22 @@ function wire(items: TransportRequest["messages"]): unknown[] {
 
 export const openaiChat: Transport = async (req) => {
   const stream = Boolean(req.onText);
+  const claudeGateway = /claude/i.test(req.model) && new URL(req.baseUrl).hostname !== "api.openai.com";
+  const cacheable = Boolean(req.cacheKey) && claudeGateway;
+  const last = req.messages.length - 1;
+  const messages = wire(
+    req.messages.map((message, index) =>
+      cacheable && (message.role === "system" || index === last) ? { ...message, cache_control: EPHEMERAL } : message,
+    ),
+  );
   const { res, touch, done } = await post(
     req,
     `${req.baseUrl.replace(/\/$/, "")}/chat/completions`,
     { authorization: `Bearer ${req.key}` },
     {
       model: req.model,
-      ...(req.maxOutputTokens ? { max_tokens: req.maxOutputTokens } : {}),
-      messages: wire(req.messages),
+      ...(req.maxOutputTokens || claudeGateway ? { max_tokens: req.maxOutputTokens ?? MAX_TOKENS } : {}),
+      messages,
       ...(req.tools.length
         ? {
             tools: req.tools.map((tool) => ({
@@ -85,11 +106,14 @@ export const openaiChat: Transport = async (req) => {
       const body = (await res.json()) as Chunk;
       const choice = body.choices?.[0];
       if (!choice?.message) throw new ProviderError("empty", "empty response");
+      const finish = finishOf(choice.finish_reason);
+      if (choice.message.tool_calls?.length && finish === "other")
+        throw new ProviderError("empty", "tool calls ended without a finish reason");
       const usage = usageOf(body.usage);
       return {
         message: { ...choice.message, role: "assistant" },
         model: req.model,
-        finish: finishOf(choice.finish_reason),
+        finish,
         ...(usage ? { usage } : {}),
       };
     }
@@ -129,13 +153,17 @@ export const openaiChat: Transport = async (req) => {
     }
     // An empty answer (filtered, cut, provider hiccup) is a failure to retry, never a silent "done".
     if (!text && !calls.length) throw new ProviderError("empty", "empty stream");
+    const cut = finish === "other" && calls.find((c) => c.function.arguments.trim() && !parses(c.function.arguments));
+    if (cut)
+      throw new ProviderError("empty", `stream cut inside the arguments of ${cut.function.name || "a tool call"}`);
+    if (calls.length && finish === "other")
+      throw new ProviderError("empty", "stream tool calls ended without a finish reason");
     const message: AssistantItem = {
       role: "assistant",
       content: text || null,
       ...extra,
       ...(calls.length ? { tool_calls: calls.map((c, i) => ({ ...c, id: c.id || `call_${i}` })) } : {}),
     };
-    if (calls.length && finish === "other") finish = "tool_calls";
     return { message, model: req.model, finish, ...(usage ? { usage } : {}) } satisfies Completion;
   } finally {
     done();

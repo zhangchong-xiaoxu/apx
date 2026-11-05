@@ -153,12 +153,15 @@ export function routineWithCommands(store: Store, run: RunRecord): Routine | und
   return r && (r.pre_command || r.post_command || r.action !== "agent") ? r : undefined;
 }
 
-/** How many model calls a run may make on our own loop: its routine's own limit, else the default. */
-export function stepsFor(store: Store, run: RunRecord): number {
+/** Native loop steps and the agent's optional cap on all provider requests in the run. */
+export function stepsFor(store: Store, run: RunRecord): { steps: number; maxModelCalls?: number } {
   const origin = run.input?.origin;
   const own =
     run.trigger === "routine" && origin?.kind === "routine" ? store.routines.get(origin.id)?.max_steps : undefined;
-  return own ?? MAX_STEPS;
+  const agent = store.settings.read("agent_limits").agents?.[run.agent_id]?.steps;
+  const routineLimit = own ?? MAX_STEPS;
+  // The native harness makes one final, tool-less report call after its steps.
+  return agent ? { steps: Math.min(routineLimit, agent - 1), maxModelCalls: agent } : { steps: routineLimit };
 }
 
 /** A message routine's text: the owner's words with the pre-command's output, as it is, in its slot. */

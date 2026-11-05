@@ -699,7 +699,7 @@
   margin: 0;
   font-size: var(--apx-text-sm);
 }
-/* An agent's own budget in its detail: two small numbers with their units, wrapping when narrow. */
+/* An agent's own limits in its detail: small numbers with their units, wrapping when narrow. */
 .teambudget {
   display: flex;
   flex-wrap: wrap;

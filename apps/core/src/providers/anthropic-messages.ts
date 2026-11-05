@@ -5,6 +5,7 @@ import {
   type ChatItem,
   type Finish,
   ProviderError,
+  parseToolArguments,
   post,
   sseData,
   type ToolCall,
@@ -60,11 +61,7 @@ export function toAnthropic(items: ChatItem[]): { system: string; messages: Msg[
     else if (m.role === "assistant") {
       if (m.content) push("assistant", { type: "text", text: m.content });
       for (const c of m.tool_calls ?? []) {
-        let input: unknown = {};
-        try {
-          input = JSON.parse(c.function.arguments || "{}");
-        } catch {}
-        push("assistant", { type: "tool_use", id: c.id, name: c.function.name, input });
+        push("assistant", { type: "tool_use", id: c.id, name: c.function.name, input: parseToolArguments(c) });
       }
     }
   }
@@ -161,6 +158,8 @@ export const anthropicMessages: Transport = async (req) => {
       }
     }
     if (!text && !calls.length) throw new ProviderError("empty", "empty stream");
+    if (calls.length && finish === "other")
+      throw new ProviderError("empty", "stream tool calls ended without a finish reason");
     const message: AssistantItem = {
       role: "assistant",
       content: text || null,

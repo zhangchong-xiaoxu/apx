@@ -82,12 +82,23 @@ export const TEAM: Readonly<Record<string, Setting>> = {
     says: (p, { store }) => `Delete for good the archived agent ${agentName(store, p.agent)} and its notes`,
   },
   "agents.set_agent_limits": {
-    does: "how far one agent may go on its own (agent; limits runs/tokens, null: the shared limits)",
-    says: (p, { store }) => `Change how far ${agentName(store, p.agent)} may go on its own`,
+    does: "an agent's unattended turns/tokens and native model calls per run, including retries (agent; partial limits merge by default, merge=false replaces, null clears)",
+    named: ["merge"],
+    says: (p, { store }) => `Change the limits for ${agentName(store, p.agent)}`,
     now: (p, { store }) => ({
       agent: p.agent,
       limits: store.settings.read("agent_limits").agents?.[str(p.agent)] ?? null,
     }),
+    keep: (p) => (p.merge === undefined ? { ...p, merge: p.limits !== null } : p),
+    preview: (p, { store }) => {
+      const limits = p.limits;
+      if (p.merge === true || !limits || typeof limits !== "object" || Array.isArray(limits)) return p;
+      const before = store.settings.read("agent_limits").agents?.[str(p.agent)] ?? {};
+      return {
+        ...p,
+        limits: { ...Object.fromEntries(Object.keys(before).map((key) => [key, null])), ...limits },
+      };
+    },
   },
   "routines.remove": {
     does: "delete a routine for good (routine: its id, routine_list)",

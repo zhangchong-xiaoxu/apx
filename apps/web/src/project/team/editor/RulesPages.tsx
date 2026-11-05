@@ -119,7 +119,7 @@ export function AutonomyPage({
       {Object.keys(d.rules).length > 0 && <p className="config__hint">{t("agentedit.ownRulesNote")}</p>}
       <h3 className="config__sub">{t("agentedit.budget")}</h3>
       <p className="config__lead">{t("agentedit.budgetHint")}</p>
-      <AgentBudgetField agentId={agent.id} />
+      <AgentBudgetField key={agent.id} agentId={agent.id} />
     </>
   );
 }

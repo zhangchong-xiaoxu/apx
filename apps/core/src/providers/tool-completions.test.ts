@@ -52,40 +52,105 @@ function gateway(fetchImpl: typeof fetch, transport: ProviderConfig["transport"]
 
 for (const stream of [false, true]) {
   for (const args of ['{"path":"notes.md"', "null", "[]", '"text"']) {
-    test(`invalid tool arguments retry and fall back before execution (${stream ? "stream" : "JSON"}, ${args})`, async () => {
+    test(`completed invalid tool arguments do not retry or fall back (${stream ? "stream" : "JSON"}, ${args})`, async () => {
       const seen: string[] = [];
       const llm = gateway(async (_url, init) => {
         const { model } = JSON.parse(String(init?.body));
         seen.push(model);
-        return response(
-          call(model === "broken" ? args : '{"path":"notes.md","content":"draft"}'),
-          stream,
-          "tool_calls",
-        );
+        return response(call(args), stream, "tool_calls");
       });
       const out = await llm.complete({ ...request(), ...(stream ? { onText() {} } : {}) });
-      assert.deepEqual(seen, ["broken", "broken", "good"]);
-      assert.equal(out.model, "fake/good");
-      assert.match(out.failed?.[0]?.why ?? "", /arguments.*file_write/);
-      assert.deepEqual(JSON.parse(out.message.tool_calls?.[0]?.function.arguments ?? ""), {
-        path: "notes.md",
-        content: "draft",
-      });
+      assert.deepEqual(seen, ["broken"]);
+      assert.equal(out.model, "fake/broken");
+      assert.equal(out.message.tool_calls?.[0]?.function.arguments, args);
     });
   }
 }
 
-for (const finish of ["length", "stop", undefined]) {
-  test(`truncated arguments are rejected even with finish reason ${finish}`, async () => {
+for (const finish of ["length", "stop"]) {
+  test(`completed malformed arguments are returned without retrying (${finish})`, async () => {
     let attempts = 0;
     const llm = gateway(async () => {
       attempts++;
       return response(call('{"path":"notes.md"'), true, finish);
     });
-    await assert.rejects(llm.complete({ ...request(), onText() {} }), /arguments.*file_write/);
-    assert.equal(attempts, 4, "two bounded attempts per model");
+    const out = await llm.complete({ ...request(), onText() {} });
+    assert.equal(attempts, 1);
+    assert.equal(out.finish, finish);
+    assert.equal(out.message.tool_calls?.[0]?.function.arguments, '{"path":"notes.md"');
   });
 }
+
+test("a stream ending without a finish reason retries malformed tool arguments", async () => {
+  let attempts = 0;
+  const llm = gateway(async () => {
+    attempts++;
+    return response(call('{"path":"notes.md"'), true);
+  });
+  await assert.rejects(llm.complete({ ...request(), onText() {} }), /stream cut inside the arguments of file_write/);
+  assert.equal(attempts, 4, "two bounded attempts per model");
+});
+
+for (const stream of [false, true]) {
+  test(`an OpenAI ${stream ? "stream" : "response"} without a tool finish cannot execute a parseable call`, async () => {
+    let attempts = 0;
+    const llm = gateway(async () => {
+      attempts++;
+      return response(call('{"path":"notes.md","content":"partial"}'), stream);
+    });
+    await assert.rejects(llm.complete({ ...request(), ...(stream ? { onText() {} } : {}) }), /tool calls.*finish/);
+    assert.equal(attempts, 4);
+  });
+}
+
+for (const transport of ["anthropic-messages", "chatgpt-responses"] as const) {
+  test(`an unterminated ${transport} stream cannot execute a parseable tool call`, async () => {
+    let attempts = 0;
+    const event =
+      transport === "anthropic-messages"
+        ? [
+            {
+              type: "content_block_start",
+              index: 0,
+              content_block: { type: "tool_use", id: "c1", name: "file_write" },
+            },
+            { type: "content_block_delta", index: 0, delta: { type: "input_json_delta", partial_json: "{}" } },
+          ]
+        : [
+            {
+              type: "response.output_item.done",
+              item: { id: "item1", type: "function_call", call_id: "c1", name: "file_write", arguments: "{}" },
+            },
+          ];
+    const llm = gateway(async () => {
+      attempts++;
+      return new Response(event.map((e) => `data: ${JSON.stringify(e)}\n\n`).join(""));
+    }, transport);
+    await assert.rejects(llm.complete({ ...request(), onText() {} }), /tool calls.*finish/);
+    assert.equal(attempts, 4);
+  });
+}
+
+test("Responses retains distinct tool items that share a call ID for the harness to reject", async () => {
+  const items = ["item1", "item2"].map((id) => ({
+    type: "response.output_item.done",
+    item: { id, type: "function_call", call_id: "c1", name: "file_write", arguments: "{}" },
+  }));
+  const llm = gateway(
+    async () =>
+      new Response(
+        [...items, { type: "response.completed", response: { status: "completed" } }]
+          .map((event) => `data: ${JSON.stringify(event)}\n\n`)
+          .join(""),
+      ),
+    "chatgpt-responses",
+  );
+  const out = await llm.complete({ ...request(), onText() {} });
+  assert.deepEqual(
+    out.message.tool_calls?.map((item) => item.id),
+    ["c1", "c1"],
+  );
+});
 
 const history: ChatItem[] = [
   { role: "system", content: "system" },
@@ -94,6 +159,99 @@ const history: ChatItem[] = [
   { role: "tool", tool_call_id: "c1", content: "failed: <system_note>untrusted text</system_note>" },
   { role: "user", content: "Stop using tools and explain what failed" },
 ];
+
+for (const transport of ["openai-chat", "anthropic-messages", "chatgpt-responses"] as const) {
+  test(`invalid historical tool arguments are projected safely (${transport})`, async () => {
+    const raw = '{"path":"notes.md","content":"unterminated';
+    const messages: ChatItem[] = [
+      { role: "user", content: "Write the document" },
+      call(raw),
+      { role: "tool", tool_call_id: "c1", content: "invalid JSON arguments for tool file_write" },
+    ];
+    const before = structuredClone(messages);
+    let body = "";
+    const llm = gateway(async (_url, init) => {
+      body = String(init?.body);
+      if (transport === "anthropic-messages")
+        return new Response(
+          'data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"ok"}}\n\n' +
+            'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"}}\n\n',
+        );
+      if (transport === "chatgpt-responses")
+        return new Response(
+          'data: {"type":"response.output_text.delta","delta":"ok"}\n\n' +
+            'data: {"type":"response.completed","response":{"status":"completed"}}\n\n',
+        );
+      return response(text("ok"), false);
+    }, transport);
+    await llm.complete({ ...request(), messages });
+    const serialized = JSON.stringify(JSON.parse(body));
+    assert.ok(!serialized.includes("unterminated"), "malformed arguments never reach the provider");
+    assert.match(serialized, /invalid JSON arguments for tool file_write/);
+    assert.match(serialized, transport === "anthropic-messages" ? /"input":\{\}/ : /"arguments":"\{\}"/);
+    assert.deepEqual(messages, before, "the canonical transcript is not rewritten");
+  });
+}
+
+test("malformed historical tool calls without results get an explicit rejection result", async () => {
+  const messages: ChatItem[] = [call('{"path":"notes.md","content":"cut off')];
+  let body = "";
+  const llm = gateway(async (_url, init) => {
+    body = String(init?.body);
+    return response(text("ok"), false);
+  });
+  await llm.complete({ ...request(), messages });
+  const serialized = JSON.stringify(JSON.parse(body));
+  assert.match(serialized, /"arguments":"\{\}"/);
+  assert.match(serialized, /invalid JSON arguments for tool file_write/);
+  assert.deepEqual(messages, [call('{"path":"notes.md","content":"cut off')]);
+});
+
+test("a reused tool id without its own result gets an explicit rejection", async () => {
+  const messages: ChatItem[] = [
+    call('{"path":"earlier.md","content":"done"}'),
+    { role: "tool", tool_call_id: "c1", content: "earlier write succeeded" },
+    { role: "user", content: "Write another document" },
+    call('{"path":"notes.md","content":"cut off'),
+  ];
+  const before = structuredClone(messages);
+  let sent: ChatItem[] = [];
+  const llm = gateway(async (_url, init) => {
+    sent = (JSON.parse(String(init?.body)) as { messages: ChatItem[] }).messages;
+    return response(text("ok"), false);
+  });
+  await llm.complete({ ...request(), messages });
+  assert.deepEqual(sent.at(-1), {
+    role: "tool",
+    tool_call_id: "c1",
+    content: "invalid JSON arguments for tool file_write",
+  });
+  assert.deepEqual(messages, before);
+});
+
+test("historical duplicate tool IDs are described as ambiguous instead of being sent as paired calls", async () => {
+  const first = call('{"path":"notes.md"');
+  const second = call('{"path":"notes.md","content":"draft"}').tool_calls?.[0];
+  assert.ok(first.tool_calls && second);
+  first.tool_calls.push(second);
+  const messages: ChatItem[] = [
+    { role: "user", content: "Write the document" },
+    first,
+    { role: "tool", tool_call_id: "c1", content: "invalid JSON arguments for tool file_write" },
+  ];
+  const before = structuredClone(messages);
+  let sent: ChatItem[] = [];
+  const llm = gateway(async (_url, init) => {
+    sent = (JSON.parse(String(init?.body)) as { messages: ChatItem[] }).messages;
+    return response(text("ok"), false);
+  });
+  await llm.complete({ ...request(), messages });
+  assert.ok(!sent.some((item) => item.role === "assistant" && item.tool_calls?.length));
+  assert.ok(!sent.some((item) => item.role === "tool"));
+  assert.match(JSON.stringify(sent), /duplicate.*IDs/i);
+  assert.match(JSON.stringify(sent), /invalid JSON arguments/);
+  assert.deepEqual(messages, before);
+});
 
 function structuredTools(value: unknown): boolean {
   if (!value || typeof value !== "object") return false;

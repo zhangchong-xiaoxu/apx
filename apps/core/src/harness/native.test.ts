@@ -96,21 +96,66 @@ test("a turn given more steps uses them before it must answer", async () => {
   assert.equal(llm.calls.filter((c) => c.tools.length).length, 30);
 });
 
-test("malformed tool JSON never becomes an empty argument object", async () => {
+test("malformed tool JSON is returned to the model without executing the tool", async () => {
   const broken = callTool("bad", "file_write", {});
   const call = broken.message.tool_calls?.[0];
   assert.ok(call);
   call.function.arguments = '{"path":"notes.md"';
   let executed = 0;
-  await assert.rejects(
-    turn(
-      () => broken,
-      () => {
-        executed++;
-        return "written";
-      },
-    ),
-    /arguments.*file_write/,
+  const { out, seen } = await turn(
+    (done) => (done === 0 ? broken : say("recovered")),
+    () => {
+      executed++;
+      return "written";
+    },
   );
+  assert.equal(out.text, "recovered");
   assert.equal(executed, 0);
+  assert.match(
+    String(seen.find((message) => message.role === "tool")?.content),
+    /invalid JSON arguments for tool file_write/,
+  );
+});
+
+test("truncated tool calls are discarded and retried before execution", async () => {
+  let calls = 0;
+  const { out, ran, seen } = await turn(() => {
+    calls++;
+    if (calls === 1) return { ...callTool("cut", "file_write", { content: "partial" }), finish: "length" };
+    if (calls === 2) return callTool("complete", "file_write", { content: "whole" });
+    return say("done");
+  });
+  assert.equal(out.text, "done");
+  assert.deepEqual(ran, ["file_write"]);
+  const callsInHistory = seen.flatMap((message) => (message.role === "assistant" ? (message.tool_calls ?? []) : []));
+  assert.ok(
+    callsInHistory.every((call) => call.id !== "cut"),
+    "the discarded response is not sent back as history",
+  );
+  assert.match(notes(seen).join("\n"), /cut off before its tool calls could be executed/);
+});
+
+test("repeatedly truncated tool calls are never executed and end with tools disabled", async () => {
+  let calls = 0;
+  const { ran, seen } = await turn(() => {
+    calls++;
+    return { ...callTool(`cut${calls}`, "file_write", { content: "partial" }), finish: "length" };
+  });
+  assert.deepEqual(ran, []);
+  assert.match(notes(seen).join("\n"), /was not executed/);
+});
+
+test("repeated duplicate tool IDs are never executed and end with tools disabled", async () => {
+  let calls = 0;
+  const { ran, seen } = await turn(() => {
+    calls++;
+    const duplicate = callTool(`c${calls}`, "file_write", { content: "first" });
+    const second = callTool(`c${calls}`, "file_write", { content: "second" }).message.tool_calls?.[0];
+    assert.ok(duplicate.message.tool_calls && second);
+    duplicate.message.tool_calls.push(second);
+    return duplicate;
+  });
+  assert.deepEqual(ran, []);
+  assert.equal(calls, 3);
+  assert.match(notes(seen).join("\n"), /duplicate tool call IDs/i);
 });

@@ -65,14 +65,16 @@ test("falls back down the chain on overload and reports which model answered", a
 
 test("models are tried in the given order; quota moves on; providers without a key are never called", async () => {
   const seen: string[] = [];
+  const caps: Array<number | undefined> = [];
   const llm = createLlm({
     providers: () => providers,
     secrets,
     firstByteMs: 1000,
     retryDelayMs: 5,
     fetchImpl: (async (url: string, init: RequestInit) => {
-      const model = (JSON.parse(String(init.body)) as { model: string }).model;
+      const { model, max_tokens } = JSON.parse(String(init.body)) as { model: string; max_tokens?: number };
       seen.push(model);
+      caps.push(max_tokens);
       if (new URL(url).host === "b.test") return new Response("You exceeded your current quota", { status: 429 });
       return new Response(JSON.stringify({ choices: [{ message: { content: "ok" }, finish_reason: "length" }] }));
     }) as typeof fetch,
@@ -87,6 +89,51 @@ test("models are tried in the given order; quota moves on; providers without a k
   assert.equal(out.model, "pa/m1");
   assert.equal(out.finish, "length");
   assert.equal(llm.label(), "pa, pb");
+  assert.deepEqual(caps, [undefined, undefined], "only Claude-compatible gateways get the default cap");
+});
+
+test("Claude on an OpenAI-compatible gateway gets an output cap and prompt-cache breakpoints", async () => {
+  let body: { max_tokens: number; messages: Array<Record<string, unknown>> } | undefined;
+  const llm = createLlm({
+    providers: () => [
+      {
+        id: "gateway",
+        transport: "openai-chat",
+        base_url: "http://gateway.test/v1",
+        key: "secret://a",
+        models: ["claude-sonnet-5-5"],
+      },
+    ],
+    secrets,
+    firstByteMs: 1000,
+    media: () => ({ mime: "image/png", data: "AAAA" }),
+    fetchImpl: (async (_url: string, init: RequestInit) => {
+      body = JSON.parse(String(init.body));
+      return new Response(JSON.stringify({ choices: [{ message: { content: "ok" }, finish_reason: "stop" }] }));
+    }) as typeof fetch,
+  });
+  await llm.complete({
+    models: ["gateway/claude-sonnet-5-5"],
+    messages: [
+      { role: "system", content: "system" },
+      { role: "user", content: "question", images: [{ media_id: "image", mime: "image/png" }] },
+    ],
+    tools: [],
+    signal: new AbortController().signal,
+    cacheKey: "thread",
+  });
+  assert.equal(body?.max_tokens, 16_000);
+  assert.deepEqual(body?.messages, [
+    { role: "system", content: "system", cache_control: { type: "ephemeral" } },
+    {
+      role: "user",
+      content: [
+        { type: "text", text: "question" },
+        { type: "image_url", image_url: { url: "data:image/png;base64,AAAA" } },
+      ],
+      cache_control: { type: "ephemeral" },
+    },
+  ]);
 });
 
 test("tool calls stream in fragments and keep provider extras", async () => {
@@ -178,6 +225,20 @@ test("anthropic conversion: leading system, later notes as user text, tool calls
       ],
     },
   ]);
+});
+
+test("anthropic conversion rejects malformed tool arguments instead of silently substituting an empty object", () => {
+  assert.throws(
+    () =>
+      toAnthropic([
+        {
+          role: "assistant",
+          content: null,
+          tool_calls: [{ id: "t1", type: "function", function: { name: "f", arguments: '{"x":"cut off' } }],
+        },
+      ]),
+    /invalid JSON arguments for tool f/,
+  );
 });
 
 test("anthropic: the system prompt and the conversation's last block are marked for its cache; cached tokens count in input", async () => {

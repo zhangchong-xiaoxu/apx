@@ -66,26 +66,33 @@ export function agentPatch(agent: string, pairs: string[], extra: Record<string,
   return checked.data;
 }
 
-const LIMITS_USAGE = "usage: apx agents limits [<agent> runs=… tokens=… | <agent> clear | default runs=… tokens=…]";
+const LIMITS_USAGE =
+  "usage: apx agents limits [<agent> runs=… tokens=… steps=… | <agent> clear | default runs=… tokens=…]";
 
-const budget = (b: { runs?: number | undefined; tokens?: number | undefined }) =>
-  [b.runs ? `${b.runs} turns` : "", b.tokens ? `${b.tokens} tokens` : ""].filter(Boolean).join(" · ") || "no limit";
+const budget = (b: { runs?: number | undefined; tokens?: number | undefined; steps?: number | undefined }) =>
+  [b.runs ? `${b.runs} turns` : "", b.tokens ? `${b.tokens} tokens` : "", b.steps ? `${b.steps} model calls/run` : ""]
+    .filter(Boolean)
+    .join(" · ") || "no limit";
 
-/** runs=… tokens=… as numbers; 0 is no limit. */
-function numbers(pairs: string[]): { runs?: number; tokens?: number } {
-  const out: { runs?: number; tokens?: number } = {};
+/** runs=… tokens=… [steps=…] as numbers; 0 is no limit. */
+type AgentBudgetValues = { runs?: number; tokens?: number; steps?: number };
+function numbers(pairs: string[], agent: true): AgentBudgetValues;
+function numbers(pairs: string[], agent?: false): { runs?: number; tokens?: number };
+function numbers(pairs: string[], agent = false): AgentBudgetValues {
+  const out: AgentBudgetValues = {};
   for (const p of pairs) {
     const [key, value = ""] = p.split("=");
-    if (key !== "runs" && key !== "tokens") throw new Error(LIMITS_USAGE);
+    if (key !== "runs" && key !== "tokens" && !(agent && key === "steps")) throw new Error(LIMITS_USAGE);
     const n = Number(value);
     if (!Number.isInteger(n) || n < 0) throw new Error(`${key} is a whole number (0 is no limit), got "${value}"`);
-    out[key] = n;
+    if (key === "runs" || key === "tokens") out[key] = n;
+    else if (agent && key === "steps") out.steps = n;
   }
   return out;
 }
 
 /**
- * How far agents go without the owner in one conversation: the install's default, and an agent's own budget (or none).
+ * The default and per-agent limits on autonomous turns and the per-run model-call cap.
  */
 export async function agentLimits(client: ApxClient, [target, ...pairs]: string[]) {
   if (!target) {
@@ -102,8 +109,12 @@ export async function agentLimits(client: ApxClient, [target, ...pairs]: string[
     return;
   }
   if (!pairs.length) throw new Error(LIMITS_USAGE);
-  const limits = pairs.length === 1 && pairs[0] === "clear" ? null : numbers(pairs);
-  const r = await client.call("agents.set_agent_limits", { agent: target, limits });
+  const patch = pairs.length === 1 && pairs[0] === "clear" ? null : numbers(pairs, true);
+  const r = await client.call("agents.set_agent_limits", {
+    agent: target,
+    limits: patch,
+    merge: patch !== null,
+  });
   const own = r.agents[target];
   console.log(`${target}: ${own ? budget(own) : "no budget of its own"}`);
 }

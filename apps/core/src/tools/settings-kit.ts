@@ -30,6 +30,8 @@ export type Setting = {
   now?: (p: Params, d: SettingsDeps) => Params | undefined;
   /** The whole record the method needs, from what the agent gave and what the record already has. */
   keep?: (p: Params, d: SettingsDeps) => Params;
+  /** The effective values shown for confirmation, without changing the method's parameters. */
+  preview?: (p: Params, d: SettingsDeps) => Params;
   /** Why this call stays the owner's (a field like autonomy, a record that is not there), before anyone is asked. */
   refuse?: (p: Params, d: SettingsDeps) => string | undefined;
   /** What the agent reads back once it ran (default: the method's result). */

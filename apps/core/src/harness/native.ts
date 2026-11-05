@@ -1,8 +1,16 @@
 // The built-in loop: our model call, our tools, bounded steps. What the model says and every tool result are
 // logged as they happen.
 
+import { MAX_AGENT_STEPS } from "@apx/protocol";
 import type { Llm } from "../providers/llm.ts";
-import { type ChatItem, type ModelFailure, ProviderError, parseToolArguments, type Usage } from "../providers/types.ts";
+import {
+  type ChatItem,
+  type ModelFailure,
+  ProviderError,
+  parseToolArguments,
+  type ToolCall,
+  type Usage,
+} from "../providers/types.ts";
 import { readsImages } from "../providers/vision.ts";
 import { modelSpec } from "../tools/types.ts";
 import type { Harness } from "./types.ts";
@@ -11,8 +19,9 @@ import type { Harness } from "./types.ts";
  * Model calls a turn may make before it must report: a long piece of work (a code change, its review, the screen or
  * the browser step by step) fits; a delegated one cut here goes on while it progresses (engine/progress.ts).
  */
-export const MAX_STEPS = 150;
+export const MAX_STEPS = MAX_AGENT_STEPS;
 const MAX_CONTINUATIONS = 2;
+class ModelCallLimit extends Error {}
 /** Same tool with the same arguments this many times = stuck. */
 const REPEAT_LIMIT = 3;
 /** Looking at the screen again is how a computer session sees what changed: never "the same call" twice. */
@@ -21,6 +30,7 @@ const LOOKS_AGAIN = new Set(["screen_snapshot", "browser_snapshot"]);
 const READS_AGAIN = new Set(["browser_text"]);
 /** A picture that comes beside a whole text answer: shown only to a model known to read images. */
 const PICTURE_BESIDE_TEXT = new Set(["browser_snapshot"]);
+const duplicateToolIds = (calls: ToolCall[]) => new Set(calls.map((call) => call.id)).size !== calls.length;
 
 /**
  * A note from APX to the model mid-turn. Sent as a tagged user item: some providers fold every system item into
@@ -49,14 +59,31 @@ export function nativeHarness(llm: Llm): Harness {
       let prefix = "";
       let toolsOff = false;
       let continuations = 0;
+      let rejectedToolBatches = 0;
+      let finalModels: string[] | undefined;
+      const callBudget = io.maxModelCalls === undefined ? undefined : { remaining: io.maxModelCalls };
 
       const step = async (tools: boolean) => {
         const c = await llm.complete({
-          models: io.models,
+          models: !tools && finalModels?.length ? finalModels : io.models,
           messages,
           tools: tools && !toolsOff ? io.tools.map(modelSpec) : [],
           signal: io.signal,
           cacheKey: io.thread.id,
+          ...(callBudget
+            ? {
+                beforeModelCall: (remaining, failures) => {
+                  if (callBudget.remaining <= (tools ? 1 : 0)) {
+                    if (tools) {
+                      finalModels = [...remaining];
+                      for (const f of failures) if (!failed.has(f.model)) failed.set(f.model, f);
+                    }
+                    throw new ModelCallLimit("model-call limit reached");
+                  }
+                  callBudget.remaining--;
+                },
+              }
+            : {}),
           onText: (s) => {
             io.alive?.();
             io.onText(prefix + s);
@@ -64,6 +91,23 @@ export function nativeHarness(llm: Llm): Harness {
         });
         if ((!tools || toolsOff || !io.tools.length) && c.message.tool_calls?.length)
           throw new ProviderError("empty", "the model returned tool calls while tools are disabled");
+        const invalidArguments = c.message.tool_calls?.some((call) => {
+          try {
+            parseToolArguments(call);
+            return false;
+          } catch (err) {
+            if (!(err instanceof ProviderError)) throw err;
+            return true;
+          }
+        });
+        const calls = c.message.tool_calls ?? [];
+        const rejectedBatch = (c.finish === "length" && calls.length > 0) || duplicateToolIds(calls);
+        if (invalidArguments || rejectedBatch) {
+          c.message.content = null;
+          text = "";
+          prefix = "";
+          io.onText("");
+        }
         io.signal.throwIfAborted();
         io.alive?.();
         model = c.model;
@@ -74,7 +118,7 @@ export function nativeHarness(llm: Llm): Harness {
         if (c.usage?.cached) usage.cached = (usage.cached ?? 0) + c.usage.cached;
         if (c.usage?.input) usage.context = c.usage.input;
         io.onUsage?.({ ...usage });
-        push(c.message);
+        if (!rejectedBatch) push(c.message);
         if (c.message.content) text = prefix + c.message.content;
         return c;
       };
@@ -84,7 +128,13 @@ export function nativeHarness(llm: Llm): Harness {
         // The owner's words added while we work go in after the last tool results, before the next model call.
         for (const t of io.takeSteered?.() ?? [])
           push({ role: "user", content: `[The owner adds, while you work]\n${t}` });
-        const c = await step(true);
+        let c: Awaited<ReturnType<typeof step>>;
+        try {
+          c = await step(true);
+        } catch (err) {
+          if (err instanceof ModelCallLimit) break;
+          throw err;
+        }
         const calls = c.message.tool_calls ?? [];
         if (!calls.length) {
           // A cut answer is not a finished one: ask for the rest instead of presenting half of it.
@@ -99,6 +149,23 @@ export function nativeHarness(llm: Llm): Harness {
           }
           return { text, model, effort, finish: c.finish, usage, failed: [...failed.values()] };
         }
+        const duplicates = duplicateToolIds(calls);
+        if (c.finish === "length" || duplicates) {
+          const exhausted = rejectedToolBatches++ >= MAX_CONTINUATIONS;
+          if (exhausted) toolsOff = true;
+          push(
+            systemNote(
+              duplicates
+                ? exhausted
+                  ? "Duplicate tool call IDs were not executed. Do not try another tool call; explain what remains without claiming it was done."
+                  : "Your response had duplicate tool call IDs. None were run. Retry with a unique ID for each call or explain what remains."
+                : exhausted
+                  ? "The tool call was cut off and was not executed. Do not try another tool call; explain what remains without claiming it was done."
+                  : "Your response was cut off before its tool calls could be executed. None were run. Retry with smaller tool arguments or explain what remains.",
+            ),
+          );
+          continue;
+        }
         prefix = "";
         let stuck: string | undefined;
         let transferred = false;
@@ -107,8 +174,18 @@ export function nativeHarness(llm: Llm): Harness {
         // The model that asked for these tools takes the next step too, unless it fails over.
         const sees = readsImages(c.model);
         for (const call of calls) {
-          const args = parseToolArguments(call);
-          const out = await io.execute(call.id, call.function.name, args);
+          let args: Record<string, unknown> | undefined;
+          let rejected: ProviderError | undefined;
+          try {
+            args = parseToolArguments(call);
+          } catch (err) {
+            if (!(err instanceof ProviderError)) throw err;
+            rejected = err;
+          }
+          let out: Awaited<ReturnType<typeof io.execute>>;
+          if (rejected) out = { ok: false, text: rejected.message };
+          else if (args) out = await io.execute(call.id, call.function.name, args);
+          else throw new Error("tool arguments were neither parsed nor rejected");
           io.alive?.();
           push({ role: "tool", tool_call_id: call.id, content: out.text });
           if (out.endTurn) transferred = true;

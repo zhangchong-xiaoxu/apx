@@ -49,7 +49,7 @@ export function AgentDetail({
   const [pending, setPending] = useState<string>();
   const [tab, setTab] = useState("summary");
   const [editing, setEditing] = useState<false | "identity" | "prompt" | "computer">(false);
-  /** Bumped when the editor closes, so the prompt shown is read again. */
+  /** Bumped when the editor closes, so its saved prompt and limits are read again. */
   const [edits, setEdits] = useState(0);
   const threads = useData((s) => s.threads);
   const tasks = useTasks((s) => s.tasks);
@@ -149,7 +149,7 @@ export function AgentDetail({
       </dd>
       <dt>{t("team.budget")}</dt>
       <dd>
-        <AgentBudgetField agentId={agent.id} />
+        <AgentBudgetField key={`${agent.id}:${edits}`} agentId={agent.id} />
       </dd>
       <AgentComputer key={agent.id} agent={agent.id} onTurnOn={() => setEditing("computer")} />
       {fromFile && (

@@ -80,11 +80,23 @@ macOS, `%APPDATA%\APX\logs` on Windows, `~/.config/APX/logs` on Linux); older li
 
 ## A model returns invalid tool calls
 
-Truncated or non-object tool arguments are rejected before execution. APX retries the model within its normal
-bounded retry policy, then tries the next configured model. It never replaces malformed JSON with empty arguments
-or executes a tool envelope printed as ordinary text. Rejected streamed text is cleared before each retry, including
-a retry on the same model. If every model returns invalid output, the turn fails visibly.
+Malformed or non-object tool arguments from a completed model response are rejected before execution and returned to
+that model as a tool error so it can correct them. APX does not retry or fall back just because completed arguments
+are invalid. When that history is sent to a provider, malformed arguments are projected as `{}` only to satisfy the
+provider's tool-call format; the paired tool error remains explicit, and the stored transcript is unchanged.
+
+If a response ends with the `length` finish reason and contains tool calls, APX discards the whole response and
+executes none of those calls, even when their JSON parses. It retries from the last complete history at most twice,
+asking the model to use smaller arguments or explain what remains. If the calls are still cut off, tools are disabled
+for the final summary. A batch with duplicate tool-call IDs is also discarded and retried without executing any of
+its calls. If a stream ends without an explicit tool-call finish, APX retries within its normal bounded retry policy,
+then tries the next configured model, even if the arguments look complete. It never executes a tool envelope printed
+as ordinary text.
+Rejected streamed text is cleared before each retry, including a retry on the same model.
 Valid JSON that does not match a tool's schema still returns a validation error to the model so it can correct it.
+
+Older history with duplicate tool-call IDs is sent as untrusted text with a warning that its recorded results cannot
+be matched reliably; the stored transcript remains unchanged. Verify any side effects before retrying those calls.
 
 When tools are disabled for a final summary, earlier calls and results are sent as quoted, untrusted text instead of
 structured tool blocks. This avoids gateways rejecting a request that has tool history but no tool definitions;
@@ -92,6 +104,13 @@ the stored transcript is unchanged. No tools are executed in that final summary.
 
 A fallback notice means another model answered, not that a requested file was saved. Check the tool cards and the
 actual artifact before treating the work as delivered.
+
+## A client cannot change an agent's limits
+
+The core refuses an older client's implicit limit replacement when a model-call cap exists or its request contains a
+`steps` field. This prevents a stale copy from silently erasing or restoring that cap. Reload or update the client.
+Direct protocol clients must send `merge: true` to update only the supplied fields, or `merge: false` to replace or
+clear the agent's limits.
 
 ## The port is already in use
 

@@ -364,7 +364,7 @@ export async function runTurn(deps: TurnDeps, start: RunRecord, signal: AbortSig
     history,
     input,
     tools: tools.map(toSpec),
-    steps: stepsFor(store, run),
+    ...stepsFor(store, run),
     models: [],
     signal,
     sessionId: undefined,

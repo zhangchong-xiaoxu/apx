@@ -72,15 +72,81 @@ test("the owner gives an agent a budget of its own, takes it back with null, and
   await env.client.call("agents.set_limits", { runs: 10, tokens: 0 });
   const limits = await env.client.call("agents.limits", {});
   assert.deepEqual([limits.runs, limits.agents], [10, { scout: { runs: 3 } }]);
+  assert.deepEqual(
+    await env.client.call("agents.set_agent_limits", { agent: "scout", limits: { steps: 25 }, merge: false }),
+    { agents: { scout: { steps: 25 } } },
+  );
+  assert.deepEqual((await env.client.call("agents.limits", {})).agents, { scout: { steps: 25 } });
+  await assert.rejects(
+    env.client.call("agents.set_agent_limits", { agent: "scout", limits: { steps: 151 }, merge: true }),
+  );
   // 0 in every field is no budget of its own, like null.
-  assert.deepEqual(await env.client.call("agents.set_agent_limits", { agent: "scout", limits: { runs: 0 } }), {
-    agents: {},
-  });
+  assert.deepEqual(
+    await env.client.call("agents.set_agent_limits", { agent: "scout", limits: { runs: 0 }, merge: false }),
+    { agents: {} },
+  );
+  assert.deepEqual(
+    await env.client.call("agents.set_agent_limits", { agent: "scout", limits: { steps: 0 }, merge: false }),
+    { agents: {} },
+  );
   await env.client.call("agents.set_agent_limits", { agent: "scout", limits: { tokens: 5000 } });
   assert.deepEqual(await env.client.call("agents.set_agent_limits", { agent: "scout", limits: null }), {
     agents: {},
   });
   env.core.store.settings.write("agent_limits", {});
+});
+
+test("partial agent limit updates preserve other fields while an ordinary set replaces them", async () => {
+  await env.client.call("agents.set_agent_limits", { agent: "scout", limits: { runs: 5, tokens: 100_000 } });
+  try {
+    await Promise.all([
+      env.client.call("agents.set_agent_limits", { agent: "scout", limits: { steps: 25 }, merge: true }),
+      env.client.call("agents.set_agent_limits", { agent: "scout", limits: { runs: 6 }, merge: true }),
+    ]);
+    assert.deepEqual((await env.client.call("agents.limits", {})).agents.scout, {
+      runs: 6,
+      tokens: 100_000,
+      steps: 25,
+    });
+    await env.client.call("agents.set_agent_limits", { agent: "scout", limits: { steps: 0 }, merge: true });
+    assert.deepEqual((await env.client.call("agents.limits", {})).agents.scout, {
+      runs: 6,
+      tokens: 100_000,
+      steps: 0,
+    });
+    await env.client.call("agents.set_agent_limits", { agent: "scout", limits: { steps: 10 }, merge: false });
+    assert.deepEqual((await env.client.call("agents.limits", {})).agents.scout, { steps: 10 });
+  } finally {
+    await env.client.call("agents.set_agent_limits", { agent: "scout", limits: null, merge: false });
+  }
+});
+
+test("an older client cannot silently erase or restore a stale model-call limit", async () => {
+  await env.client.call("agents.set_agent_limits", { agent: "scout", limits: { runs: 5, steps: 25 }, merge: false });
+  try {
+    await assert.rejects(
+      env.client.call("agents.set_agent_limits", { agent: "scout", limits: null }),
+      /reload|update/i,
+    );
+    await assert.rejects(
+      env.client.call("agents.set_agent_limits", { agent: "scout", limits: { runs: 2 } }),
+      /reload|update/i,
+    );
+    await assert.rejects(
+      env.client.call("agents.set_agent_limits", { agent: "scout", limits: { runs: 2, steps: 0 } }),
+      /reload|update/i,
+    );
+    assert.deepEqual((await env.client.call("agents.limits", {})).agents.scout, { runs: 5, steps: 25 });
+    await env.client.call("agents.set_agent_limits", { agent: "scout", limits: null, merge: false });
+    assert.equal((await env.client.call("agents.limits", {})).agents.scout, undefined);
+    await assert.rejects(
+      env.client.call("agents.set_agent_limits", { agent: "scout", limits: { runs: 2, steps: 25 } }),
+      /reload|update/i,
+    );
+    assert.equal((await env.client.call("agents.limits", {})).agents.scout, undefined);
+  } finally {
+    await env.client.call("agents.set_agent_limits", { agent: "scout", limits: null, merge: false });
+  }
 });
 
 test("an agent past its own budget is refused while the chain goes on, and another agent takes the work", async () => {

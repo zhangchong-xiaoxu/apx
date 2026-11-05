@@ -30,10 +30,43 @@ test("agents: an archived agent comes back once the owner approves, and a declin
 test("agents: one agent's own limits wait for the owner", async () => {
   const limits = { method: "agents.set_agent_limits", params: { agent: "acme-writer", limits: { runs: 5 } } };
   const { detail } = await h.ask(limits, "approve");
-  assert.match(detail, /^Change how far Acme writer may go on its own\nlimits\.runs: \(none\) → 5$/);
+  assert.match(detail, /^Change the limits for Acme writer\nlimits\.runs: \(none\) → 5$/);
   assert.deepEqual((await h.env.client.call("agents.limits", {})).agents["acme-writer"], { runs: 5 });
+  const merged = await h.ask(
+    { ...limits, params: { agent: "acme-writer", limits: { steps: 25 }, merge: true } },
+    "approve",
+  );
+  assert.match(merged.detail, /^Change the limits for Acme writer\nlimits\.steps: \(none\) → 25$/);
+  assert.deepEqual((await h.env.client.call("agents.limits", {})).agents["acme-writer"], { runs: 5, steps: 25 });
   await h.ask({ ...limits, params: { agent: "acme-writer", limits: null } }, "deny");
-  assert.deepEqual((await h.env.client.call("agents.limits", {})).agents["acme-writer"], { runs: 5 });
+  assert.deepEqual((await h.env.client.call("agents.limits", {})).agents["acme-writer"], { runs: 5, steps: 25 });
+});
+
+test("agents: confirmation shows limits removed by a replacement", async () => {
+  await h.env.client.call("agents.set_agent_limits", {
+    agent: "acme-writer",
+    limits: { runs: 5, tokens: 100_000, steps: 25 },
+    merge: false,
+  });
+  const partial = await h.ask(
+    { method: "agents.set_agent_limits", params: { agent: "acme-writer", limits: { steps: 20 } } },
+    "approve",
+  );
+  assert.match(partial.detail, /limits\.steps: 25 → 20/);
+  assert.doesNotMatch(partial.detail, /limits\.runs|limits\.tokens/);
+  assert.deepEqual((await h.env.client.call("agents.limits", {})).agents["acme-writer"], {
+    runs: 5,
+    tokens: 100_000,
+    steps: 20,
+  });
+  const { detail } = await h.ask(
+    { method: "agents.set_agent_limits", params: { agent: "acme-writer", limits: { steps: 10 }, merge: false } },
+    "approve",
+  );
+  assert.match(detail, /limits\.runs: 5 → \(none\)/);
+  assert.match(detail, /limits\.tokens: 100000 → \(none\)/);
+  assert.match(detail, /limits\.steps: 20 → 10/);
+  assert.deepEqual((await h.env.client.call("agents.limits", {})).agents["acme-writer"], { steps: 10 });
 });
 
 test("routines: deleting one waits for the owner", async () => {

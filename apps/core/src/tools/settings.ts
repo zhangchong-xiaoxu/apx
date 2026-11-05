@@ -142,10 +142,11 @@ export function settingsTools(
     const s = SETTINGS[a.method ?? ""];
     const p = filled(a);
     const now = s?.now?.(p, deps);
+    const preview = s?.preview?.(p, deps) ?? p;
     const words = Object.fromEntries(Object.entries(s?.words ?? {}).map(([k, w]) => [k, (v: unknown) => w(v, deps)]));
     return {
       says: s?.says?.(p, deps) ?? a.method,
-      lines: changedFields(now, p, "", s?.named, words, s?.whole),
+      lines: changedFields(now, preview, "", s?.named, words, s?.whole),
       known: !!now,
     };
   };

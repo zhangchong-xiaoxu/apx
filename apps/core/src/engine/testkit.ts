@@ -37,6 +37,7 @@ export function scriptedLlm(script: Script): Llm & { calls: LlmRequest[] } {
     calls,
     label: () => "fake/fake-1",
     async complete(req) {
+      req.beforeModelCall?.(req.models, []);
       calls.push({ ...req, messages: [...req.messages] });
       const system = String(req.messages[0]?.content ?? "");
       // What was said in the last user item, without the per-turn context header (time, roster). APX's own notes

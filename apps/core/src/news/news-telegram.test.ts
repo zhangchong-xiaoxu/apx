@@ -38,7 +38,7 @@ test("news reach the owner's channel with buttons; a press asks the super-agent 
   env.core.store.settings.set("google_account:google-calendar", "owner@example.com");
   env.core.store.settings.set(
     "news_seen",
-    JSON.stringify(["more-channels", "teams-line", "super-agent-settings", "owner-check"]),
+    JSON.stringify(["more-channels", "teams-line", "super-agent-settings", "owner-check", "agent-run-step-budgets"]),
   );
   const { entries } = await env.client.call("system.news", {});
   const kit = entries.find((e) => e.id === "artifacts-kit");

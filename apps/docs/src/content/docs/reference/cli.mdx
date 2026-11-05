@@ -134,7 +134,7 @@ Two tasks are open in Acme Store: the spring catalog (in progress, Lucía) and t
 | `apx agents new <slug> "<Name>"` | A new agent; `--project <id>` puts it in a project (written to `.apc/agents/<slug>.md`), `--role "<role>"` sets its role. |
 | `apx agents set <agent> key=value…` | Change any field the agent editor has (an unknown one lists them all). Lists as `tools=web_search,shell` (`tools=` is all of them), `orchestrator=true`, `rules='{"write":"ask"}'`; `autonomy=` or `rules=` go back to the default. |
 | `apx agents set <agent> --prompt-file <file>` | Replace its prompt from a file (`-` reads stdin). |
-| `apx agents limits [<agent> runs=… tokens=… \| <agent> clear \| default runs=… tokens=…]` | How far agents go without you in one chat: the default, and an agent's own budget (`0` = no limit). |
+| `apx agents limits [<agent> runs=… tokens=… steps=… \| <agent> clear \| default runs=… tokens=…]` | How far agents go without you in one chat, plus an optional per-agent cap on native model calls per run (`steps=1-150`). Retries, fallback and the final report count; a routine may stop sooner. Unspecified fields keep their values; `0` disables that field. |
 | `apx agents clone <agent…>` | Copy agents into a project (`--project <id>`); `--rename` gives each a free name, `--under <slug>` sets the parent. |
 | `apx agents archive <agent>` | Archive an agent (a project agent's file moves to `.apc/agents/.archived/`). |
 | `apx agents archived` | Archived agents; `apx agents restore <agent>` brings one back. |
@@ -147,6 +147,11 @@ Two tasks are open in Acme Store: the spring catalog (in progress, Lucía) and t
 | `apx projects rm <project>` | Forget it in APX; its folder and files are never deleted. |
 | `apx init [folder]` | Make a folder (this one by default) an APC project and register it; writes only what is missing (`AGENTS.md`, `.apc/`). |
 | `apx projects sync [project]` | Read the project files again. |
+
+The per-run model-call cap applies to the native agent loop, not separate helper calls or external SDK harnesses,
+and does not cap the tokens in an individual request. If an older panel or terminal tries to replace an agent's
+limits while that cap is set, APX rejects the update rather than silently removing the cap. Reload the panel or update
+the terminal before changing those limits.
 
 ## Models and usage
 

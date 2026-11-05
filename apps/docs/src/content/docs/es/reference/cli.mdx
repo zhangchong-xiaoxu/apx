@@ -133,7 +133,7 @@ Hay dos tareas abiertas en Acme Store: el catálogo de primavera (en curso, Luc�
 | `apx agents new <slug> "<Name>"` | Un agente nuevo; `--project <id>` lo pone en un proyecto (se escribe en `.apc/agents/<slug>.md`), `--role "<role>"` le da un rol. |
 | `apx agents set <agent> key=value…` | Cambia cualquier campo del editor de agentes (uno desconocido los lista todos). Listas como `tools=web_search,shell` (`tools=` es todas), `orchestrator=true`, `rules='{"write":"ask"}'`; `autonomy=` o `rules=` vuelven al valor por defecto. |
 | `apx agents set <agent> --prompt-file <file>` | Reemplaza su prompt desde un archivo (`-` lee stdin). |
-| `apx agents limits [<agent> runs=… tokens=… \| <agent> clear \| default runs=… tokens=…]` | Hasta dónde avanzan los agentes sin vos en un chat: el valor por defecto y el presupuesto propio de un agente (`0` = sin límite). |
+| `apx agents limits [<agent> runs=… tokens=… steps=… \| <agent> clear \| default runs=… tokens=…]` | Hasta dónde avanzan los agentes sin vos en un chat, más un límite opcional por agente para las llamadas al modelo nativo por ejecución (`steps=1-150`). Cuentan los reintentos, los modelos alternativos y el informe final; una rutina puede parar antes. Los campos no indicados conservan su valor; `0` desactiva ese campo. |
 | `apx agents clone <agent…>` | Copia agentes a un proyecto (`--project <id>`); `--rename` le da a cada uno un nombre libre, `--under <slug>` fija el padre. |
 | `apx agents archive <agent>` | Archiva un agente (el archivo de un agente de proyecto pasa a `.apc/agents/.archived/`). |
 | `apx agents archived` | Agentes archivados; `apx agents restore <agent>` trae uno de vuelta. |
@@ -146,6 +146,11 @@ Hay dos tareas abiertas en Acme Store: el catálogo de primavera (en curso, Luc�
 | `apx projects rm <project>` | Lo olvida en APX; su carpeta y sus archivos nunca se borran. |
 | `apx init [folder]` | Convierte una carpeta (esta por defecto) en un proyecto APC y la registra; solo escribe lo que falta (`AGENTS.md`, `.apc/`). |
 | `apx projects sync [project]` | Vuelve a leer los archivos del proyecto. |
+
+El límite de llamadas por ejecución se aplica al ciclo nativo del agente, no a llamadas auxiliares separadas ni a
+harnesses de SDK externos, y no limita los tokens de un pedido individual. Si un panel o terminal anterior intenta
+reemplazar los límites de un agente que tiene ese límite de llamadas, APX rechaza el cambio en vez de quitarlo sin
+aviso. Recargá el panel o actualizá el terminal antes de cambiar esos límites.
 
 ## Modelos y consumo
 

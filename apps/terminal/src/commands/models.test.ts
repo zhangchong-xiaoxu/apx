@@ -100,23 +100,42 @@ test("agents set types each field from the protocol: lists, booleans, JSON, enum
 test("agents limits shows the default and each agent's own, sets one, clears it, and sets the default", async () => {
   const { client, calls } = recordingClient({
     "agents.limits": { runs: 20, tokens: 0, defaults: { runs: 20, tokens: 0 }, agents: { april: { runs: 5 } } },
-    "agents.set_agent_limits": { agents: { april: { runs: 8, tokens: 200000 } } },
+    "agents.set_agent_limits": { agents: { april: { runs: 8, tokens: 200000, steps: 25 } } },
     "agents.set_limits": { runs: 30, tokens: 0 },
   });
   assert.match(await printed(() => agentLimits(client, [])), /^Default: 20 turns\napril: 5 turns/);
   assert.match(
-    await printed(() => agentLimits(client, ["april", "runs=8", "tokens=200000"])),
-    /april: 8 turns · 200000 tokens/,
+    await printed(() => agentLimits(client, ["april", "runs=8", "tokens=200000", "steps=25"])),
+    /april: 8 turns · 200000 tokens · 25 model calls\/run/,
   );
   await printed(() => agentLimits(client, ["april", "clear"]));
   assert.match(await printed(() => agentLimits(client, ["default", "runs=30"])), /Default: 30 turns/);
   assert.deepEqual(
     calls.filter(([m]) => m !== "agents.limits"),
     [
-      ["agents.set_agent_limits", { agent: "april", limits: { runs: 8, tokens: 200000 } }],
-      ["agents.set_agent_limits", { agent: "april", limits: null }],
+      ["agents.set_agent_limits", { agent: "april", limits: { runs: 8, tokens: 200000, steps: 25 }, merge: true }],
+      ["agents.set_agent_limits", { agent: "april", limits: null, merge: false }],
       ["agents.set_limits", { runs: 30, tokens: 0 }],
     ],
   );
   await assert.rejects(() => agentLimits(client, ["april", "runs=-1"]), /whole number/);
+  await assert.rejects(() => agentLimits(client, ["default", "steps=25"]), /usage:/);
+});
+
+test("changing an agent's model-step cap keeps its existing turn and token limits", async () => {
+  const { client, calls } = recordingClient({
+    "agents.limits": {
+      runs: 20,
+      tokens: 0,
+      defaults: { runs: 20, tokens: 0 },
+      agents: { april: { runs: 5, tokens: 100_000 } },
+    },
+    "agents.set_agent_limits": { agents: { april: { runs: 5, tokens: 100_000, steps: 25 } } },
+  });
+  await printed(() => agentLimits(client, ["april", "steps=25"]));
+  await printed(() => agentLimits(client, ["april", "steps=0"]));
+  assert.deepEqual(calls, [
+    ["agents.set_agent_limits", { agent: "april", limits: { steps: 25 }, merge: true }],
+    ["agents.set_agent_limits", { agent: "april", limits: { steps: 0 }, merge: true }],
+  ]);
 });
