@@ -2,7 +2,8 @@ module.exports = {
   preset: "jest-expo",
   // Shared protocol sources live outside this independently installed Expo project.
   modulePaths: ["<rootDir>/node_modules"],
-  testMatch: ["<rootDir>/test/**/*.test.tsx"],
+  // Jest treats the separator before a dotted Windows directory as a glob escape.
+  testMatch: [`${__dirname.replaceAll("\\", "/")}/test/**/*.test.tsx`],
   setupFilesAfterEnv: ["<rootDir>/test/native.test-support.ts"],
   clearMocks: true,
   restoreMocks: true,
