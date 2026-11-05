@@ -8,6 +8,9 @@
 New here or reviewing? Read [`rules/HUMAN_MODEL.md`](rules/HUMAN_MODEL.md) first, then
 [`rules/GUARDRAILS_PROFILE.md`](rules/GUARDRAILS_PROFILE.md) for which rules are enforced by a gate.
 
+Current cross-session status and the next verified step: [`docs/PROGRESS.md`](docs/PROGRESS.md).
+The repository documentation map and decision index are in [`docs/README.md`](docs/README.md).
+
 ## Glossary
 
 | Term | Means here | Not to be confused with |
