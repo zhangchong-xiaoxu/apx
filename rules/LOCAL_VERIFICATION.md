@@ -60,8 +60,9 @@ Run the cheapest rung that can catch the mistake you just made; climb only when 
 
 ## Failures that belong to the environment
 
-Classify before changing code ([rule 26](../AGENTS.md#project-rules)). These are known to come from the machine, not
-from the change; rerun the file alone, record it, and do not fix the product for them:
+Classify before changing code ([rule 26](../AGENTS.md#project-rules)), then count it in
+[FAILURE_LEDGER.md](FAILURE_LEDGER.md): a second occurrence is fixed, not rerun. These are known to come from the
+machine, not from the change; rerun the file alone, record it, and do not fix the product for them:
 
 - `fetch failed` with `bad port` in a test that listens on port 0: the system gave out a port that `fetch` refuses
   (6566, 6665–6669, 10080…). It happens only when the TCP dynamic port range starts below them; on Windows

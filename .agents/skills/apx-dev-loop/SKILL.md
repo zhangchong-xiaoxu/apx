@@ -1,6 +1,6 @@
 ---
 name: apx-dev-loop
-description: Developing, verifying and shipping a change in this repository — scoping the task, starting from a fresh base, choosing which tests, preflight or verify step to run and when, running the long suite without wasting time, deciding whether a failing gate is yours, and the branch CI, merge, tag and update steps after it.
+description: Developing, verifying and shipping a change in this repository — scoping the task, starting from a fresh base, choosing which tests, preflight or verify step to run and when, running the long suite without wasting time, deciding whether a failing gate is yours and recording it in the failure ledger when it is not, and the branch CI, merge, tag and update steps after it.
 ---
 
 # Development and verification loop
@@ -23,6 +23,8 @@ routes to it.
 4. Before pushing, run `pnpm check:commits <base>..HEAD`, then rung 2 once, in the background, and use the wait for
    the diff review. Done when every part is green or each failure is classified as product, test or environment.
 5. After pushing the branch, run rung 4 on it. Done when the branch run is green; a red part is fixed from its log at
-   its own rung, not by rerunning the whole local suite.
+   its own rung, not by rerunning the whole local suite. A failure that is not the change's gets a row in
+   [`rules/FAILURE_LEDGER.md`](../../../rules/FAILURE_LEDGER.md) before the rerun; its thresholds say when to stop
+   rerunning and fix it.
 6. Ship only with the owner's go-ahead, by `Shipping` there. Done when `apx status` reports the new version.
 7. Report what you ran, with its result, and what you did not run as `UNVERIFIED` (AGENTS.md, Workflow).

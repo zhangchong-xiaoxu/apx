@@ -3448,3 +3448,19 @@ small and isolated around source-specific seams; preserve the fork's installer/r
 telemetry choices, Chinese UI and fork-specific documentation. Keep the upstream remote's push URL set to `no_push`
 and fetch with `--no-tags` so upstream release tags cannot trigger fork releases. During each sync, review protocol
 and migrations as well as product features, and run the relevant gates before merging. See [FORK_SYNC.md](FORK_SYNC.md).
+
+## D-186 — 2026-11-05 — The fork verifies by ladder, merges on a green branch run, and counts failures that were not the change
+
+One small fix took a whole day: the full local suite ran at least six times, mostly for reasons outside the change (an
+older Node on the path, a test runner that skipped dotted folders, a port the machine handed out that `fetch` refuses,
+two specs leaking state into later ones), and CI then failed twice on runner timing.
+
+- **Push needs the static gate and the focused tests, not the full local suite.** `pnpm preflight:static` plus the
+  tests of every changed surface and its callers before a commit; the unit suite in parts runs at most once locally.
+  The branch's own `verify` run (`gh workflow run verify.yml --ref <branch>`) is the gate for merging into `master`,
+  and `release:check` still tags only a verified `master` commit. Nothing is removed from CI. See
+  [LOCAL_VERIFICATION.md](LOCAL_VERIFICATION.md).
+- **`scripts/verify.ts` refuses an older Node** than `engines.node` before the first step.
+- **Failures that were not the change are written down** in [FAILURE_LEDGER.md](FAILURE_LEDGER.md), with thresholds
+  that turn a second occurrence into a fix and a thrice-missed budget into a measurement. D-145's flaky reporting stays;
+  the ledger keeps the count across runs and machines that annotations do not.

@@ -32,7 +32,7 @@ pnpm app                                   # build panel + desktop, start the co
 pnpm dev                                   # core only, on 127.0.0.1:7440, home ~/.apx/v2 (override APX_HOME/APX_PORT)
 node apps/terminal/src/main.ts status      # is the core up, and is it running my code? (code_sha)
 pnpm --filter @apx/web dev                 # panel on :7441, proxies /rpc, /ws, /health to the core
-pnpm preflight                             # check:private + check:schema + lint + typecheck + test — must be green before push
+pnpm preflight                             # check:private + check:schema + lint + typecheck + test — the full local run; push needs less (D-186)
 pnpm verify                                # preflight + e2e (web, desktop) + perf budgets — what CI runs; green before merge
 pnpm package                               # this OS's installer + daemon bundle in out/ (CI: push a v2.x.y tag)
 pnpm package:linux                         # …or another OS's (also :mac, :win), built from this computer
@@ -213,6 +213,7 @@ expected `code_sha`) and the changed path is exercised for real; anything not ex
 | Why something is the way it is | [`rules/DECISIONS.md`](rules/DECISIONS.md), [`rules/HISTORY.md`](rules/HISTORY.md) |
 | How to verify | [`rules/TESTING.md`](rules/TESTING.md) |
 | Which check to run when, while developing | [`rules/LOCAL_VERIFICATION.md`](rules/LOCAL_VERIFICATION.md) |
+| A gate failed and it is not your change | [`rules/FAILURE_LEDGER.md`](rules/FAILURE_LEDGER.md) |
 | Fixing a bug or repairing a failing test | [`rules/TESTING.md#fix-regression-contract`](rules/TESTING.md#fix-regression-contract) |
 | Adding to the prompt or a tool | [`rules/PROMPT_SIZE.md`](rules/PROMPT_SIZE.md) |
 | Adding periodic work (polling, reminders, a job on a timer) | [`rules/DECISIONS.md#d-171`](rules/DECISIONS.md#d-171): a background check set where it lives, not a routine |
