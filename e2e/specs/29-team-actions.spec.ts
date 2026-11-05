@@ -3,8 +3,33 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { isDeepStrictEqual } from "node:util";
 import { AGENT_NAMES } from "../../packages/protocol/src/constants.ts";
+import type { AgentBudget } from "../../packages/protocol/src/team-methods.ts";
 import { expect, open, rpc, test } from "./kit.ts";
+
+let budgetsBefore: Record<string, AgentBudget> | undefined;
+let reviewer: string | undefined;
+
+test.beforeEach(async () => {
+  budgetsBefore = undefined;
+  reviewer = undefined;
+  budgetsBefore = (await rpc<{ agents: Record<string, AgentBudget> }>("agents.limits")).agents;
+});
+
+test.afterEach(async () => {
+  if (!budgetsBefore) throw new Error("Cannot restore agent budgets without a baseline");
+  const current = (await rpc<{ agents: Record<string, AgentBudget> }>("agents.limits")).agents;
+  for (const agent of new Set([...Object.keys(budgetsBefore), ...Object.keys(current)])) {
+    if (!isDeepStrictEqual(budgetsBefore[agent], current[agent]))
+      await rpc("agents.set_agent_limits", { agent, limits: budgetsBefore[agent] ?? null, merge: false });
+  }
+  if (reviewer) {
+    await rpc("agents.archive", { agent: reviewer });
+    await rpc("agents.delete", { agent: reviewer });
+  }
+  expect((await rpc<{ agents: Record<string, AgentBudget> }>("agents.limits")).agents).toEqual(budgetsBefore);
+});
 
 test("a global agent is created from the team, edited and deleted from its right-click menu", async ({ page }) => {
   await rpc("setup.finish", {});
@@ -268,7 +293,8 @@ test("incomplete number inputs cannot silently clear an existing model-call cap"
 test("pending agent limit saves block duplicates and do not overwrite a different agent", async ({ page }) => {
   await rpc("setup.finish", {});
   await rpc("agents.set_agent_limits", { agent: "superagent", limits: null, merge: false });
-  await rpc("agents.create", { slug: "northwind-reviewer", name: "Northwind Reviewer" });
+  reviewer = (await rpc<{ id: string }>("agents.create", { slug: "northwind-reviewer", name: "Northwind Reviewer" }))
+    .id;
   await rpc("agents.set_agent_limits", { agent: "northwind-reviewer", limits: { steps: 7 }, merge: false });
   await open(page, "#project=~default&tab=team");
   await page.locator(".teamcanvas__node:has(.apx-agentnode.is-lead)").click({ button: "right" });
