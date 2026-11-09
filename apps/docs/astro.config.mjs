@@ -10,6 +10,8 @@ import { sitePath } from "./src/doc-routes.mjs";
 // front of them, so moving the site (e.g. under /apx/docs/) only changes these two values.
 const site = process.env.DOCS_SITE ?? "http://localhost:4400";
 const base = (process.env.DOCS_BASE ?? "/").replace(/\/?$/, "/");
+const ogImage = new URL(`${base}og.jpg`, site).href;
+const ogImageAlt = "Your own team of AI agents, on your machine.";
 
 /** A remark plugin: absolute links in Markdown and `href`s on components (LinkCard…) get the site's base. */
 function withBase() {
