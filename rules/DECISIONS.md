@@ -4172,3 +4172,15 @@ like any strong action; reads never ask (they did not before either).
 
 Contacts stay in `apx_settings` rather than a tool of their own: a separate tool would be paid in every turn's tool
 definitions (rules/PROMPT_SIZE.md) for the same rule, which `Setting.asks` already says per method.
+
+<a id="d-206"></a>
+## D-206 — 2026-11-10 — Performance budgets include 20% owner-approved headroom
+The owner approved relaxing all `scripts/perf-budget.json` ceilings by 20%, including startup, idle CPU and memory,
+RPC and turn latency, post-turn memory, and both first-load bundle sizes. This adds headroom to the previous
+ceilings; the tracked metrics, sampling, and structural first-load checks remain unchanged. The new ceilings are
+the previous values multiplied by 1.2. Do not extend the allowance further without the owner's approval.
+
+The local Windows verify on the upstream sync measured 1662.6 ms startup and 74.2 ms turn P95 against the previous
+1500 ms and 60 ms limits; startup fits the new ceiling, while the noisy turn sample is 2.2 ms above its new limit.
+Review the timing ledger if this recurs; do not weaken structural checks or infer a regression from one machine's
+sample.

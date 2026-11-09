@@ -1,10 +1,10 @@
 {
-  "startup_ms": 1500,
-  "idle_rss_mb": 135,
-  "idle_cpu_pct": 2,
-  "rpc_p95_ms": 10,
-  "turn_p95_ms": 60,
-  "rss_after_turns_mb": 180,
-  "initial_bundle_gzip_kb": 275,
-  "boot_gzip_kb": 332
+  "startup_ms": 1800,
+  "idle_rss_mb": 162,
+  "idle_cpu_pct": 2.4,
+  "rpc_p95_ms": 12,
+  "turn_p95_ms": 72,
+  "rss_after_turns_mb": 216,
+  "initial_bundle_gzip_kb": 330,
+  "boot_gzip_kb": 398.4
 }

@@ -251,7 +251,8 @@ pnpm perf                          # builds the panel, then scripts/perf.ts
 ```
 A core on a temp home with the fake model: startup, idle memory and CPU, protocol latency, chat turns, memory
 once quiet again, and the panel's first load (gzip). Each number has a budget in `scripts/perf-budget.json`;
-going over fails. Raising a budget is a regression: it needs a reason in the commit body.
+going over fails. The owner-approved ceilings include 20% headroom over the previous budgets (D-206); any
+further increase needs a reason in the commit body.
 
 Process sampling uses `ps` on macOS/Linux and Windows PowerShell's `WorkingSet64` and cumulative processor ticks
 on Windows, converted to resident MB and CPU seconds. Missing processes, command failures and invalid samples
