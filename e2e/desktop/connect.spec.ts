@@ -1,12 +1,12 @@
 // The first run asks how APX is used on this computer (server or client); the answer is kept.
 import fs from "node:fs";
 import net, { type AddressInfo } from "node:net";
-import os from "node:os";
 import path from "node:path";
 import { _electron, type ElectronApplication, expect, type Page, test } from "@playwright/test";
 import { testConfig } from "../../apps/core/src/config.ts";
+import { stopTree } from "../../apps/core/src/processes.ts";
 import { createCore } from "../../apps/core/src/server.ts";
-import { tempDir } from "../../apps/core/src/testkit/platform.ts";
+import { stopped, tempDir } from "../../apps/core/src/testkit/platform.ts";
 import { saveLocalTarget } from "../../packages/install/src/paths.ts";
 import { installFakeSsh } from "../fake-ssh.ts";
 import { rpc, world } from "../specs/kit.ts";
@@ -15,6 +15,7 @@ const root = path.resolve(import.meta.dirname, "../..");
 const core = `http://127.0.0.1:${process.env.E2E_PORT ?? 7460}`;
 let home: string;
 let coreHome: string;
+let homeDir: ReturnType<typeof tempDir> | undefined;
 
 const launch = (env: Record<string, string> = {}) =>
   _electron.launch({
@@ -83,10 +84,13 @@ async function windowAt(app: ElectronApplication, test: (url: string) => boolean
 
 test.beforeAll(async () => {
   coreHome = (await world.info()).home;
-  home = fs.mkdtempSync(path.join(os.tmpdir(), "apx-e2e-connect-"));
+  homeDir = tempDir("apx-e2e-connect-");
+  home = homeDir.path;
   fs.mkdirSync(path.join(home, "desktop"), { recursive: true });
 });
-test.afterAll(() => fs.rmSync(home, { recursive: true, force: true }));
+test.afterAll(async () => {
+  if (homeDir) await homeDir.remove();
+});
 
 test("desktop installed from the web reopens the same core without another connection setup", async () => {
   const dataDir = path.join(home, "installed-desktop");
@@ -312,7 +316,8 @@ test("a direct remote connection blocks unsupported updates through the real nat
 
 test("a server that only takes a password asks for it in the terminal view, then this app's key logs in and opens it", async () => {
   fs.rmSync(path.join(home, "desktop", "connection.json"), { force: true });
-  const state = fs.mkdtempSync(path.join(os.tmpdir(), "apx-e2e-ssh-"));
+  const stateDir = tempDir("apx-e2e-ssh-");
+  const state = stateDir.path;
   installFakeSsh(state, FAKE_SSH);
   const app = await launch({
     PATH: `${state}${path.delimiter}${process.env.PATH ?? ""}`,
@@ -361,14 +366,16 @@ test("a server that only takes a password asks for it in the terminal view, then
     for (const c of after) expect(c).toContain(`-i ${key}`);
     expect(calls.join("\n")).not.toContain("s3cret");
   } finally {
+    await app.evaluate(({ app }) => app.quit());
     await app.close();
-    fs.rmSync(state, { recursive: true, force: true });
+    await stateDir.remove();
     fs.rmSync(path.join(home, "desktop", "connection.json"), { force: true });
   }
 });
 
 test("an occupied SSH forwarding port never adopts the unrelated local core", async () => {
-  const state = fs.mkdtempSync(path.join(os.tmpdir(), "apx-e2e-ssh-busy-"));
+  const stateDir = tempDir("apx-e2e-ssh-busy-");
+  const state = stateDir.path;
   const dataDir = path.join(home, "ssh-busy-desktop");
   installFakeSsh(state, FAKE_SSH);
   fs.writeFileSync(path.join(state, "authorized"), "");
@@ -390,7 +397,7 @@ test("an occupied SSH forwarding port never adopts the unrelated local core", as
     expect(app.windows().some((p) => p.url().startsWith(core))).toBe(false);
   } finally {
     await app.close();
-    fs.rmSync(state, { recursive: true, force: true });
+    await stateDir.remove();
   }
 });
 
@@ -477,8 +484,23 @@ async function sshClient(name: string) {
       remote = undefined;
     },
     close: async () => {
-      await app?.close();
+      if (app) {
+        const electronProcess = app.process();
+        await app.evaluate(({ app }) => app.quit());
+        // The quit handlers stop the SSH link, but the Electron process can outlive will-quit on Windows.
+        try {
+          await stopped(electronProcess, 1000);
+        } catch (error) {
+          if (!(error instanceof Error && error.message === `process ${electronProcess.pid} did not exit`)) throw error;
+          if (!electronProcess.pid) throw new Error("The Electron process has no PID");
+          await stopTree(electronProcess.pid, { graceMs: 0 });
+        }
+      }
       await remote?.close();
+      remote = undefined;
+      if (app) {
+        await app.close();
+      }
       await temp.remove();
     },
   };

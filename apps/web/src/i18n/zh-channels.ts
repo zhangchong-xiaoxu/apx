@@ -36,4 +36,7 @@ export const zhChannels: Partial<Record<MessageKey, string>> = {
   "em.passwordFix": "请重新输入密码以完成连接。",
   "em.saved": "已保存，正在重新连接邮箱。",
   "em.remove": "移除此邮箱",
+  "ch.via.sent": "通过 {channel} 发送",
+  "ch.via.received": "通过 {channel} 收到",
+  "ch.via.otherApp": "其他聊天应用",
 };

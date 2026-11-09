@@ -40,7 +40,7 @@ import type { AdapterFactory } from "./channels/types.ts";
 import { whatsappAdapter } from "./channels/whatsapp.ts";
 import { type CoreConfig, OAUTH_CHATGPT } from "./config.ts";
 import { coreLogSink } from "./core-log.ts";
-import { openDb } from "./db/db.ts";
+import { openDb, storeSize } from "./db/db.ts";
 import { type DesktopOps, systemDesktop } from "./desktop.ts";
 import { signatureFor } from "./domain/email-signature-settings.ts";
 import { cleanUpCapturedNotes } from "./domain/memory-capture-cleanup.ts";
@@ -62,6 +62,7 @@ import { createPermissions } from "./engine/permissions.ts";
 import type { ProfileRoot } from "./engine/profiles.ts";
 import { createRoutineMail } from "./engine/routine-mail.ts";
 import { createSkillPicker } from "./engine/skill-pick.ts";
+import { compactBackupName, createRetention } from "./engine/store-retention.ts";
 import { createDrafter } from "./engine/suggest.ts";
 import { afterWorkTurn } from "./engine/task-work.ts";
 import { wakeAfterCommand } from "./engine/terminal-wake.ts";
@@ -96,15 +97,20 @@ import { catalogWindow, createCatalog } from "./models/catalog.ts";
 import { createNews } from "./news/news.ts";
 import { nodeChildEnv } from "./node-runtime.ts";
 import { createNodeBroker } from "./nodes/broker.ts";
+import { installChromeHost } from "./nodes/chrome-host.ts";
+import { openOwnersChrome } from "./nodes/chrome-launch.ts";
 import { createHeadlessBrowser } from "./nodes/headless-browser.ts";
+import { createWidgetPages } from "./nodes/widget-pages.ts";
 import { officeScheduler } from "./office-wiring.ts";
 import { createChatgptLogin } from "./providers/chatgpt-login.ts";
 import { createLlm, type Llm, NO_KEY, type SignIn } from "./providers/llm.ts";
+import { createLocalModels } from "./providers/local-models.ts";
 import { providerRegistry } from "./providers/registry.ts";
 import { createPublicCredentials } from "./public-credentials.ts";
 import { nativePublicRoutes, publishedPublicRoutes } from "./public-routes.ts";
 import { createPublicTunnel, type NgrokStart } from "./public-tunnel.ts";
 import { localReleases, type ReleaseSource } from "./release-notes.ts";
+import type { OwnersChrome } from "./rpc/browser.ts";
 import { useLocalEmbedder } from "./rpc/embeddings.ts";
 import { internalCaller } from "./rpc/internal.ts";
 import { createRouter, type Dispatch } from "./rpc/router.ts";
@@ -126,8 +132,11 @@ import { createModelInstaller } from "./services/local-whisper.ts";
 import { createPush } from "./services/push.ts";
 import { createServices } from "./services/registry.ts";
 import { mediaData } from "./services/uploads.ts";
+import { createSignIn } from "./sign-in.ts";
 import { syncRuntimeSkills } from "./skills/runtimes.ts";
 import { skillsFor } from "./skills/skills.ts";
+import { createStorage, type StorageOptions } from "./storage.ts";
+import { createStorageItems } from "./storage-items.ts";
 import { createTelemetry } from "./telemetry.ts";
 import { type TelemetrySink, telemetrySink } from "./telemetry-sink.ts";
 import { createTerminals } from "./terminal/terminals.ts";
@@ -179,6 +188,10 @@ export type CoreOptions = {
   /** The most a delegated run may work in all (tests shorten it). */
   a2aCapMs?: number;
   runTimers?: RunTimers;
+  /** How long answers of teammates asked together wait for each other is timed by these (tests). */
+  fanoutTimers?: RunTimers;
+  /** When a changed project folder is read again is timed by these (tests). */
+  projectWatchTimers?: RunTimers;
   /** Whether the Mac slept since a moment (tests decide); by default the core watches its own timers. */
   sleptSince?: (since: number) => boolean;
   /** How the core holds the Mac awake (tests count it); by default `caffeinate` on macOS. */
@@ -189,6 +202,8 @@ export type CoreOptions = {
   unseenAfterMs?: number;
   /** Finder and the trash; tests record the calls instead. */
   desktop?: DesktopOps;
+  /** How a turn gets the owner's Chrome when it is closed; tests pass their own instead of starting a browser. */
+  ownersChrome?: OwnersChrome;
   desktopInstaller?: DesktopInstaller;
   /** Messages on this Mac (by default only on macOS); tests pass their own, null for none. */
   imessage?: IMessageOps | null;
@@ -202,6 +217,8 @@ export type CoreOptions = {
   releases?: ReleaseSource;
   /** The Linux VM's memory and disk for system.usage; none until a VM is set up. */
   vmUsage?: UsageOptions["vm"];
+  /** The free and total bytes of the disk holding the home (tests stand in a full one). */
+  storageDisk?: StorageOptions["disk"];
   /** Reads a project folder at start (by default in a worker thread); tests hold one or answer it. */
   projectRead?: ReadProjectFiles;
 };
@@ -211,10 +228,19 @@ export async function createCore(config: CoreConfig, opts: CoreOptions = {}) {
   const identity = readIdentity(config.home);
   const db = openDb(config.home);
   const bus = createBus();
+  const storage = createStorage({
+    home: config.home,
+    onChange: () => bus.emit({ type: "storage.changed" }),
+    ...(opts.storageDisk ? { disk: opts.storageDisk } : {}),
+  });
   // The engine exists by the time a command ends.
   const terminals = createTerminals({ bus, commandEnded: (e) => wakeAfterCommand(store, engine.admit, e) });
   const store = createStore(db, bus);
+  // What the chats' history keeps is trimmed on the office clock and by `apx doctor --fix` (storage.compact).
+  const retention = createRetention({ store, db });
   const secrets = opts.secrets ?? createSecrets(config.home, config.secrets);
+  // Who may sign in where with a stored secret: shared by the agents' tool and the method it calls.
+  const signIn = createSignIn(secrets);
   seed(store, config.agentName);
   const releases =
     opts.releases ?? (config.whatsNew ? localReleases(path.resolve(import.meta.dirname, "../../..")) : undefined);
@@ -252,9 +278,16 @@ export async function createCore(config: CoreConfig, opts: CoreOptions = {}) {
         },
       })
     : undefined;
+  // A widget in edit mode runs in a page of that same browser, apart from its tabs.
+  const widgetPages = headless?.available() ? createWidgetPages(() => headless.pageCdp()) : undefined;
 
   let selfUrl = "";
-  const providers = providerRegistry(store, config.providers);
+  const localApps = createLocalModels({
+    store,
+    apps: config.localModels,
+    onChange: () => bus.emit({ type: "models.changed" }),
+  });
+  const providers = providerRegistry(store, config.providers, localApps);
   const chatgpt = createChatgptLogin({ secrets });
   const signIns = { [OAUTH_CHATGPT]: chatgpt };
   const llm =
@@ -287,7 +320,14 @@ export async function createCore(config: CoreConfig, opts: CoreOptions = {}) {
     }),
     ...(opts.harnesses ? { overrides: opts.harnesses } : {}),
   });
-  const catalog = createCatalog({ store, secrets, providers: providers.active, home: config.home, signIns });
+  const catalog = createCatalog({
+    store,
+    secrets,
+    providers: providers.active,
+    home: config.home,
+    signIns,
+    discover: localApps.discover,
+  });
   const engineIds = knownEngines(store, providers);
   // Live: an ACP agent or a provider added later is recognized without a restart.
   const projectReader = opts.projectRead ? undefined : createProjectReader();
@@ -298,6 +338,7 @@ export async function createCore(config: CoreConfig, opts: CoreOptions = {}) {
     engines: { has: (id) => engineIds.harness.has(id) || providers.has(id) },
     read: opts.projectRead ?? projectReader?.read,
     ...(opts.runTimers ? { timers: opts.runTimers } : {}),
+    ...(opts.projectWatchTimers ? { watchTimers: opts.projectWatchTimers } : {}),
   });
   // The port this core answers on: the configured one, or the one the OS gave (tests listen on 0).
   let listening = config.port || 7440;
@@ -323,10 +364,26 @@ export async function createCore(config: CoreConfig, opts: CoreOptions = {}) {
     fetch: opts.asanaFetch,
     offIn: (project) => !integrationsOff.takesGlobals(project) || integrationsOff.offIn(project).includes("asana"),
   });
-  const vm = createComputer(
-    store,
-    opts.computer && !opts.computer.managed ? opts.computer : managedVmConfig(store, config.home, opts.computer),
-  );
+  const vmConfig =
+    opts.computer && !opts.computer.managed ? opts.computer : managedVmConfig(store, config.home, opts.computer);
+  const vm = createComputer(store, vmConfig);
+  const vmLifecycle = vmConfig.lifecycle;
+  // The agents' computer and the backups, deleted one by one from Settings › Storage (storage-items.ts).
+  const storageItems = createStorageItems({
+    home: config.home,
+    changed: storage.changed,
+    ...(vmLifecycle
+      ? {
+          computer: {
+            limaHome: vmConfig.limaHome,
+            instance: vmConfig.instance,
+            phase: async () => (await vmLifecycle.status()).phase,
+            remove: () => vmLifecycle.remove(),
+            lastStop: () => store.settings.get("computer_last_stop"),
+          },
+        }
+      : {}),
+  });
   // A screen is held for one run: once the run is over, the screen is free for another agent.
   bus.on((e) => {
     if (e.type === "run.updated" && TERMINAL.has(e.run.state)) {
@@ -362,6 +419,7 @@ export async function createCore(config: CoreConfig, opts: CoreOptions = {}) {
     config.runtimeSkills.homes,
     { profiles: profileRoots, templates: templateRoots },
     vm,
+    signIn,
   );
   // Tools reach the core through the router like any client, as the agent (owner-only methods refuse them).
   // The router exists only after the engine, hence the late binding.
@@ -557,6 +615,8 @@ export async function createCore(config: CoreConfig, opts: CoreOptions = {}) {
     models: upkeep.voiceModels,
     notifyOwner: (body, threadId) => channels.notifyOwner(body, "notice", threadId),
     log,
+    hermesHome: config.hermes,
+    storeSize: () => storeSize(db),
   });
   const sleep = opts.sleptSince ? undefined : sleepWatch(opts.runTimers);
   const engine = createEngine({
@@ -582,6 +642,7 @@ export async function createCore(config: CoreConfig, opts: CoreOptions = {}) {
     ...(opts.turnIdleMs ? { turnIdleMs: opts.turnIdleMs } : {}),
     ...(opts.a2aCapMs ? { a2aCapMs: opts.a2aCapMs } : {}),
     ...(opts.runTimers ? { runTimers: opts.runTimers } : {}),
+    ...(opts.fanoutTimers ? { fanoutTimers: opts.fanoutTimers } : {}),
     mcpTools: mcp.toolsFor,
     mcpServers: mcp.serversFor,
     hasCap: (cap) => Boolean(broker.withCap(cap)) || (cap === BROWSER_CAP && Boolean(headless?.available())),
@@ -630,6 +691,9 @@ export async function createCore(config: CoreConfig, opts: CoreOptions = {}) {
     openHeld: () => channels.openHeld((a) => engine.admit(a)),
     flowTick: (at) => flows.tick(at),
     checks: (remind) => [
+      storage.check,
+      retention.check,
+      localApps.check,
       calendarReminders({
         store,
         source: {
@@ -716,6 +780,7 @@ export async function createCore(config: CoreConfig, opts: CoreOptions = {}) {
       identity,
       broker,
       headless,
+      widgetPages,
       bus,
       llmLabel: () => llm.label(),
       engine,
@@ -733,6 +798,7 @@ export async function createCore(config: CoreConfig, opts: CoreOptions = {}) {
       asana,
       providers,
       secrets,
+      signIn,
       chatgpt: { login: chatgpt, v1Home: config.v1.home },
       localModels,
       localEmbeds,
@@ -749,13 +815,26 @@ export async function createCore(config: CoreConfig, opts: CoreOptions = {}) {
       engines: engineIds,
       tools,
       desktop: opts.desktop ?? systemDesktop,
+      ownersChrome: opts.ownersChrome ?? { open: () => openOwnersChrome({ browsers: config.chromeHost }) },
       desktopInstaller,
       native: config.native,
       runtimeHomes: config.runtimeSkills.homes,
       updates,
       telemetry,
       news,
-      usage: createUsage({ home: config.home, vm: opts.vmUsage ?? (() => vm.monitored()) }),
+      usage: createUsage({ home: config.home, storage, vm: opts.vmUsage ?? (() => vm.monitored()) }),
+      storage: {
+        ...storage,
+        items: storageItems,
+        compact: async () => {
+          const backups = path.join(config.home, "backups");
+          fs.mkdirSync(backups, { recursive: true });
+          const free = (await storage.disk()).free_bytes;
+          const r = retention.compactNow(free, path.join(backups, compactBackupName(new Date())));
+          storage.changed();
+          return r;
+        },
+      },
       panel: () => panelEntry(servedPanel(config)),
       profileRoots,
       templateRoots,
@@ -775,6 +854,11 @@ export async function createCore(config: CoreConfig, opts: CoreOptions = {}) {
     useUsualDirs(config.supervised);
   } catch (err) {
     log.warn({ err: errorMessage(err) }, "apx command not written");
+  }
+  try {
+    installChromeHost({ home: config.home, port: listening, runner: thisRunner(), browsers: config.chromeHost });
+  } catch (err) {
+    log.warn({ err: errorMessage(err) }, "Chrome extension host not registered");
   }
   const url = transport.url;
   selfUrl = url;
@@ -843,6 +927,7 @@ export async function createCore(config: CoreConfig, opts: CoreOptions = {}) {
       telemetry.stop();
       chatgpt.stop();
       localModels.cancel();
+      await widgetPages?.closeAll().catch(() => {});
       headless?.close();
       scheduler.stop();
       stopFlowEvents();

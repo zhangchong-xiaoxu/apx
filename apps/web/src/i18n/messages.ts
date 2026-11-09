@@ -56,6 +56,11 @@ const PACKS = {
     es: () => import("./es-email-signatures.ts").then((m) => m.esEmailSignatures),
     zh: () => import("./zh-email-signatures.ts").then((m) => m.zhEmailSignatures),
   },
+  browserEdit: {
+    en: () => import("./browser-edit-en.ts").then((m) => m.enBrowserEdit),
+    es: () => import("./browser-edit-es.ts").then((m) => m.esBrowserEdit),
+    zh: () => import("./browser-edit-en.ts").then((m) => m.enBrowserEdit),
+  },
   computer: {
     en: () => import("./computer-en.ts").then((m) => m.enComputer),
     es: () => import("./computer-es.ts").then((m) => m.esComputer),
@@ -65,6 +70,21 @@ const PACKS = {
     en: () => import("./received-en.ts").then((m) => m.enReceived),
     es: () => import("./received-es.ts").then((m) => m.esReceived),
     zh: () => import("./zh-received.ts").then((m) => m.zhReceived),
+  },
+  move: {
+    en: () => import("./move-en.ts").then((m) => m.enMove),
+    es: () => import("./move-es.ts").then((m) => m.esMove),
+    zh: () => import("./move-en.ts").then((m) => m.enMove),
+  },
+  storage: {
+    en: () => import("./storage-en.ts").then((m) => m.enStorage),
+    es: () => import("./storage-es.ts").then((m) => m.esStorage),
+    zh: () => import("./storage-en.ts").then((m) => m.enStorage),
+  },
+  signIn: {
+    en: () => import("./signin-en.ts").then((m) => m.enSignIn),
+    es: () => import("./signin-es.ts").then((m) => m.esSignIn),
+    zh: () => import("./signin-en.ts").then((m) => m.enSignIn),
   },
   usage: {
     en: () => import("./sysusage-en.ts").then((m) => m.enSysUsage),

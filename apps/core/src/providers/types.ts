@@ -10,7 +10,7 @@ export type ToolCall = {
 };
 
 /** An image in a user item: a media reference in the log; `data` (base64) is filled in only for the call. */
-export type ChatImage = { media_id: string; mime: string; data?: string };
+type ChatImage = { media_id: string; mime: string; data?: string };
 
 export type ChatItem =
   | { role: "system"; content: string }
@@ -97,7 +97,7 @@ export function parseToolArguments(call: ToolCall): Record<string, unknown> {
   return args as Record<string, unknown>;
 }
 
-export function classifyHttp(status: number, body: string, headers?: Headers): ProviderError {
+function classifyHttp(status: number, body: string, headers?: Headers): ProviderError {
   const text = body.slice(0, 300);
   if (status === 401 || status === 403) return new ProviderError("auth", `HTTP ${status}: ${text}`);
   if (status === 404) return new ProviderError("model_gone", `HTTP 404: ${text}`);
@@ -187,10 +187,19 @@ export type TransportRequest = {
 export type Transport = (req: TransportRequest) => Promise<Completion>;
 
 /**
+
  * How long a stream may go quiet once it started. A gateway may hold back a tool call's arguments until the model
  * wrote them all (a LiteLLM gateway in front of Claude sent nothing for 70 s while it wrote a 6,000-character file).
  */
 const STREAM_IDLE_MS = 180_000;
+
+/**
+ * The request body as JSON with every string well-formed: text cut mid-emoji anywhere upstream (a page, a tool
+ * result, an old history item) would otherwise reach the provider as a lone surrogate, and some refuse the whole call.
+ */
+function wireJson(body: unknown): string {
+  return JSON.stringify(body, (_key, value: unknown) => (typeof value === "string" ? value.toWellFormed() : value));
+}
 
 /**
  * POST with a first-byte timeout that becomes an idle timer once bytes flow, so long streamed answers are not cut.
@@ -213,7 +222,7 @@ export async function post(
     const res = await req.fetchImpl(url, {
       method: "POST",
       headers: { "content-type": "application/json", ...headers },
-      body: JSON.stringify(body),
+      body: wireJson(body),
       signal: AbortSignal.any([req.signal, deadline.signal]),
     });
     if (!res.ok) {

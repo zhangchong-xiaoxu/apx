@@ -26,8 +26,7 @@
     "apps/core/src/tools/shell.test.ts": 3
   },
   "local-wait": {
-    "apps/desktop/src/main/core-process.test.ts": 1,
-    "scripts/bundle-update.test.ts": 1
+    "apps/desktop/src/main/core-process.test.ts": 1
   },
   "path-prefix": {
     "apps/web/src/project/files/FilesPane.tsx": 2
@@ -157,7 +156,6 @@
     "apps/terminal/src/commands/routines.test.ts": 1,
     "apps/terminal/src/commands/service.test.ts": 1,
     "e2e/desktop/app.spec.ts": 1,
-    "e2e/desktop/connect.spec.ts": 3,
     "e2e/install/onboarding.test.ts": 1,
     "e2e/specs/23-project-settings.spec.ts": 2,
     "e2e/specs/29-team-actions.spec.ts": 1,
@@ -218,7 +216,6 @@
     "apps/terminal/src/commands/routines.test.ts": 1,
     "apps/terminal/src/commands/service.test.ts": 1,
     "e2e/desktop/app.spec.ts": 1,
-    "e2e/desktop/connect.spec.ts": 3,
     "e2e/install/onboarding.test.ts": 1,
     "e2e/specs/38-run-command.spec.ts": 1,
     "e2e/specs/40-git.spec.ts": 1,

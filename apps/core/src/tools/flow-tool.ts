@@ -9,7 +9,7 @@ import { areaTool } from "./settings.ts";
 import type { Setting } from "./settings-kit.ts";
 import type { Tool } from "./types.ts";
 
-export const FLOW_TOOL = "apx_flow";
+const FLOW_TOOL = "apx_flow";
 
 /** What the super-agent may read and change in Flows and tables, by method. */
 export const FLOW_SETTINGS: Readonly<Record<string, Setting>> = { ...FLOWS, ...FLOW_PUBLISH, ...TABLES };
@@ -27,6 +27,8 @@ export function flowTools(store: Store): Tool[] {
         table: FLOW_SETTINGS,
         areas: AREA,
         looked: "Looked at the Flows",
+        // Turning a Flow on, running it and changing tables stay on the owner's card in every mode (DECISIONS.md#d-184).
+        asks: "card",
         elsewhere:
           "Drafts save freely and run nothing; publishing and running one by hand wait for the owner's OK. Tests and a Flow's address and key stay the owner's, in the Flows editor.",
       },

@@ -3,6 +3,7 @@ import { textLanguage } from "../domain/owner.ts";
 import type { Store } from "../domain/store.ts";
 import { stepsText } from "../tools/computer.ts";
 import { FLOW_SETTINGS } from "../tools/flow-tool.ts";
+import { planProgress } from "../tools/plan.ts";
 import { settingAct } from "../tools/settings.ts";
 import type { Tool } from "../tools/types.ts";
 
@@ -99,6 +100,7 @@ export const SPANISH_TITLES: Record<string, (a: Args) => string> = {
     return `Le pidió a ${str(worker?.name ?? a.agent ?? a.session)}`;
   },
   list_sessions: () => "Buscó sesiones",
+  start_session: (a) => `Abrió una sesión de ${str(a.engine)}`,
   stop_session: (a) => `Detuvo la sesión ${str(a.session)}`,
   browser_open: (a) => `Abrió ${host(a.url)}`,
   browser_snapshot: () => "Leyó la página",
@@ -108,6 +110,7 @@ export const SPANISH_TITLES: Record<string, (a: Args) => string> = {
   browser_type: (a) => `Escribió en ${str(a.ref)}`,
   browser_use_my_login: (a) => `Usó tu sesión en ${str(a.domain)}`,
   browser_handoff: (a) => `Te pidió: ${str(a.reason, 60)}`,
+  browser_sign_in: (a) => `Inició sesión con ${str(a.secret, 60)}`,
   message_contact: (a) => `Le escribió a ${str(a.to ?? "un contacto")}`,
   channel_post: (a) => (a.room ? `Publicó en #${str(a.room).replace(/^#/, "")}` : "Publicó en una sala"),
   open_document: (a) => `Abrió el documento ${a.title ? str(a.title) : file(a.path, "")}`,
@@ -139,7 +142,17 @@ export const SPANISH_TITLES: Record<string, (a: Args) => string> = {
   task_list: () => "Revisó las tareas",
   task_create: (a) => `Creó la tarea ${str(a.title, 60)}`,
   task_update: (a) => `Actualizó la tarea ${str(a.task)}`,
+  plan: (a) => {
+    const { done, count } = planProgress(a.steps);
+    return `Plan: ${done} de ${count} hechos`;
+  },
   task_comment: (a) => `Comentó en ${str(a.task)}`,
+  task_tidy: (a) =>
+    Array.isArray(a.remove) && a.remove.length
+      ? `Limpió ${a.remove.length} comentarios de ${str(a.task)}`
+      : a.task
+        ? `Leyó los comentarios de ${str(a.task)}`
+        : "Buscó tareas con muchos comentarios",
   task_close: (a) => `Marcó ${str(a.task)} como ${TASK_STATE[str(a.state)] ?? str(a.state)}`,
   commitment_settle: (a) => `Marcó ${str(a.task)} como ${TASK_STATE[str(a.outcome)] ?? str(a.outcome)}`,
   send_file: (a) => `Adjuntó ${file(a.path, "un archivo")}`,
@@ -235,6 +248,7 @@ export const CHINESE_TITLES: Record<string, (a: Args) => string> = {
     return `委派给了 ${str(worker?.name ?? a.agent ?? a.session)}`;
   },
   list_sessions: () => "查找了会话",
+  start_session: (a) => `启动了 ${str(a.engine)} 会话`,
   stop_session: (a) => `停止了会话 ${str(a.session)}`,
   browser_open: (a) => `打开了 ${host(a.url)}`,
   browser_navigate: (a) => `前往 ${host(a.url)}`,
@@ -245,6 +259,7 @@ export const CHINESE_TITLES: Record<string, (a: Args) => string> = {
   browser_type: (a) => `在 ${str(a.ref)} 中输入了内容`,
   browser_use_my_login: (a) => `使用了你在 ${str(a.domain)} 的登录状态`,
   browser_handoff: (a) => `请你处理：${str(a.reason, 60)}`,
+  browser_sign_in: (a) => `使用登录信息 ${str(a.secret, 60)} 登录`,
   message_contact: (a) => `给 ${str(a.to ?? "某个联系人")} 发了消息`,
   channel_post: (a) => (a.room ? `发布到 #${str(a.room).replace(/^#/, "")}` : "发布到某个房间"),
   open_document: (a) => `打开了文档 ${a.title ? str(a.title) : file(a.path, "")}`,
@@ -276,6 +291,16 @@ export const CHINESE_TITLES: Record<string, (a: Args) => string> = {
   task_list: () => "查看了任务",
   task_create: (a) => `创建了任务 ${str(a.title, 60)}`,
   task_update: (a) => `更新了任务 ${str(a.task)}`,
+  task_tidy: (a) =>
+    Array.isArray(a.remove) && a.remove.length
+      ? `清理了 ${a.remove.length} 条 ${str(a.task)} 中的评论`
+      : a.task
+        ? `读取了 ${str(a.task)} 的评论`
+        : "查找评论过多的任务",
+  plan: (a) => {
+    const { done, count } = planProgress(a.steps);
+    return `计划：完成了 ${done}/${count} 项`;
+  },
   task_comment: (a) => `评论了 ${str(a.task)}`,
   task_close: (a) => `将 ${str(a.task)} 标记为${ZH_TASK_STATE[str(a.state)] ?? str(a.state)}`,
   commitment_settle: (a) => `将 ${str(a.task)} 标记为${ZH_TASK_STATE[str(a.outcome)] ?? str(a.outcome)}`,

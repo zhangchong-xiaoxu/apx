@@ -4,6 +4,8 @@
 import { readTemplates, singlesOf } from "../apc/templates.ts";
 import { activeProfile, listProfiles, textIn } from "../engine/profiles.ts";
 import { computerApproval } from "../environments/computer.ts";
+import { hermesCard, hermesHome } from "../import/hermes-import.ts";
+import { readHermes } from "../import/hermes-read.ts";
 import { inlineName } from "./result.ts";
 import { agentName, ownersField, type Params, projectName, quoted, type Setting, str } from "./settings-kit.ts";
 
@@ -33,6 +35,7 @@ export const TEAM: Readonly<Record<string, Setting>> = {
   },
   "environments.permit": {
     does: "let an agent use the isolated computer for good, or take it away (agent, on)",
+    asks: "card",
     named: ["agent"],
     says: (p, { store }) =>
       p.on
@@ -78,11 +81,13 @@ export const TEAM: Readonly<Record<string, Setting>> = {
   },
   "agents.delete": {
     does: "delete an archived agent for good, with its notes (agent)",
+    asks: "card",
     named: ["agent"],
     says: (p, { store }) => `Delete for good the archived agent ${agentName(store, p.agent)} and its notes`,
   },
   "agents.set_agent_limits": {
     does: "an agent's unattended turns/tokens and native model calls per run, including retries (agent; partial limits merge by default, merge=false replaces, null clears)",
+    asks: "card",
     named: ["merge"],
     says: (p, { store }) => `Change the limits for ${agentName(store, p.agent)}`,
     now: (p, { store }) => ({
@@ -172,6 +177,7 @@ export const TEAM: Readonly<Record<string, Setting>> = {
   },
   "threads.update": {
     does: "rename, pin or archive a chat (thread, and only what changes: title, pinned, archived)",
+    asks: "untrusted",
     says: (p, { store }) => `Change the chat ${quoted(store.threads.get(str(p.thread))?.title ?? str(p.thread), 80)}`,
     refuse: (p, { store }) => {
       const t = store.threads.get(str(p.thread));
@@ -187,6 +193,13 @@ export const TEAM: Readonly<Record<string, Setting>> = {
     named: ["engine", "cwd"],
     says: (p) => `Bring the ${str(p.engine)} sessions of ${str(p.cwd)} into APX`,
   },
+  "hermes.import": {
+    does: "bring a Hermes home folder (path) into APX: agents, memory, skills, routines turned off, MCP servers; never secrets",
+    named: ["path"],
+    // Like mcp.set's card, it names every server it adds and what it runs (DECISIONS.md#d-143).
+    says: (p) => hermesCard(hermesHome(str(p.path))) ?? `Bring the Hermes setup in ${str(p.path)} into APX`,
+    refuse: (p) => (readHermes(hermesHome(str(p.path))) ? undefined : `no Hermes setup in ${hermesHome(str(p.path))}`),
+  },
   "sessions.adopt": {
     does: "hand an imported chat (thread) to another agent of its project (agent)",
     named: ["thread", "agent"],
@@ -195,6 +208,7 @@ export const TEAM: Readonly<Record<string, Setting>> = {
   },
   "sessions.digest": {
     does: "summarize an imported chat (thread) and keep the summary on it",
+    asks: "untrusted",
     named: ["thread"],
     says: (p, { store }) =>
       `Summarize the chat ${quoted(store.threads.get(str(p.thread))?.title ?? str(p.thread), 80)}`,

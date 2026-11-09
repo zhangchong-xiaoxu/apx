@@ -14,6 +14,7 @@ export {
   CALENDAR_LEAD,
   CHANNEL_DEFAULTS,
   CHECK_EVERY,
+  CHROME_VIA,
   DAILY_MEMORY_CALLS,
   DOCUMENT_MAX_BYTES,
   ErrorCode,
@@ -50,6 +51,8 @@ function clientDeadline(method: string, params: unknown, fallback: number): numb
   if (method === "engines.usage") return 35_000;
   if (method === "browser.handoff") return ((params as { timeout_s?: number })?.timeout_s ?? 300) * 1000 + 20_000;
   if (method === "browser.import_cookies") return 130_000;
+  // Opening a tab in the owner's Chrome may start Chrome first and wait for its extension (the server: about 30 s).
+  if (method === "browser.open" && (params as { chrome?: unknown })?.chrome === true) return 40_000;
   if (method === "mcp.call") return 180_000;
   if (method === "mcp.describe" || method === "mcp.tools" || method === "mcp.test" || method === "mcp.signIn")
     return 45_000;
@@ -76,11 +79,15 @@ function clientDeadline(method: string, params: unknown, fallback: number): numb
   // An artifact's fetch waits up to 30 s on the outside API; a bundle may carry a 50 MB database.
   if (method === "surfaces.fetch") return 45_000;
   if (method === "surfaces.export" || method === "surfaces.import") return 180_000;
+  // A 20 MB export over a slow link to a remote core; the server stops importing at 90 s.
+  if (method === "instance.preview_import" || method === "instance.import") return 150_000;
   // Indexing every note by meaning may take a while on a local model.
   if (method === "memory.reindex") return 10 * 60_000;
   // Listing reads every session's head; importing copies whole histories and their images.
   if (method === "sessions.projects") return 60_000;
   if (method === "sessions.import") return 5 * 60_000;
+  // A Hermes import copies its skills too (skills.import's budget).
+  if (method === "hermes.preview" || method === "hermes.import") return 90_000;
   // A long chat is read in stretches by the auxiliary model; the server stops taking notes at 8 min.
   if (method === "sessions.digest") return 11 * 60_000;
   // The owner's phone is asked again under each of a chat's addresses, then each file is downloaded (server: 150 s).
@@ -88,6 +95,8 @@ function clientDeadline(method: string, params: unknown, fallback: number): numb
   // The public address may wait 15 s for ngrok, or on three Tailscale commands of up to 5 s each.
   if (method === "webhooks.set") return 45_000;
   if (method === "access.set") return 30_000;
+  // Compacting a big store rewrites the whole database file once (the core blocks while it runs).
+  if (method === "storage.compact") return 30 * 60_000;
   if (method === "runs.wait") return ((params as { timeout_s?: number })?.timeout_s ?? 60) * 1000 + 10_000;
   return fallback;
 }

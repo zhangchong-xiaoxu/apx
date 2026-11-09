@@ -1,5 +1,6 @@
 // routine_list / routine_set: the owner's routines, read and changed by their agent ("change April's prompt", "run
-// the morning brief now"). A routine is standing work, so every change waits for the owner's OK (DECISIONS.md#d-059).
+// the morning brief now"). A routine is standing work, so every change waits for the owner's OK
+// (DECISIONS.md#d-059-routines).
 import type { Routine, Schedule } from "@apx/protocol";
 import { z } from "zod";
 import type { Store } from "../domain/store.ts";
@@ -89,6 +90,7 @@ export function routineTools(store: Store): Tool[] {
       effect: "local",
       confirm: "always",
       ownerSetting: (a) => a.pre_command !== undefined || a.post_command !== undefined,
+      keepsCard: (a) => (a.pre_command !== undefined || a.post_command !== undefined ? "card" : undefined),
       explain(a) {
         if (a.pre_command === undefined && a.post_command === undefined) return undefined;
         const found = a.routine ? find(store, a.routine) : undefined;

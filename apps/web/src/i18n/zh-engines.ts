@@ -3,10 +3,19 @@ import type { MessageKey } from "./en.ts";
 // UI strings, Simplified Chinese: models, providers, plans and external CLIs.
 export const zhEngines: Partial<Record<MessageKey, string>> = {
   "config.external": "外部会话",
+  "config.storage": "存储",
+  "config.move": "迁移或备份",
   "engines.leadModels":
     "智能体用来思考和工作的资源：你的 ChatGPT 套餐和各模型 API。Claude Code、Codex 等 CLI 在“外部会话”中。",
   "engineUsage.title": "AI 配额",
-  "engineUsage.quick": "{engine}：可用 {pct}% · {window}",
+  "engineUsage.remaining": "剩余 {pct}%",
+  "engineUsage.primary": "当前时段",
+  "engineUsage.secondary": "延长时段",
+  "engineUsage.fiveHours": "5 小时",
+  "engineUsage.weekly": "每周",
+  "engineUsage.window": "{minutes} 分钟时段",
+  "engineUsage.resetsIn": "{span} 后重置",
+  "engineUsage.resetsOn": "将于 {at} 重置",
   "providers.hide": "从列表中移除 {name}",
   "providers.modelsAuto": "自动",
   "plans.codex.kind": "ChatGPT 套餐",
@@ -51,4 +60,12 @@ export const zhEngines: Partial<Record<MessageKey, string>> = {
   "models.effortLevel.xhigh": "超高",
   "models.effortLevel.max": "最高",
   "models.effortLevel.ultra": "极致",
+  "models.withFallbacks.one": "{model} · 1 个备用模型",
+  "models.withFallbacks.other": "{model} · {n} 个备用模型",
+  "models.withFallbacksRouter.one": "{model} · 1 个备用模型 + 自动",
+  "models.withFallbacksRouter.other": "{model} · {n} 个备用模型 + 自动",
+  "models.noneConnected": "无模型",
+  "models.kind.local": "免费",
+  "models.local": "本地",
+  "models.localClosed": "打开 {app} 即可使用",
 };

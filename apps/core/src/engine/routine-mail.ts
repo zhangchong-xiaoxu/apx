@@ -145,7 +145,7 @@ async function deliver(o: MailOptions, ticket: Ticket, b: z.infer<typeof Binding
     o.store.settings.set(receiptKey, JSON.stringify({ state, digest }));
   const mail = composeMail({
     from: { address: b.config.from },
-    to: b.config.to,
+    to: [b.config.to],
     subject: content.subject,
     text: content.text,
     html: content.html,

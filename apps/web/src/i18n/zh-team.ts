@@ -293,4 +293,9 @@ export const zhTeam: Partial<Record<MessageKey, string>> = {
   "agentedit.create": "创建",
   "agentedit.limit": "限制",
   "team.menu.orchestrator": "编排者",
+  "agentedit.fallbacks": "备用模型",
+  "agentedit.fallbacksHint":
+    "如果它的模型达到用量限额或没有响应，智能体会按顺序尝试这些模型；原模型恢复后会切回原模型。",
+  "agentedit.addFallback": "添加备用模型",
+  "agentedit.removeFallback": "移除此备用模型",
 };

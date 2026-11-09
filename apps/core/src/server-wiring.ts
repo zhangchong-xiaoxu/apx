@@ -30,12 +30,13 @@ import type { Log } from "./log.ts";
 import { refProblem } from "./models/choice.ts";
 import type { NodeBroker } from "./nodes/broker.ts";
 import type { HeadlessBrowser } from "./nodes/headless-browser.ts";
+import type { WidgetPages } from "./nodes/widget-pages.ts";
 import { findProgram } from "./programs.ts";
 import { accessHandlers } from "./rpc/access.ts";
 import { agentHandlers } from "./rpc/agents.ts";
 import { appHandlers } from "./rpc/app.ts";
 import { asanaHandlers } from "./rpc/asana.ts";
-import { browserHandlers } from "./rpc/browser.ts";
+import { browserHandlers, type OwnersChrome } from "./rpc/browser.ts";
 import { channelHandlers } from "./rpc/channels.ts";
 import { clientHandlers } from "./rpc/clients.ts";
 import { composerHandlers } from "./rpc/composer.ts";
@@ -50,9 +51,12 @@ import { extensionHandlers } from "./rpc/extensions.ts";
 import { fileHandlers } from "./rpc/files.ts";
 import { flowHandlers } from "./rpc/flows.ts";
 import { gitHandlers } from "./rpc/git.ts";
+import { hermesHandlers } from "./rpc/hermes.ts";
+import { instanceHandlers } from "./rpc/instance.ts";
 import { integrationHandlers } from "./rpc/integrations.ts";
 import type { InternalCall } from "./rpc/internal.ts";
 import { jobHandlers } from "./rpc/jobs.ts";
+import { mailHandlers } from "./rpc/mail.ts";
 import { mcpHandlers } from "./rpc/mcp.ts";
 import { mediaHandlers } from "./rpc/media.ts";
 import { memoryHandlers } from "./rpc/memory.ts";
@@ -68,7 +72,14 @@ import { runHandlers } from "./rpc/runs.ts";
 import { sessionHandlers } from "./rpc/sessions.ts";
 import { setupHandlers } from "./rpc/setup.ts";
 import { artifactHandlers } from "./rpc/surfaces.ts";
-import { newsHandlers, systemHandlers, telemetryHandlers, updateHandlers, usageHandlers } from "./rpc/system.ts";
+import {
+  newsHandlers,
+  storageHandlers,
+  systemHandlers,
+  telemetryHandlers,
+  updateHandlers,
+  usageHandlers,
+} from "./rpc/system.ts";
 import { taskHandlers } from "./rpc/tasks.ts";
 import { teamHandlers } from "./rpc/team.ts";
 import { terminalHandlers } from "./rpc/terminal.ts";
@@ -77,6 +88,7 @@ import { threadHandlers } from "./rpc/threads.ts";
 import { transcriptionHandlers } from "./rpc/transcription.ts";
 import { webhookHandlers } from "./rpc/webhooks.ts";
 import type { Secrets } from "./secrets.ts";
+import type { SignIn } from "./sign-in.ts";
 import type { RuntimeHomes } from "./skills/runtimes.ts";
 import { storedPublicPages } from "./surface-pages.ts";
 import type { Telemetry } from "./telemetry.ts";
@@ -88,6 +100,7 @@ import { computerTools } from "./tools/computer.ts";
 import { connectionTools } from "./tools/connections.ts";
 import { contactTools } from "./tools/contact.ts";
 import { directoryTools } from "./tools/directory.ts";
+import { externalSessionTools } from "./tools/external-sessions.ts";
 import { fileTools } from "./tools/files.ts";
 import { flowTools } from "./tools/flow-tool.ts";
 import { limitTools } from "./tools/limits.ts";
@@ -96,6 +109,7 @@ import { memoryTools } from "./tools/memory.ts";
 import { messageTools } from "./tools/message.ts";
 import { ownerTools } from "./tools/owner.ts";
 import { phoneTools } from "./tools/phone.ts";
+import { planTools } from "./tools/plan.ts";
 import { requestTools } from "./tools/requests.ts";
 import { routineTools } from "./tools/routines.ts";
 import { settingsTools } from "./tools/settings.ts";
@@ -158,12 +172,14 @@ export function builtinTools(
   /** Where agent profiles and agent templates are found, for the super-agent's settings. */
   roots?: Parameters<typeof settingsTools>[1],
   vm?: Computer,
+  signIn?: SignIn,
 ): Tool[] {
   const tools = [
     ...agentTools(store),
     ...agentSetTools(store),
     ...chatTools(store),
-    ...browserTools(store, home, vm),
+    ...externalSessionTools(store),
+    ...browserTools(store, home, vm, signIn),
     ...surfaceTools(store, home),
     ...ownerTools(store),
     ...connectionTools(),
@@ -180,6 +196,7 @@ export function builtinTools(
     ...phoneTools(),
     ...computerTools(store),
     ...taskTools(store, home),
+    ...planTools(),
     ...videoTools(findProgram("yt-dlp")),
     ...webTools(),
     ...contactTools(store),
@@ -202,6 +219,7 @@ type HandlerDeps = {
   identity: Identity;
   broker: NodeBroker;
   headless: HeadlessBrowser | undefined;
+  widgetPages: WidgetPages | undefined;
   /** Turns ending let go of the browser tabs they held. */
   bus: Bus;
   llmLabel: () => string;
@@ -223,6 +241,9 @@ type HandlerDeps = {
   asana: Asana;
   providers: Parameters<typeof providerHandlers>[0];
   secrets: Parameters<typeof providerHandlers>[1];
+  signIn?: SignIn;
+  /** Starts the owner's Chrome when a turn asks for it closed. */
+  ownersChrome?: OwnersChrome;
   chatgpt: Parameters<typeof providerHandlers>[2];
   localModels: Parameters<typeof transcriptionHandlers>[1];
   localEmbeds: Parameters<typeof embeddingHandlers>[0];
@@ -259,6 +280,8 @@ type HandlerDeps = {
   terminals: Parameters<typeof terminalHandlers>[1];
   /** What the computer has and what APX takes of it. */
   usage: Parameters<typeof usageHandlers>[0];
+  /** The APX home by area, clearing what APX rebuilds, and the disk's free space. */
+  storage: Parameters<typeof storageHandlers>[0];
 };
 
 /** The handler table the router serves: one entry per protocol method. */
@@ -276,6 +299,7 @@ export function coreHandlers(d: HandlerDeps & { vm?: Computer | undefined }) {
     ...telemetryHandlers(d.telemetry),
     ...newsHandlers(d.news),
     ...usageHandlers(d.usage),
+    ...storageHandlers(d.storage),
     ...systemHandlers(d.identity, d.app.home, d.panel, () => ({
       protocol: { status: "ok" },
       browser: d.broker.withCap(BROWSER_CAP)
@@ -285,7 +309,15 @@ export function coreHandlers(d: HandlerDeps & { vm?: Computer | undefined }) {
           : { status: "off", detail: "no desktop node connected" },
       agent: { status: "ok", detail: d.llmLabel() },
     })),
-    ...browserHandlers(d.broker, d.headless, d.bus, d.vm, d.store),
+    ...browserHandlers(
+      d.broker,
+      d.headless,
+      d.bus,
+      d.vm,
+      d.store,
+      d.signIn && { secrets: d.secrets, signIn: d.signIn },
+      d.ownersChrome,
+    ),
     ...threadHandlers(d.store, d.engine, d.upkeep),
     ...threadAdminHandlers(d.store, d.app.home, d.vm?.beforeDelete),
     ...runHandlers(d.store, d.engine),
@@ -293,6 +325,7 @@ export function coreHandlers(d: HandlerDeps & { vm?: Computer | undefined }) {
     ...memoryHandlers(d.store, d.memory, d.memoryMaintenance),
     ...channelHandlers(d.store, d.channels, d.nudges),
     ...emailSignatureHandlers(d.store, d.google),
+    ...mailHandlers(d.store, d.google, d.channels),
     ...mediaHandlers(d.services, d.store),
     ...transcriptionHandlers(d.services, d.localModels),
     ...embeddingHandlers(d.localEmbeds, () => d.memory.engine()),
@@ -330,6 +363,17 @@ export function coreHandlers(d: HandlerDeps & { vm?: Computer | undefined }) {
       runtimeHomes: d.runtimeHomes,
     }),
     ...providerHandlers(d.providers, d.secrets, d.chatgpt),
+    ...instanceHandlers({
+      store: d.store,
+      secrets: d.secrets,
+      home: d.app.home,
+      userHome: os.homedir(),
+      version: d.identity.version,
+      register: (dir) => void d.apc.register(dir),
+      setChannel: (id, config) => d.channels.set(id, config),
+      mcpChanged: (name) => d.mcp.drop({ scope: "global", name }),
+      nextFor: (s) => d.scheduler.nextFor(s),
+    }),
     ...app,
     "projects.create": (p: Parameters<(typeof app)["projects.create"]>[0], ctx: CallContext) => {
       const r = app["projects.create"](p);
@@ -348,6 +392,7 @@ export function coreHandlers(d: HandlerDeps & { vm?: Computer | undefined }) {
       checkPage: d.headless?.available()
         ? (html, onCall) => d.headless?.checkPage(html, onCall) ?? Promise.resolve({ errors: [], text: "", views: [] })
         : undefined,
+      widgetPages: d.widgetPages,
     }),
     ...agents,
     "agents.create": (p: Parameters<(typeof agents)["agents.create"]>[0], ctx: CallContext) => {
@@ -359,6 +404,7 @@ export function coreHandlers(d: HandlerDeps & { vm?: Computer | undefined }) {
     ...fileHandlers(d.store, d.desktop, d.app.home),
     ...gitHandlers(d.store, d.upkeep),
     ...terminalHandlers(d.store, d.terminals, d.app.home),
+    ...hermesHandlers(d.store, d.internal),
     ...sessionHandlers(d.store, d.native, {
       home: d.app.home,
       apc: d.apc,
@@ -453,7 +499,7 @@ export function exposedOrigins(config: Pick<CoreConfig, "host" | "publicUrl">, p
 }
 
 /** How long the core keeps an idle HTTP connection open for its next request. */
-export const KEEP_ALIVE_MS = 65_000;
+const KEEP_ALIVE_MS = 65_000;
 
 /** HTTP + WebSocket transports over one dispatcher; resolves once the port is bound. */
 export async function listen(

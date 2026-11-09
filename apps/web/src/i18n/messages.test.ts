@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { enApprovals } from "./approvals-en.ts";
 import { esApprovals } from "./approvals-es.ts";
+import { enBrowserEdit } from "./browser-edit-en.ts";
+import { esBrowserEdit } from "./browser-edit-es.ts";
 import { enComputer } from "./computer-en.ts";
 import { esComputer } from "./computer-es.ts";
 import { en as base } from "./en.ts";
@@ -15,10 +17,16 @@ import { esFlow } from "./flow-es.ts";
 import { enIngress } from "./ingress-en.ts";
 import { esIngress } from "./ingress-es.ts";
 import { loadMessages, loadPack } from "./messages.ts";
+import { enMove } from "./move-en.ts";
+import { esMove } from "./move-es.ts";
 import { enReceived } from "./received-en.ts";
 import { esReceived } from "./received-es.ts";
 import { enSecretary } from "./secretary-en.ts";
 import { esSecretary } from "./secretary-es.ts";
+import { enSignIn } from "./signin-en.ts";
+import { esSignIn } from "./signin-es.ts";
+import { enStorage } from "./storage-en.ts";
+import { esStorage } from "./storage-es.ts";
 import { enSysUsage } from "./sysusage-en.ts";
 import { esSysUsage } from "./sysusage-es.ts";
 import { enThreadDialogs } from "./thread-dialogs-en.ts";
@@ -120,7 +128,7 @@ test("secretary capability strings load only with the super-agent's settings in 
 });
 
 test("Chinese uses English for packs without Chinese translations", async () => {
-  for (const pack of ["approvals", "flow", "ingress", "secretary"] as const)
+  for (const pack of ["approvals", "browserEdit", "flow", "ingress", "move", "secretary", "signIn", "storage"] as const)
     assert.deepEqual(await loadPack(pack, "zh"), await loadPack(pack, "en"));
 });
 
@@ -132,6 +140,10 @@ const en = {
   ...enReceived,
   ...enSysUsage,
   ...enOnboarding,
+  ...enBrowserEdit,
+  ...enMove,
+  ...enStorage,
+  ...enSignIn,
   ...enEmailSignatures,
   ...enThreadDialogs,
   ...enIngress,
@@ -145,6 +157,10 @@ const es = {
   ...esReceived,
   ...esSysUsage,
   ...esOnboarding,
+  ...esBrowserEdit,
+  ...esMove,
+  ...esStorage,
+  ...esSignIn,
   ...esEmailSignatures,
   ...esThreadDialogs,
   ...esIngress,
@@ -179,6 +195,17 @@ test("every English text has its Spanish translation", () => {
 test("every Chinese-supported English text has its Chinese translation", () => {
   const missing = Object.keys(zhEnglish).filter((key) => (zh as Record<string, string | undefined>)[key] === undefined);
   assert.deepEqual(missing, []);
+});
+
+// Loanwords are common elsewhere ("Chat", "Skills"); the model picker has none besides these names.
+test("the model picker's Spanish texts are translated, not copied from English", () => {
+  const tr = es as Record<string, string | undefined>;
+  const words = (s: string) => s.replace(/\{\w+\}|Router|Ultra|[^A-Za-z]/g, "");
+  const copied = Object.entries(en).filter(([k, v]) => k.startsWith("models.") && tr[k] === v && words(v));
+  assert.deepEqual(
+    copied.map(([k]) => k),
+    [],
+  );
 });
 
 test("a translation keeps the placeholders of its English text", () => {

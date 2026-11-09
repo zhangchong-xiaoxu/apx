@@ -5,19 +5,12 @@ import path from "node:path";
 import { expect, open, rpc, test } from "./kit.ts";
 
 const fixtures = path.resolve(import.meta.dirname, "../fixtures/media");
-let otherProject: string | undefined;
-
-test.afterEach(async () => {
-  if (otherProject) await rpc("projects.unregister", { project: otherProject });
-  otherProject = undefined;
-});
 
 test("a widget plays its project's MP4 behind it and shows the project's images", async ({ page }) => {
   const projects = (await rpc<{ projects: Array<{ id: string; name: string; path?: string }> }>("projects.list"))
     .projects;
   const northwind = projects.find((p) => p.name === "Northwind");
   if (!northwind?.path) throw new Error("Northwind has no folder");
-  otherProject = (await rpc<{ project: { id: string } }>("projects.create", { name: "Northwind extra" })).project.id;
   const reels = path.join(northwind.path, "reels");
   fs.mkdirSync(reels, { recursive: true });
   fs.copyFileSync(path.join(fixtures, "preview.mp4"), path.join(reels, "take-1.mp4"));
@@ -48,8 +41,9 @@ test("a widget plays its project's MP4 behind it and shows the project's images"
   });
 
   await open(page);
-  await expect.poll(() => page.getByRole("button", { name: /^Northwind/ }).count()).toBeGreaterThanOrEqual(2);
-  await page.getByRole("button", { name: "Northwind", exact: true }).click();
+  const projectButton = page.getByRole("button", { name: "Northwind", exact: true });
+  await expect(projectButton).toBeVisible();
+  await projectButton.click();
   const tile = page.getByRole("region", { name: "Tablero" }).getByRole("article", { name: "Tomas del reel" });
   const frame = tile.frameLocator("iframe");
   await expect(frame.getByText("Toma 1: gancho en el primer segundo")).toBeVisible();
@@ -63,6 +57,7 @@ test("a widget plays its project's MP4 behind it and shows the project's images"
     await expect.poll(() => img.evaluate((i) => (i as HTMLImageElement).naturalWidth)).toBe(320);
   }
 
-  await tile.getByRole("button", { name: /^Quitar del tablero/ }).click();
+  await tile.getByRole("button", { name: "Más" }).click();
+  await page.getByRole("menuitem", { name: /^Quitar del tablero/ }).click();
   fs.rmSync(reels, { recursive: true, force: true });
 });

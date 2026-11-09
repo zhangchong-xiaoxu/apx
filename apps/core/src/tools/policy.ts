@@ -25,14 +25,14 @@ export type Decision =
   | { kind: "deny"; reason: string };
 
 /** A call's risk: what always asks cannot be undone; otherwise what it may change says it (DECISIONS.md#d-090). */
-export function riskOf(level: Confirm, effect: Effect): ToolRisk {
+function riskOf(level: Confirm, effect: Effect): ToolRisk {
   if (level === "always") return "irreversible";
   if (effect === "none") return "read";
   return effect === "local" ? "write" : "outside";
 }
 
 /** A tool's usual risk, from a call with no arguments (a call's own may be higher: a shell command that deletes). */
-export function toolRisk(tool: Tool): ToolRisk {
+function toolRisk(tool: Tool): ToolRisk {
   let level: Confirm = "never";
   try {
     level = tool.confirm({});
@@ -44,7 +44,8 @@ export function toolRisk(tool: Tool): ToolRisk {
 const GROUPS: Record<string, (name: string) => boolean> = {
   browser: (n) => n.startsWith("browser_"),
   widgets: (n) => n.endsWith("_widget"),
-  agents: (n) => n === "list_agents" || n === "delegate" || n === "grant_tool" || n === "agent_set",
+  agents: (n) =>
+    n === "list_agents" || n === "delegate" || n === "grant_tool" || n === "agent_set" || n === "start_session",
   shell: (n) => n.startsWith("shell"),
   files: (n) => n.startsWith("file_") || n === "send_file" || n === "open_document",
   mcp: (n) => n.startsWith("mcp_"),
@@ -53,8 +54,8 @@ const GROUPS: Record<string, (name: string) => boolean> = {
   tasks: (n) => n.startsWith("task_"),
 };
 
-/** Tools every agent keeps whatever its list says: they only read what the turn or memory holds, or ask the owner. */
-const ALWAYS = new Set(["read_output", "ask_owner", "load_skill", "recall"]);
+/** Tools every agent keeps whatever its list says: they read what the turn or memory holds, ask the owner, or plan. */
+const ALWAYS = new Set(["read_output", "ask_owner", "load_skill", "recall", "plan"]);
 
 /** What an agent's editor offers: each assignable tool with its group, and whether every agent keeps it anyway. */
 export function toolCatalog(
@@ -121,14 +122,13 @@ export function authorize(tool: Tool, args: Record<string, unknown>, agent: Agen
   if (tool.scratch?.(args)) return decide(level === "always" ? "always" : "never", "none", agent, untrusted);
   // A call that only reads here is risk read whatever the tool may do otherwise (DECISIONS.md#d-098).
   const d = decide(level, tool.reads?.(args) ? "none" : tool.effect, agent, untrusted, tool.workspace);
-  // What the owner set up changes on their card alone: no mode or rule of the agent's skips it (DECISIONS.md#d-140,
-  // DECISIONS.md#d-143), nor what keeps its card in Total.
+  // What keeps its card is asked in every mode and under every rule (DECISIONS.md#d-143, DECISIONS.md#d-205).
   const keeps = keepsCard(tool, args, agent);
   if (d.kind === "allow" && keeps)
     return {
       kind: "confirm",
       why: "always",
-      reason: keeps === "card" ? "a change to what you set up always waits for you" : KEPT_CARD,
+      reason: keeps === "card" ? "this change always waits for you" : KEPT_CARD,
     };
   // The tool names what outside content could do through this call, so the card says it (DECISIONS.md#d-121).
   return d.kind === "confirm" && d.why === "untrusted" && level === "untrusted" && tool.untrustedWhy
@@ -140,7 +140,7 @@ const KEPT_CARD = "it waits for you whatever the agent's mode, unless you said a
 
 /** Whether Total or the agent's rule `auto` would skip a card this call keeps (DECISIONS.md#d-143). */
 export const keepsCard = (tool: Tool, args: Record<string, unknown>, agent: AgentRecord): KeepsCard | undefined =>
-  tool.ownerSetting?.(args) ? "card" : tool.keepsCard?.(args, agent);
+  tool.keepsCard?.(args, agent);
 
 const URL_DATA = "the URL carries data, and content from outside (web, another agent or a message) is in this turn";
 

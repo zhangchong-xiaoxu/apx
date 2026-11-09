@@ -218,3 +218,22 @@ test("repeated duplicate tool IDs are never executed and end with tools disabled
   assert.equal(calls, 3);
   assert.match(notes(seen).join("\n"), /duplicate tool call IDs/i);
 });
+
+test("the usage reported while a turn runs names the window of the model that answered", async () => {
+  const llm = scriptedLlm(() => ({ ...say("done"), model: "fake/claude-test", usage: { input: 5000, output: 3 } }));
+  const seen: unknown[] = [];
+  const io = {
+    system: "system",
+    history: [],
+    input: { role: "user", content: "go" },
+    tools: [],
+    models: ["fake/claude-test"],
+    signal: new AbortController().signal,
+    thread: { id: "t1" },
+    onText() {},
+    onUsage: (u: unknown) => seen.push(u),
+    log() {},
+  } as unknown as TurnIO;
+  await nativeHarness(llm).run(io);
+  assert.deepEqual(seen.at(-1), { input: 5000, output: 3, context: 5000, window: 200_000 });
+});

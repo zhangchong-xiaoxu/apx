@@ -159,6 +159,8 @@ docker exec -it apx apx pair            # pair the desktop app or the phone with
 <TabItem label="From source">
 
 To work on APX, or to run the newest code, use a checkout. You need Node 24.11 or later and pnpm.
+Building the macOS desktop also requires Apple's Xcode command-line tools (`swiftc`, `lipo` and `codesign`).
+The core-only `pnpm dev` command does not compile the desktop helper.
 
 ```bash
 pnpm install
@@ -225,6 +227,42 @@ its own words and your language, in its chat in the app (marked unread). If you 
 message goes there too, with a button for each thing it offers; without one, the app is where you read it. Only that
 message calls a model, and only when something applies to you; a new install is told nothing. `APX_NEWS=off` turns it
 off, and `apx news` lists what there is.
+
+### Large histories and backups
+
+An update can rebuild database indexes before APX starts accepting connections. With a large chat history, allow
+extra startup time and free disk space for the index, temporary files and SQLite's write-ahead log. A connection
+timeout during this work does not mean the update failed; avoid repeated restarts while it is progressing.
+
+Before upgrading an important installation, keep a consistent backup. Stop APX and any background service or
+supervisor that would start it again, then copy the data folder to a separate, protected location. Keep `apx.db`
+and any `apx.db-wal` and `apx.db-shm` files together; copying only `apx.db` while APX is running can miss recent
+changes. A live database backup needs SQLite's online backup API instead. Files in the data folder do not include
+secrets stored in the operating system's keyring.
+
+Database migrations commit individually. An interrupted index build is rolled back and retried at the next start;
+earlier completed migrations remain. If startup reports a disk-space or database error, keep the backup, resolve
+the cause and retry. To roll back an upgrade, stop APX again and restore the pre-upgrade data with its matching
+program version, keeping the failed-upgrade data separately. Do not reset the schema version by hand. Restoring a
+backup discards changes made since that backup.
+
+### A migration reports an existing index
+
+Starting with v2.13.2, startup can reconcile a recognized mismatch between the migration
+counter and the columns and indexes from migrations 101–108. It checks the complete earlier schema, including
+table constraints, and existing object definitions first. Before changing anything, it saves a consistent database-only copy in
+`backups/migration-<unique-id>/apx.db` inside the data folder, then applies only missing changes in one transaction.
+Existing task goals, requests, queue order and retention markers stay unchanged. When the Apps-listing column is
+missing, its original conversion runs once; existing Apps choices are never converted again. Ordinary upgrades still
+commit migrations individually and do not create this extra copy.
+
+This is not a general repair for arbitrary local schema changes. An incompatible definition, an unrecognized
+trigger, an unknown version, insufficient backup space or a failed integrity check stops startup without committing
+the repair. Keep the data and
+any backup; do not delete indexes, add columns or change `schema_version` by hand. Stop other cores using the same
+data folder before retrying. The automatic copy contains private chat data, not media or keyring secrets; keep it
+protected. To restore it, stop APX and keep the failed database and its WAL files separately before replacing the
+database. Use a program version compatible with that copy's original schema.
 
 ## Uninstall
 

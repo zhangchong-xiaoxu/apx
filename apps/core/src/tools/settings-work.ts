@@ -2,6 +2,7 @@
 // or off, media services and widgets. A project's autonomy and read-only folders and memory's model stay the owner's
 // (DECISIONS.md#d-060). An MCP server names its keys as secret://NAME, never their value (DECISIONS.md#d-141).
 import { memorySettings } from "../domain/memory-settings.ts";
+import { keyLike } from "../log.ts";
 import { imageDefaultsOf } from "../services/registry.ts";
 import { inlineName } from "./result.ts";
 import { merged, ownersField, type Params, projectName, quoted, type Setting, str } from "./settings-kit.ts";
@@ -50,11 +51,6 @@ function keysGo(s: McpRaw): string {
     : `It gets no saved variable: ${to}.`;
 }
 
-/** A value that reads like a key or token once its secret:// references are taken out. */
-const keyLike = (v: string) => {
-  const bare = v.replace(SECRET_REF, "");
-  return /[A-Za-z0-9_-]{20,}/.test(bare) && /\d/.test(bare) && /[a-z]/i.test(bare);
-};
 /** The env or header written as a key's value instead of a reference to one the owner saved. */
 const pastedKey = (server: unknown): string | undefined => {
   const s = (server ?? {}) as McpRaw;
@@ -143,10 +139,12 @@ export const WORK: Readonly<Record<string, Setting>> = {
   },
   "memory.reindex": {
     does: "index every note again for search",
+    asks: "untrusted",
     says: () => "Index every note again for search",
   },
   "memory.maintenance": {
     does: "run memory's upkeep now (backfill: index what is missing; dream: tidy the notes)",
+    asks: "untrusted",
     named: ["backfill", "dream"],
     says: (p) =>
       `Run memory's upkeep now${p.backfill ? ", indexing what is missing" : ""}${p.dream ? ", tidying the notes" : ""}`,
@@ -201,6 +199,7 @@ export const WORK: Readonly<Record<string, Setting>> = {
   },
   "mcp.set": {
     does: "add, change or (server: null) remove one of the owner's MCP servers (name; server: command, args, env, or url, headers; project: only there). A key goes as secret://NAME, a variable the owner saved, never its value",
+    asks: "card",
     says: (p, { store }) => {
       const exists = !p.project && ownServers(store)[str(p.name)];
       const act = p.server === null ? "Remove" : exists ? "Change" : "Add";
@@ -311,6 +310,7 @@ export const WORK: Readonly<Record<string, Setting>> = {
   },
   "surfaces.share": {
     does: "publish a widget as a page anyone with its link opens, or stop (surface, shared)",
+    asks: "card",
     named: ["surface", "shared"],
     says: (p, { store }) =>
       p.shared

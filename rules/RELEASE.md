@@ -41,6 +41,11 @@ to it and `release/v2` was deleted. v1's last `main` stays as branch `v1`, with 
 
 Day-to-day work goes to `staging` (verify runs on every push there); `main` is the last release. Cutting a version
 fast-forwards `main` to a `staging` commit whose verify passed, waits for verify on `main`, then tags it (below).
+An owner-authorized urgent hotfix may go from its task branch directly to `main`, without passing through
+`staging` first. Preserve changes already on `main`, verify the candidate locally before pushing, and wait for
+`verify` on that exact `main` commit before tagging. Bring the released fix back into `staging` afterward; the
+exception does not bypass checks or permit moving a published tag.
+
 `pages.yml` publishes the site from `main`, so the docs change with a release, not with each push. The site lives at
 `https://apxagent.app/`, the repository's Pages custom domain (DNS in Cloudflare, DNS only, pointing at GitHub Pages);
 GitHub sends every `agentprojectcontext.github.io/apx/…` address on to the same path there.
@@ -90,9 +95,16 @@ pnpm release:check --tag v2.11.1 origin/master        # checks, then tags that c
 --commit`), the run the publish job will wait for; a rerun that turned it green counts. The publish job's wait stays
 as the second guard, for a tag made by hand.
 
+### A failed release
+
+A release whose build failed stays a draft, and its tag is spent: fix the cause on `staging`, then tag the next
+patch version (a published tag is never moved). The Discord announcement and the issue replies read the commits since
+the previous *published* release (`scripts/release-previous.ts`), so the version that ships tells what the failed one
+carried too. Delete the failed draft and its tag once the next version is out, so nothing else reads it as released.
+
 ## What people are told
 
-The same commits since the previous v2 tag, each subject as a sentence, reach people three ways: the Discord
+The same commits since the previous published release, each subject as a sentence, reach people three ways: the Discord
 announcement, the replies to the issues a release fixes, and, inside APX, the super-agent's "what's new" chat on the
 first start of the new version ([D-100](DECISIONS.md#d-100)). So a commit subject is release text: write it for the
 people who use APX. Only `feat`, `fix` and `perf` commits are shown.
@@ -102,7 +114,7 @@ with a button or two to start ([D-117](DECISIONS.md#d-117)). They are written by
 `apps/core/src/news/entries.ts`, one entry per thing worth acting on, by whoever ships that thing (AGENTS.md rule 25):
 `since` is the first release that has it, `applies` reads the install's facts (`newsFacts`: widgets, Google parts,
 the running profile…) so only owners it helps hear it. `title` and `about` are what the owner reads in Help › What's
-new, in English and Spanish and in their words; `text` is what the super-agent is told ([D-182](DECISIONS.md#d-182)). An owner who updates past several releases hears every entry
+new, in English and Spanish and in their words; `text` is what the super-agent is told ([D-182](DECISIONS.md#d-182-news)). An owner who updates past several releases hears every entry
 they have not heard that applies; a fresh install hears none. Before tagging, check that each owner-facing `feat`
 since the last tag either has an entry or is not worth offering.
 
@@ -139,6 +151,15 @@ e2e/install/servers.sh feed out/                    # …and the feed beside the
 e2e/install/servers.sh up fresh 2222                # ssh -p 2222 tester@<docker host>; `up old 2223 v1` has APX v1
 e2e/install/servers.sh clean
 ```
+
+The macOS Desktop build requires a macOS host with Xcode command-line tools. `scripts/package.ts` passes its exact
+`APX_TARGET` to the desktop build; the private Swift observer is compiled and checked for that architecture before
+packaging, then copied outside ASAR to `Resources/computer/observer`. It is not part of the standalone daemon bundle.
+Non-macOS targets do not compile or ship it. Cross-packaging macOS on another OS is refused, not silently skipped.
+Any native build error aborts packaging, even when filesystem permissions prevent removal of an old binary. Do not
+invoke electron-builder on stale build output after such an error. Ad hoc signing verifies consistency only; it does
+not authenticate a publisher. Final nested package signing and accessibility permission behavior require separate
+runtime verification before the observer can be enabled.
 
 On a server: `curl -fsSL http://apx-feed:7480/install.sh | bash -s -- --feed http://apx-feed:7480`; the install
 keeps updating from that feed (`apx upgrade`). The desktop app installs onto one with `APX_RELEASES=<feed>` set.

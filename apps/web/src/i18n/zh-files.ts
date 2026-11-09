@@ -150,4 +150,7 @@ export const zhFiles: Partial<Record<MessageKey, string>> = {
   "files.copyFailed": "无法复制到剪贴板。",
   "files.error": "无法完成：{error}",
   "files.noPreview": "无法在这里显示",
+  "file.download": "下载",
+  "file.unavailable": "无法打开此文件，请改为下载。",
+  "file.open": "打开",
 };

@@ -88,7 +88,7 @@ const en = {
       ["Upgrade from v1", "/start/from-v1/#upgrade-from-v1"],
     ],
   },
-  title: "APX v2: meet your crew",
+  title: "Your own team of AI agents, on your machine | APX",
   description:
     "Documentation for APX v2: a crew of AI agents that lives on your machine. Install it, meet Home, add a project and put your agents to work.",
   nav: {
@@ -439,7 +439,7 @@ const es: HomeText = {
       ["Actualizar desde v1", "/es/start/from-v1/#actualizar-desde-v1"],
     ],
   },
-  title: "APX v2: conocé a tu crew",
+  title: "Tu propio equipo de agentes de IA, en tu máquina | APX",
   description:
     "Documentación de APX v2: un crew de agentes de IA que vive en tu máquina. Instalalo, conocé a Home, sumá un proyecto y poné a trabajar a tus agentes.",
   nav: {

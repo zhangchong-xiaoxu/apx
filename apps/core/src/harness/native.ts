@@ -12,6 +12,7 @@ import {
   type Usage,
 } from "../providers/types.ts";
 import { readsImages } from "../providers/vision.ts";
+import { contextWindow } from "../providers/windows.ts";
 import { modelSpec } from "../tools/types.ts";
 import type { Harness } from "./types.ts";
 
@@ -22,6 +23,8 @@ import type { Harness } from "./types.ts";
 export const MAX_STEPS = TURN_STEPS;
 const MAX_CONTINUATIONS = 2;
 class ModelCallLimit extends Error {}
+/** A call the model asked for after the owner's "send now" stopped the step: their words come first. */
+const NOT_RUN_FOR_OWNER = "not run: the owner sent you a message to read first.";
 /** The same call this many times in a row gets a reminder to change course; tools never go off for it before STUCK_AT. */
 const REMIND_AT = [3, 5] as const;
 /** The same call this many times in a row = stuck: tools go off and the turn answers with what it has. */
@@ -78,12 +81,12 @@ export function nativeHarness(llm: Llm): Harness {
       let finalModels: string[] | undefined;
       const callBudget = io.maxModelCalls === undefined ? undefined : { remaining: io.maxModelCalls };
 
-      const step = async (tools: boolean) => {
+      const step = async (tools: boolean, cut?: AbortSignal) => {
         const c = await llm.complete({
           models: !tools && finalModels?.length ? finalModels : io.models,
           messages,
           tools: tools && !toolsOff ? io.tools.map(modelSpec) : [],
-          signal: io.signal,
+          signal: cut ? AbortSignal.any([io.signal, cut]) : io.signal,
           cacheKey: io.thread.id,
           ...(callBudget
             ? {
@@ -134,7 +137,13 @@ export function nativeHarness(llm: Llm): Harness {
         usage.input += c.usage?.input ?? 0;
         usage.output += c.usage?.output ?? 0;
         if (c.usage?.cached) usage.cached = (usage.cached ?? 0) + c.usage.cached;
-        if (c.usage?.input) usage.context = c.usage.input;
+        if (c.usage?.input) {
+          usage.context = c.usage.input;
+          // Known while the turn runs, so the chat's context ring never loses its share between calls.
+          const window = c.usage.window ?? contextWindow(c.model);
+          if (window) usage.window = window;
+          else delete usage.window;
+        }
         io.onUsage?.({ ...usage });
         if (!rejectedBatch) push(c.message);
         if (c.message.content) text = prefix + c.message.content;
@@ -146,11 +155,14 @@ export function nativeHarness(llm: Llm): Harness {
         // What arrived while we work (the owner's words, a command's end) goes in after the last tool results.
         for (const t of io.takeSteered?.() ?? []) push({ role: "user", content: t });
         let c: Awaited<ReturnType<typeof step>>;
+        const cut = io.stepSignal?.();
         try {
-          c = await step(true);
+          c = await step(true, cut);
         } catch (err) {
           if (err instanceof ModelCallLimit) break;
-          throw err;
+          if (io.signal.aborted || !cut?.aborted) throw err;
+          io.onText(prefix);
+          continue;
         }
         const calls = c.message.tool_calls ?? [];
         if (!calls.length) {
@@ -201,8 +213,12 @@ export function nativeHarness(llm: Llm): Harness {
             rejected = err;
           }
           let out: Awaited<ReturnType<typeof io.execute>>;
+          if (cut?.aborted) {
+            push({ role: "tool", tool_call_id: call.id, content: NOT_RUN_FOR_OWNER });
+            continue;
+          }
           if (rejected) out = { ok: false, text: rejected.message };
-          else if (args) out = await io.execute(call.id, call.function.name, args);
+          else if (args) out = await io.execute(call.id, call.function.name, args, cut);
           else throw new Error("tool arguments were neither parsed nor rejected");
           io.alive?.();
           push({ role: "tool", tool_call_id: call.id, content: out.text });
